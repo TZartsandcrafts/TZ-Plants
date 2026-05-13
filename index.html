@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 
 <html lang="zh-CN">
@@ -60,7 +61,7 @@ var BLANK={name:"",variety:"",type:"",category:"",notes:"",source:"sapling",indo
 // ═══════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════
-function q(s){return String(s==null?’’:s).replace(/&/g,’&’).replace(/</g,’<’).replace(/>/g,’>’).replace(/”/g,’"’);}
+function q(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function td(){return new Date().toISOString().slice(0,10);}
 function ds(d){if(!d)return null;var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);var dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(d);return Math.floor((Date.now()-dt)/86400000);}
 function fmt(d){if(!d)return”—”;var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[1]+’/’+m[2]+’/’+m[3]:d;}
@@ -228,7 +229,7 @@ function setPickSearch(v){S.lf.ps=v;render();}
 function cancelLogEdit(){S.lf=Object.assign({},S.lf,{editIdx:null,date:td(),note:’’,name:’’,reason:’’,amount:’’});render();}
 function openCal(pid){S.calPlantId=pid;S.calYr=new Date().getFullYear();S.calMo=new Date().getMonth();S.calSel=null;render();}
 function closeCal(){S.calPlantId=null;render();}
-function calPrev(){if(S.calMo===0){S.calYr–;S.calMo=11;}else S.calMo–;S.calSel=null;render();}
+function calPrev(){if(S.calMo===0){S.calYr--;S.calMo=11;}else S.calMo--;S.calSel=null;render();}
 function calNext(){if(S.calMo===11){S.calYr++;S.calMo=0;}else S.calMo++;S.calSel=null;render();}
 function calSel(d){S.calSel=S.calSel===d?null:d;render();}
 
@@ -493,9 +494,48 @@ return ‘<div style="min-height:100vh;background:linear-gradient(150deg,#dce8d8
 }
 
 // ═══════════════════════════════════════
+//  WEATHER AUTO-UPDATE (Open-Meteo)
+// ═══════════════════════════════════════
+function fetchWeather(){
+  var lat=49.1042,lon=-122.8231; // Surrey, BC
+  var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&daily=precipitation_sum,weather_code&timezone=America/Vancouver&forecast_days=3';
+  fetch(url).then(function(r){return r.json();}).then(function(d){
+    var c=d.current,codes=d.daily&&d.daily.weather_code||[];
+    function wInfo(code){
+      if(code<=1)return{cond:'晴天',emo:'☀️',rain:false};
+      if(code<=3)return{cond:'多云',emo:'⛅',rain:false};
+      if(code<=49)return{cond:'有雾',emo:'🌫️',rain:false};
+      if(code<=67)return{cond:'降雨',emo:'🌧️',rain:true};
+      if(code<=77)return{cond:'降雪',emo:'❄️',rain:false};
+      if(code<=82)return{cond:'阵雨',emo:'🌦️',rain:true};
+      return{cond:'雷雨',emo:'⛈️',rain:true};
+    }
+    var wi=wInfo(c.weather_code);
+    var days=['今天','明天','后天'];
+    var fc=codes.slice(0,3).map(function(code,i){var fi=wInfo(code);return{d:days[i],e:fi.emo,t:fi.cond};});
+    var precip=c.precipitation||0;
+    var tips=[];
+    if(wi.rain||precip>3)tips.push('今日有降水，注意减少浇水');
+    else if(c.relative_humidity_2m>80)tips.push('湿度偏高（'+c.relative_humidity_2m+'%），浇水适量即可');
+    else if(c.temperature_2m>30)tips.push('气温偏高（'+Math.round(c.temperature_2m)+'°C），注意防晒遮阴');
+    else if(c.temperature_2m<5)tips.push('气温偏低，注意防寒保温');
+    else tips.push('天气适宜，可按常规养护计划进行');
+    W.temp=Math.round(c.temperature_2m);
+    W.hum=c.relative_humidity_2m;
+    W.pre=precip;
+    W.cond=wi.cond;W.emo=wi.emo;W.rain=wi.rain;
+    W.fc=fc;W.tip=tips[0];
+    var now=new Date();
+    W.upd=now.getFullYear()+'年'+(now.getMonth()+1)+'月'+now.getDate()+'日 '+now.getHours()+':'+('0'+now.getMinutes()).slice(-2);
+    render();
+  }).catch(function(){/* 天气获取失败时保留默认值 */});
+}
+
+// ═══════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════
 render();
+fetchWeather();
 </script>
 
 </body>
