@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>植物管家</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Lato','Noto Sans SC',sans-serif;min-height:100vh;background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc);color:#3a5030;-webkit-tap-highlight-color:transparent}
+button:active{opacity:.7}
+input::placeholder,textarea::placeholder{color:#9aaa88;opacity:1}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:rgba(100,150,80,.3);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// ═══════════════════════════════════════
+//  DATA & CONSTANTS
+// ═══════════════════════════════════════
+var W={loc:"Surrey, BC",upd:"2026年5月10日",temp:16,hum:83,pre:0,cond:"多云",emo:"⛅",rain:false,fc:[{d:"今天",e:"⛅",t:"多云"},{d:"明天",e:"☀️",t:"晴天"},{d:"后天",e:"🌤️",t:"晴转多云"}],tip:"近日无雨，湿度偏高，浇水适量即可"};
+var SK="plants_v9";
+var FERT_DB=[
+{id:"npk_bal",name:"复合肥（均衡型）",icon:"🌿",type:"化肥",npk:"15-15-15",desc:"氮磷钾均衡，适合生长期通用追肥，蔬菜、果树、花卉皆宜。",usage:"土施或稀释浇根",dosage:"5–10 g/株；稀释液 500–800倍",interval:"每 2–3 周一次",suitable:"果树、蔬菜、花卉、观叶",caution:"避免颗粒直接接触根部，雨前施用；高温期减量。"},
+{id:"urea",name:"尿素（氮肥）",icon:"🌱",type:"化肥",npk:"46-0-0",desc:"速效氮肥，促进枝叶生长，叶色变深绿，适合生长旺盛期。",usage:"土施或叶面喷施",dosage:"土施 3–5 g/株；叶面 0.5–1%",interval:"每 2–4 周",suitable:"蔬菜、果树、草坪",caution:"用量过大易烧根；花期禁止过量施用。"},
+{id:"kh2po4",name:"磷酸二氢钾",icon:"🌸",type:"化肥",npk:"0-52-34",desc:"高磷高钾，促进开花结果、壮实枝条，增强抗逆性，叶面喷施见效快。",usage:"叶面喷施或浇根",dosage:"0.1–0.3%（1–3 g/L）",interval:"花前花后各1次，或每月1–2次",suitable:"果树、花卉、番茄",caution:"浓度过高易灼叶；高温强光下避免叶面喷施。"},
+{id:"organic",name:"有机肥（腐熟堆肥）",icon:"🌾",type:"有机肥",npk:"约 2-1-1",desc:"改善土壤结构，提供全面营养，肥效持久缓和，不易烧根，促进微生物活性。",usage:"基肥或穴施",dosage:"100–300 g/株；盆栽 20–50 g",interval:"每季度1次",suitable:"所有植物",caution:"务必充分腐熟，生粪会烧根且产生异味。"},
+{id:"slow_release",name:"缓释肥（奥绿/魔肥）",icon:"🟡",type:"缓释肥",npk:"14-14-14（约）",desc:"包膜技术缓慢释放，肥效长达3–6个月，省时省力，适合盆栽和苗圃。",usage:"混入基质或表面撒施",dosage:"5–10 g/升基质",interval:"3–6个月换基质时补充",suitable:"盆栽、观叶、多年生",caution:"高温时释放加快，夏季可能过量；勿与根系直接接触。"},
+{id:"water_soluble",name:"水溶肥（花多多）",icon:"💐",type:"水溶肥",npk:"30-10-10(1号)/10-30-20(2号)",desc:"1号高氮促营养生长；2号高磷高钾促开花结果，两者配合效果最佳。",usage:"浇根或叶面喷施",dosage:"稀释 2000–3000 倍",interval:"每7–14天",suitable:"花卉、多肉、兰花、蔬菜",caution:"按说明稀释；夏季高温避免正午浇施；苗期减半。"},
+{id:"iron_sulfate",name:"硫酸亚铁（铁肥）",icon:"🟤",type:"微量元素肥",npk:"含 Fe 20%",desc:"补充铁元素，改善缺铁黄叶（新叶失绿），同时酸化土壤。",usage:"土施或叶面喷施",dosage:"土施 2–3 g/株；叶面 0.2–0.5%",interval:"见症状时，每月1–2次",suitable:"杜鹃、蓝莓、茶花、铁线莲",caution:"浓度过高会伤叶；碱性土壤效果短暂。"},
+{id:"potassium_sulfate",name:"硫酸钾",icon:"🔶",type:"化肥",npk:"0-0-50",desc:"速效钾肥，促进糖分积累，提升果实品质和着色，适合忌氯作物。",usage:"土施",dosage:"5–10 g/株",interval:"结果期每月1次",suitable:"果树、块茎蔬菜、草莓",caution:"不可与碱性肥料混施；过量会造成土壤板结。"},
+{id:"succulent_fert",name:"多肉专用肥",icon:"🌵",type:"缓释肥",npk:"低氮低磷高钾",desc:"专为多肉仙人掌设计，低氮防徒长，促进紧凑株型和叶色显色。",usage:"土施，少量",dosage:"按包装说明减半",interval:"生长季每1–2月一次",suitable:"多肉、仙人掌",caution:"休眠期禁止施肥；冬季完全停施；用量宁少勿多。"},
+{id:"fish_emulsion",name:"鱼腥水（液态有机氮）",icon:"🐟",type:"有机肥",npk:"约 5-2-2",desc:"鱼骨、豆粕等腐熟液，提供全面有机营养，同时改善土壤微生物环境。",usage:"稀释浇根",dosage:"稀释 50–100 倍",interval:"每2–3周",suitable:"叶菜、果蔬、幼苗",caution:"需充分腐熟，否则烧根；室内使用气味强烈，建议室外施用。"},
+{id:"camamag",name:"钙镁磷肥",icon:"🪨",type:"矿质肥",npk:"0-14-0+Ca/Mg",desc:"补充磷、钙、镁，调节酸性土壤pH，适合南方偏酸性土壤。",usage:"基肥穴施",dosage:"50–100 g/株",interval:"每季度1次",suitable:"果树、蔬菜、酸性土植物",caution:"碱性土壤效果差；不可与铵态氮肥混施。"},
+{id:"wood_ash",name:"草木灰",icon:"⬛",type:"有机肥",npk:"0-1-5（约）",desc:"天然钾肥，同时提高土壤pH，适合酸性土改良，兼有一定杀菌效果。",usage:"土施混入",dosage:"每平方米100–200 g",interval:"每季度1次",suitable:"果树、蔬菜、花园地栽",caution:"碱性土壤勿用；勿与铵态氮肥混施。"}
+];
+var MED_DB=[
+{id:"carbendazim",name:"多菌灵",icon:"🔵",type:"杀菌剂",chemical:"苯并咪唑类",target:"白粉病、灰霉病、炭疽病、枯萎病",desc:"内吸性广谱杀菌剂，预防和治疗均有效，是家庭园艺最常用杀菌剂。",dosage:"稀释800–1000倍液",method:"喷雾或浇根",interval:"7–10天，连续2–3次",safetyDays:15,caution:"连续使用易产生抗性，建议与百菌清轮换；对鱼类有毒，勿污染水源。"},
+{id:"chlorothalonil",name:"百菌清",icon:"🟢",type:"杀菌剂",chemical:"有机氯",target:"霜霉病、早疫病、炭疽病、叶斑病",desc:"广谱保护性杀菌剂，无内吸性，需在发病前或发病初期施用，持效期较长。",dosage:"稀释600–800倍液",method:"喷雾",interval:"7–10天",safetyDays:7,caution:"对皮肤和眼睛有刺激，施用时佩戴防护；不可与碱性农药混用。"},
+{id:"thiophanate",name:"甲基硫菌灵（甲托）",icon:"🟣",type:"杀菌剂",chemical:"苯并咪唑类",target:"白粉病、灰霉病、菌核病、枯萎病",desc:"内吸性杀菌剂，在植物体内转化为多菌灵发挥作用，预防治疗兼备。",dosage:"稀释1000–1500倍液",method:"喷雾或灌根",interval:"7–10天，连续2次",safetyDays:14,caution:"与多菌灵有交叉抗性，不可轮换使用；孕期避免接触。"},
+{id:"mancozeb",name:"代森锰锌",icon:"🟡",type:"杀菌剂",chemical:"二硫代氨基甲酸盐",target:"霜霉病、晚疫病、炭疽病、斑点病",desc:"广谱保护性杀菌剂，以预防为主，不能治疗已感染部位，兼补锰锌。",dosage:"稀释600–800倍液",method:"喷雾",interval:"7–10天",safetyDays:15,caution:"高温时避免使用；与铜制剂混用有增效作用。"},
+{id:"imidacloprid",name:"吡虫啉",icon:"🔴",type:"杀虫剂",chemical:"烟碱类",target:"蚜虫、粉虱、蓟马、叶蝉",desc:"内吸性杀虫剂，通过植物传导至各部位，持效期长，对刺吸式口器害虫特效。",dosage:"稀释1500–2000倍液",method:"喷雾或灌根",interval:"10–15天",safetyDays:14,caution:"对蜜蜂高毒，花期严禁使用；轮换用药防止抗性。"},
+{id:"abamectin",name:"阿维菌素",icon:"🟠",type:"杀虫杀螨剂",chemical:"大环内酯类（生物源）",target:"红蜘蛛、叶螨、线虫、蚜虫、潜叶蛾",desc:"生物源农药，对螨类和线虫特效，无内吸性，需直接接触虫体。",dosage:"稀释2000–3000倍液",method:"叶面喷雾（正反面均喷）",interval:"7–10天，连续2次",safetyDays:7,caution:"强光高温下分解加快，傍晚施用效果更好；对鱼和水生生物有毒。"},
+{id:"cypermethrin",name:"高效氯氰菊酯",icon:"⚡",type:"杀虫剂",chemical:"拟除虫菊酯类",target:"毛毛虫、甲虫、蚜虫、飞虱、蝗虫",desc:"广谱击倒性杀虫剂，速效性强，接触即死。",dosage:"稀释2000–3000倍液",method:"喷雾",interval:"7天，连续不超过3次",safetyDays:7,caution:"对蜜蜂和天敌昆虫毒性极高，开花期禁止使用。"},
+{id:"thiamethoxam",name:"噻虫嗪",icon:"🔷",type:"杀虫剂",chemical:"烟碱类（第二代）",target:"蚜虫、粉虱、蓟马、飞虱",desc:"新一代内吸性杀虫剂，活性高于吡虫啉，灌根后植株系统性受保护，持效期更长。",dosage:"稀释2000–3000倍液",method:"喷雾或灌根",interval:"14–21天",safetyDays:14,caution:"对蜜蜂高毒，花期严禁使用；与吡虫啉有交叉抗性，勿轮换使用。"},
+{id:"pyridaben",name:"哒螨灵",icon:"🕷️",type:"专用杀螨剂",chemical:"哒嗪酮类",target:"红蜘蛛、二斑叶螨、全爪螨（各螨态）",desc:"广谱专用杀螨剂，对成螨、若螨、卵均有效，速效且持效期长。",dosage:"稀释2000–3000倍液",method:"叶背重点喷雾",interval:"10–14天",safetyDays:14,caution:"单一作用机制，易产生抗性，建议与阿维菌素轮换使用。"},
+{id:"matrine",name:"苦参碱",icon:"🍃",type:"生物杀虫剂",chemical:"植物源生物碱",target:"蚜虫、红蜘蛛、菜青虫、小菜蛾",desc:"纯天然植物提取，低毒低残留，降解快，非常适合有机蔬菜和食用植物。",dosage:"稀释800–1200倍液",method:"喷雾",interval:"5–7天，连续2–3次",safetyDays:3,caution:"见光分解快，傍晚或阴天使用效果更好；速效性不如化学农药。"},
+{id:"bordeaux",name:"波尔多液",icon:"🩵",type:"杀菌剂",chemical:"无机铜制剂",target:"霜霉病、晚疫病、细菌性病害、溃疡病",desc:"硫酸铜+石灰水混配的经典铜制剂，保护性强，持效期长，果树清园首选。",dosage:"1:1:100（硫酸铜:石灰:水）",method:"喷雾",interval:"10–15天",safetyDays:14,caution:"需现配现用；碱性，不可与其他农药混用；嫩叶期有药害风险。"},
+{id:"lime_sulfur",name:"石硫合剂",icon:"🟨",type:"杀菌杀虫剂",chemical:"无机硫制剂",target:"白粉病、锈病、红蜘蛛、介壳虫、越冬病菌",desc:"石灰与硫磺熬制而成，广谱高效，冬季休眠期清园涂干效果极佳。",dosage:"生长期3–5波美度；清园20–30波美度",method:"喷雾或涂干",interval:"生长期7天；清园1次/年",safetyDays:20,caution:"高温（>32°C）或花期禁用，易灼伤；不可与铜制剂混用。"}
+];
+var CATS=[{key:"fruit",icon:"🍎",label:"果树"},{key:"shrub",icon:"🌿",label:"灌木"},{key:"veg",icon:"🥬",label:"蔬菜"},{key:"nut",icon:"🌰",label:"坚果"},{key:"perennial",icon:"🌸",label:"多年生草本"},{key:"annual",icon:"🌱",label:"一年生草本"},{key:"succulent",icon:"🌵",label:"多肉/仙人掌"},{key:"indoor",icon:"🪴",label:"室内观叶"},{key:"other",icon:"📦",label:"其他"}];
+var SRCS=[{key:"seed",icon:"🌱",label:"种子自播"},{key:"sapling",icon:"🌿",label:"购入苗木"},{key:"mature",icon:"🪴",label:"购入成株"},{key:"cutting",icon:"✂️",label:"扦插繁殖"},{key:"graft",icon:"🔗",label:"嫁接"},{key:"division",icon:"🌾",label:"分株"},{key:"other",icon:"📦",label:"其他"}];
+var SORTS=[{key:"entry",label:"录入时间"},{key:"name",label:"名称"},{key:"category",label:"类别"},{key:"planted",label:"定植时间"},{key:"location",label:"位置"}];
+var BLANK={name:"",variety:"",type:"",category:"other",notes:"",source:"sapling",indoorStart:"outdoor",buyDate:"",buyFrom:"",buySpec:"",sowDate:"",sowMethod:"直播",seedSource:"",germDate:"",germNotes:"",opDate:"",opNotes:"",rootDate:"",hardeningDate:"",hardeningDays:7,hardeningNotes:"",prePlantDate:"",prePlantNotes:"",transplantDate:"",transplantNotes:"",finalPlantDate:"",finalPlantNotes:"",finalPlantLocation:"",wi:3,fi:14,mi:30,medMode:"symptom",waterLog:[],fertLog:[],medLog:[]};
+
+// ═══════════════════════════════════════
+//  HELPERS & RENDER ENGINE
+// ═══════════════════════════════════════
+function q(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function td(){return new Date().toISOString().slice(0,10);}
+function ds(d){if(!d)return null;var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);var dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(d.replace(/-/g,'/'));return Math.floor((Date.now()-dt)/86400000);}
+function fmt(d){if(!d)return"—";return d.replace(/-/g,'/');}
+function ld(log){return log&&log.length?log[log.length-1].date:null;}
+var AI_R=[{k:["多肉","仙人掌"],w:10,f:30},{k:["玫瑰","月季"],w:2,f:10},{k:["薄荷","香草"],w:2,f:14},{k:["蝴蝶兰","兰花"],w:7,f:14},{k:["橡皮树","龟背竹"],w:5,f:21},{k:["绿萝","吊兰"],w:3,f:14},{k:["番茄","辣椒"],w:1,f:7}];
+function autoInt(n){for(var i=0;i<AI_R.length;i++){var r=AI_R[i];for(var j=0;j<r.k.length;j++){if(n.indexOf(r.k[j])>=0)return{wi:r.w,fi:r.f};}}return{wi:3,fi:14};}
+
+function getStage(p){
+if(p.finalPlantDate)return "established";
+if(p.transplantDate)return "transplanted";
+if(p.hardeningDate&&p.indoorStart==="indoor")return "hardening";
+if(p.source==="seed"){if(p.germDate)return "seedling";if(p.sowDate)return "germinating";}
+if(p.source==="cutting"||p.source==="graft"){if(p.rootDate)return "rooted";if(p.opDate)return "rooting";}
+if(p.source==="division"&&p.opDate&&!p.prePlantDate)return "recovering";
+return "established";
+}
+
+function buildAdvice(p){
+var temp=W.temp,hum=W.hum,pre=W.pre,rain=W.rain;
+var wd=ds(ld(p.waterLog)),fd=ds(ld(p.fertLog));
+var st=getStage(p),L=[];
+var SL={germinating:"📍 播种期",rooting:"📍 扦插/嫁接生根期",rooted:"📍 已生根待移栽",seedling:"📍 幼苗期",recovering:"📍 分株恢复期",transplanted:"📍 移栽适应期",hardening:"📍 炼苗期"};
+if(SL[st])L.push(SL[st]);
+if(st==="germinating")L.push("💧 保持基质微湿，用喷壶轻喷");
+else if((wd==null?999:wd)>=p.wi)L.push(rain||pre>3?"💧 今日有雨，可少量补水":hum>80?"💧 湿度"+hum+"%，建议减少浇水":"💧 该浇水了");
+else L.push("💧 距下次浇水约"+(p.wi-wd)+"天");
+if(st==="germinating"||st==="rooting")L.push("🌿 生长期前禁止施肥");
+else if((fd==null?999:fd)>=p.fi)L.push(temp<10?"🌿 气温偏低，可暂缓施肥":"🌿 可以施肥了，晴天效果好");
+else L.push("🌿 距下次施肥约"+(p.fi-fd)+"天");
+return L.join("\n");
+}
+
+function loadPlants(){try{return JSON.parse(localStorage.getItem(SK))||[];}catch(e){return[];}}
+function storePlants(){try{localStorage.setItem(SK,JSON.stringify(S.plants));}catch(e){}}
+
+var S={
+plants:loadPlants(),showAdd:false,editId:null,search:'',filterCat:'all',sortBy:'entry',
+showLib:false,libTab:'fert',logPlantId:null,logType:null,
+lf:{date:td(),note:''},formTab:'basic',form:Object.assign({},BLANK)
+};
+
+function render(){
+var sy=window.scrollY;var act=document.activeElement;var actId=act?act.id:null;
+document.getElementById('root').innerHTML=buildApp();
+window.scrollTo(0,sy);
+if(actId){var el=document.getElementById(actId);if(el)el.focus();}
+}
+
+// ═══════════════════════════════════════
+//  UI BUILDER (String Concat Only for Stability)
+// ═══════════════════════════════════════
+var FS="background:rgba(255,255,255,0.7);border:1px solid rgba(150,185,130,0.5);border-radius:8px;padding:8px 12px;color:#2e4a22;font-size:13px;width:100%;outline:none;";
+
+function buildApp(){
+var list=S.plants.filter(function(p){return S.search===''||p.name.indexOf(S.search)>=0;});
+var html='<div style="max-width:460px;margin:0 auto;padding:16px">';
+html+='<div style="padding:20px;text-align:center"><h1 style="color:#3d5c30;font-size:29px;font-weight:700">植物管家</h1>';
+html+='<div style="margin-top:10px;display:flex;justify-content:center;gap:8px"><button onclick="S.showLib=true;S.libTab=\'fert\';render()" style="padding:3px 14px;border-radius:20px;font-size:12px;background:rgba(150,195,130,0.2)">🌿 肥料库</button><button onclick="S.showLib=true;S.libTab=\'med\';render()" style="padding:3px 14px;border-radius:20px;font-size:12px;background:rgba(210,160,130,0.2)">💊 药品库</button></div></div>';
+html+='<div style="background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.5);border-radius:18px;padding:17px;margin-bottom:18px">';
+html+='<div style="display:flex;justify-content:space-between"><div><div style="font-size:11px;color:#6a8a5a">📍 '+W.loc+'</div><div style="font-size:31px;color:#2e4a22">'+W.emo+' '+W.temp+'°C</div></div><div style="text-align:right;font-size:12px;color:#6a8858">湿度 '+W.hum+'%<br>更新：'+W.upd+'</div></div>';
+html+='<div style="margin-top:10px;background:rgba(175,210,155,0.3);border-radius:8px;padding:7px 12px;font-size:12px;color:#4a6838">💡 '+q(W.tip)+'</div></div>';
+html+='<div style="margin-bottom:15px"><input id="search_inp" oninput="S.search=this.value;render()" value="'+q(S.search)+'" placeholder="搜索名称、品种、位置..." style="'+FS+'"></div>';
+html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px"><span style="font-size:11px;color:#6a8858">我的植物 ('+list.length+')</span><button onclick="S.showAdd=true;render()" style="padding:6px 15px;border-radius:20px;background:rgba(160,200,135,0.3);border:1px solid rgba(130,175,105,0.5);font-size:12px;color:#2e4a22">'+(S.showAdd?'✕ 取消':'+ 添加植物')+'</button></div>';
+
+if(S.showAdd){
+html+='<div style="background:white;padding:15px;border-radius:15px;border:1px solid rgba(150,185,130,0.4);margin-bottom:15px"><label style="font-size:10px;color:#6a8858">植物名称 *</label><input id="name_inp" style="'+FS+'" placeholder="输入名称...">';
+html+='<div style="display:flex;gap:8px;margin-top:15px"><button onclick="savePlant()" style="flex:1;padding:12px;background:#6a8858;color:white;border:none;border-radius:10px;font-weight:700">保存</button><button onclick="S.showAdd=false;render()" style="flex:1;padding:12px;background:#eee;border-radius:10px">取消</button></div></div>';
+}
+
+if(list.length===0 && !S.showAdd) html+='<div style="text-align:center;padding:50px 0;color:#8a9e78">🪴<br>还没有植物</div>';
+else for(var k=0;k<list.length;k++){
+var p=list[k];
+html+='<div style="background:rgba(255,255,255,0.6);padding:17px;border-radius:16px;margin-bottom:15px;border:1px solid rgba(150,185,130,0.4)">';
+html+='<div style="display:flex;justify-content:space-between"><strong>'+q(p.name)+'</strong><button onclick="S.plants.splice('+k+',1);storePlants();render()" style="background:none;border:none;color:#ccc">✕</button></div>';
+html+='<div style="background:rgba(180,210,160,0.3);padding:10px;border-radius:10px;margin:12px 0;font-size:13px;white-space:pre-line">'+q(buildAdvice(p))+'</div>';
+html+='<div style="display:flex;gap:8px"><button onclick="S.logPlantId=\''+p.id+'\';S.logType=\'water\';render()" style="flex:1;padding:10px;border-radius:10px;background:rgba(180,215,160,0.3);border:none;font-size:12px">💧 浇水</button><button onclick="S.logPlantId=\''+p.id+'\';S.logType=\'fert\';render()" style="flex:1;padding:10px;border-radius:10px;background:rgba(180,215,160,0.3);border:none;font-size:12px">🌿 施肥</button></div></div>';
+}
+if(S.showLib){
+html+='<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:flex-end;z-index:99" onclick="if(event.target===this)S.showLib=false;render()"><div style="background:#f4f7f2;width:100%;height:80vh;border-radius:20px 20px 0 0;padding:20px;overflow-y:auto">';
+html+='<div style="display:flex;justify-content:space-between"><h2>养护库</h2><button onclick="S.showLib=false;render()">✕</button></div>';
+var db=S.libTab==='fert'?FERT_DB:MED_DB;
+for(var m=0;m<db.length;m++)html+='<div style="background:white;padding:12px;border-radius:10px;margin:10px 0"><strong>'+db[m].icon+' '+db[m].name+'</strong><div style="font-size:11px;color:#666">'+db[m].desc+'</div></div>';
+html+='</div></div>';
+}
+html+='</div>';
+return html;
+}
+
+function savePlant(){
+var name=document.getElementById('name_inp').value;
+if(!name){alert("请输入名称");return;}
+S.plants.push(Object.assign({},BLANK,{id:Date.now().toString(),name:name}));
+S.showAdd=false;storePlants();render();
+}
+
+render();
+</script>
+</body>
+</html>
