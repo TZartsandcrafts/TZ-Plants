@@ -17,7 +17,6 @@ input::placeholder,textarea::placeholder{color:#9aaa88;opacity:1}
 <body>
 <div id="root"></div>
 <script>
-//<![CDATA[
 // ═══════════════════════════════════════
 //  DATA
 // ═══════════════════════════════════════
@@ -60,7 +59,7 @@ var BLANK={name:"",variety:"",type:"",category:"",notes:"",source:"sapling",indo
 // ═══════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════
-function q(s){var s2=String(s==null?'':s);s2=s2.replace(/&/g,'\x26amp;');s2=s2.replace(/</g,'\x26lt;');s2=s2.replace(/>/g,'\x26gt;');s2=s2.replace(/"/g,'\x26quot;');return s2;}
+function q(s){return String(s==null?’’:s).replace(/&/g,’&’).replace(/</g,’<’).replace(/>/g,’>’).replace(/”/g,’"’);}
 function td(){return new Date().toISOString().slice(0,10);}
 function ds(d){if(!d)return null;var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);var dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(d);return Math.floor((Date.now()-dt)/86400000);}
 function fmt(d){if(!d)return”—”;var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[1]+’/’+m[2]+’/’+m[3]:d;}
@@ -492,15 +491,17 @@ return ‘<div style="min-height:100vh;background:linear-gradient(150deg,#dce8d8
 ‘</div>’;
 }
 
+
 // ═══════════════════════════════════════
-//  WEATHER AUTO-UPDATE (Open-Meteo)
+//  WEATHER AUTO-UPDATE
 // ═══════════════════════════════════════
 function fetchWeather(){
-  var lat=49.1042,lon=-122.8231; // Surrey, BC
-  var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&daily=precipitation_sum,weather_code&timezone=America/Vancouver&forecast_days=3';
-  fetch(url).then(function(r){return r.json();}).then(function(d){
-    var c=d.current,codes=d.daily&&d.daily.weather_code||[];
-    function wInfo(code){
+  fetch('https://api.open-meteo.com/v1/forecast?latitude=49.1042&longitude=-122.8231&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&daily=weather_code&timezone=America/Vancouver&forecast_days=3')
+  .then(function(r){return r.json();})
+  .then(function(d){
+    var c=d.current;
+    var codes=d.daily&&d.daily.weather_code?d.daily.weather_code:[];
+    function wDecode(code){
       if(code<=1)return{cond:'晴天',emo:'☀️',rain:false};
       if(code<=3)return{cond:'多云',emo:'⛅',rain:false};
       if(code<=49)return{cond:'有雾',emo:'🌫️',rain:false};
@@ -509,25 +510,24 @@ function fetchWeather(){
       if(code<=82)return{cond:'阵雨',emo:'🌦️',rain:true};
       return{cond:'雷雨',emo:'⛈️',rain:true};
     }
-    var wi=wInfo(c.weather_code);
+    var wi=wDecode(c.weather_code);
     var days=['今天','明天','后天'];
-    var fc=codes.slice(0,3).map(function(code,i){var fi=wInfo(code);return{d:days[i],e:fi.emo,t:fi.cond};});
-    var precip=c.precipitation||0;
-    var tips=[];
-    if(wi.rain||precip>3)tips.push('今日有降水，注意减少浇水');
-    else if(c.relative_humidity_2m>80)tips.push('湿度偏高（'+c.relative_humidity_2m+'%），浇水适量即可');
-    else if(c.temperature_2m>30)tips.push('气温偏高（'+Math.round(c.temperature_2m)+'°C），注意防晒遮阴');
-    else if(c.temperature_2m<5)tips.push('气温偏低，注意防寒保温');
-    else tips.push('天气适宜，可按常规养护计划进行');
     W.temp=Math.round(c.temperature_2m);
     W.hum=c.relative_humidity_2m;
-    W.pre=precip;
+    W.pre=c.precipitation||0;
     W.cond=wi.cond;W.emo=wi.emo;W.rain=wi.rain;
-    W.fc=fc;W.tip=tips[0];
+    W.fc=codes.slice(0,3).map(function(code,i){var fi=wDecode(code);return{d:days[i],e:fi.emo,t:fi.cond};});
+    var tip='';
+    if(wi.rain||W.pre>3)tip='今日有降水，注意减少浇水';
+    else if(W.hum>80)tip='湿度偏高（'+W.hum+'%），浇水适量即可';
+    else if(W.temp>30)tip='气温偏高（'+W.temp+'°C），注意防晒遮阴';
+    else if(W.temp<5)tip='气温偏低，注意防寒保温';
+    else tip='天气适宜，可按常规养护计划进行';
+    W.tip=tip;
     var now=new Date();
     W.upd=now.getFullYear()+'年'+(now.getMonth()+1)+'月'+now.getDate()+'日 '+now.getHours()+':'+('0'+now.getMinutes()).slice(-2);
     render();
-  }).catch(function(){/* 天气获取失败时保留默认值 */});
+  }).catch(function(){});
 }
 
 // ═══════════════════════════════════════
@@ -535,7 +535,6 @@ function fetchWeather(){
 // ═══════════════════════════════════════
 render();
 fetchWeather();
-//]]>
 </script>
 
 </body>
