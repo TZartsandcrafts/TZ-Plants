@@ -222,8 +222,7 @@ function render(){
   if(S.calPlantId)html+=buildCalModal();
   if(S.confirmCb)html+=buildConfirmModal();
   el.innerHTML=html;
-  // restore focus
-  var si=document.getElementById("search_inp");if(si&&S.search)si.focus();
+  // no focus restore - causes double input on iOS
 }
 
 // ═══ CONFIRM DIALOG ═══
@@ -606,7 +605,7 @@ function buildLibModal(){
     '<div style="background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">'+
     '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:700;color:#2e4a22">📚 养护库</span><button onclick="closeLib()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
     '<div style="display:flex;border-bottom:1px solid rgba(150,185,130,0.3)">'+tabs+'</div>'+
-    '<div style="padding:10px 14px;border-bottom:1px solid rgba(150,185,130,0.2)"><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#8aaa78">🔍</span><input id="lib_search" value="'+q(S.libSearch||"")+'" oninput="setLibSearch(this.value)" placeholder="'+(S.libTab==="fert"?"搜索肥料名称、类型…":"搜索药品、目标病虫害…")+'" style="'+FS+'padding-left:30px;background:rgba(255,255,255,0.6);"/>'+(S.libSearch?'<button onclick="setLibSearch(\'\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:13px;color:#8aaa78">✕</button>':"")+'</div></div>'+
+    '<div style="padding:10px 14px;border-bottom:1px solid rgba(150,185,130,0.2)"><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#8aaa78">🔍</span><input id="lib_search" value="'+q(S.libSearch||"")+'" onchange="setLibSearch(this.value)" onkeydown="if(event.key==='Enter'){setLibSearch(this.value);this.blur();}" placeholder="'+(S.libTab==="fert"?"搜索肥料名称、类型…":"搜索药品、目标病虫害…")+'" style="'+FS+'padding-left:30px;background:rgba(255,255,255,0.6);"/>'+(S.libSearch?'<button onclick="setLibSearch(\'\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:13px;color:#8aaa78">✕</button>':"")+'</div></div>'+
     '<div style="flex:1;overflow-y:auto;padding:10px 14px">'+(filtered.length===0?'<div style="text-align:center;padding:30px 0;color:#9aaa88;font-size:12px">未找到匹配项</div>':items)+'</div>'+
     '<div style="padding:8px 16px;text-align:center;font-size:10px;color:#8a9a7a;border-top:1px solid rgba(150,185,130,0.2)">'+(S.libTab==="fert"?"共 "+FERT_DB.length+" 种常用肥料":"共 "+MED_DB.length+" 种常用药品")+" · 仅供参考</div></div></div>";
 }
@@ -644,7 +643,7 @@ function buildApp(){
     // Search & filter
     '<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">'+
     '<div style="position:relative"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;color:#8aaa78">🔍</span>'+
-    '<input id="search_inp" value="'+q(S.search)+'" oninput="setSearch(this.value)" placeholder="搜索名称、品种、位置…" style="'+FS+'padding-left:32px;background:rgba(255,255,255,0.6);"/>'+
+    '<input id="search_inp" value="'+q(S.search)+'" onchange="setSearch(this.value)" onkeydown="if(event.key===\'Enter\'){setSearch(this.value);this.blur();}" placeholder="搜索名称、品种、位置…" style="'+FS+'padding-left:32px;background:rgba(255,255,255,0.6);"/>'+
     (S.search?'<button onclick="setSearch(\'\')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:#8aaa78">✕</button>':"")+'</div>'+
     catFilter+
     '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#8aaa78;white-space:nowrap">排序：</span><div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:2px">'+sortBtns+'</div></div></div>'+
