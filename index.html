@@ -89,25 +89,74 @@ function lookupGenus(name){
   return"";
 }
 
-var FERT_DB=[
-  {id:"npk_bal",name:"复合肥（均衡型）",icon:"🌿",type:"化肥",npk:"15-15-15",desc:"氮磷钾均衡，适合生长期通用追肥，蔬菜、果树、花卉皆宜。",usage:"土施或稀释浇根",dosage:"5–10g/株；稀释液500–800倍",interval:"每2–3周一次",suitable:"果树、蔬菜、花卉、观叶",caution:"避免颗粒直接接触根部；高温期减量。"},
-  {id:"urea",name:"尿素（氮肥）",icon:"🌱",type:"化肥",npk:"46-0-0",desc:"速效氮肥，促进枝叶生长，叶色变深绿，适合生长旺盛期。",usage:"土施或叶面喷施",dosage:"土施3–5g/株；叶面0.5–1%",interval:"每2–4周",suitable:"蔬菜、果树、草坪",caution:"用量过大易烧根；花期禁止过量施用。"},
-  {id:"kh2po4",name:"磷酸二氢钾",icon:"🌸",type:"化肥",npk:"0-52-34",desc:"高磷高钾，促进开花结果、壮实枝条，增强抗逆性，叶面喷施见效快。",usage:"叶面喷施或浇根",dosage:"0.1–0.3%（1–3g/L）",interval:"花前花后各1次，或每月1–2次",suitable:"果树、花卉、番茄",caution:"浓度过高易灼叶；高温强光下避免叶面喷施。"},
-  {id:"organic",name:"有机肥（腐熟堆肥）",icon:"🌾",type:"有机肥",npk:"约2-1-1",desc:"改善土壤结构，提供全面营养，肥效持久缓和，不易烧根。",usage:"基肥或穴施",dosage:"100–300g/株；盆栽20–50g",interval:"每季度1次",suitable:"所有植物",caution:"务必充分腐熟，生粪会烧根且产生异味。"},
-  {id:"slow_release",name:"缓释肥（奥绿/魔肥）",icon:"🟡",type:"缓释肥",npk:"14-14-14（约）",desc:"包膜技术缓慢释放，肥效长达3–6个月，省时省力，适合盆栽和苗圃。",usage:"混入基质或表面撒施",dosage:"5–10g/升基质",interval:"3–6个月补充一次",suitable:"盆栽、观叶、多年生",caution:"高温时释放加快；勿与根系直接接触。"},
-  {id:"water_soluble",name:"水溶肥（花多多）",icon:"💐",type:"水溶肥",npk:"30-10-10/10-30-20",desc:"1号高氮促营养生长；2号高磷高钾促开花结果。",usage:"浇根或叶面喷施",dosage:"稀释2000–3000倍",interval:"每7–14天",suitable:"花卉、多肉、兰花、蔬菜",caution:"按说明稀释；苗期减半。"},
-  {id:"succulent_fert",name:"多肉专用肥",icon:"🌵",type:"缓释肥",npk:"低氮低磷高钾",desc:"专为多肉仙人掌设计，低氮防徒长，促紧凑株型和叶色显色。",usage:"土施，少量",dosage:"按包装说明减半",interval:"生长季每1–2月一次",suitable:"多肉、仙人掌",caution:"休眠期禁止施肥；冬季完全停施。"},
-  {id:"fish_emulsion",name:"鱼腥水（液态有机氮）",icon:"🐟",type:"有机肥",npk:"约5-2-2",desc:"鱼骨、豆粕等腐熟液，提供全面有机营养，改善土壤微生物环境。",usage:"稀释浇根",dosage:"稀释50–100倍",interval:"每2–3周",suitable:"叶菜、果蔬、幼苗",caution:"需充分腐熟；室内使用气味强烈，建议室外施用。"}
-];
-var MED_DB=[
-  {id:"carbendazim",name:"多菌灵",icon:"🔵",type:"杀菌剂",chemical:"苯并咪唑类",target:"白粉病、灰霉病、炭疽病、枯萎病",desc:"内吸性广谱杀菌剂，预防和治疗均有效，是家庭园艺最常用杀菌剂。",dosage:"稀释800–1000倍液",method:"喷雾或浇根",interval:"7–10天，连续2–3次",safetyDays:15,caution:"连续使用易产生抗性，建议与百菌清轮换；对鱼类有毒。"},
-  {id:"chlorothalonil",name:"百菌清",icon:"🟢",type:"杀菌剂",chemical:"有机氯",target:"霜霉病、早疫病、炭疽病、叶斑病",desc:"广谱保护性杀菌剂，无内吸性，需在发病前或发病初期施用。",dosage:"稀释600–800倍液",method:"喷雾",interval:"7–10天",safetyDays:7,caution:"对皮肤和眼睛有刺激，施用时佩戴防护；不可与碱性农药混用。"},
-  {id:"imidacloprid",name:"吡虫啉",icon:"🔴",type:"杀虫剂",chemical:"烟碱类",target:"蚜虫、粉虱、蓟马、叶蝉",desc:"内吸性杀虫剂，通过植物传导至各部位，持效期长，对刺吸式口器害虫特效。",dosage:"稀释1500–2000倍液",method:"喷雾或灌根",interval:"10–15天",safetyDays:14,caution:"对蜜蜂高毒，花期严禁使用；轮换用药防止抗性。"},
-  {id:"abamectin",name:"阿维菌素",icon:"🟠",type:"杀虫杀螨剂",chemical:"大环内酯类（生物源）",target:"红蜘蛛、叶螨、线虫、蚜虫、潜叶蛾",desc:"生物源农药，对螨类和线虫特效，无内吸性，需直接接触虫体。",dosage:"稀释2000–3000倍液",method:"叶面喷雾（正反面均喷）",interval:"7–10天，连续2次",safetyDays:7,caution:"傍晚施用效果更好；对鱼和水生生物有毒。"},
-  {id:"matrine",name:"苦参碱",icon:"🍃",type:"生物杀虫剂",chemical:"植物源生物碱",target:"蚜虫、红蜘蛛、菜青虫、小菜蛾",desc:"纯天然植物提取，低毒低残留，降解快，适合有机蔬菜和食用植物。",dosage:"稀释800–1200倍液",method:"喷雾",interval:"5–7天，连续2–3次",safetyDays:3,caution:"见光分解快，傍晚或阴天使用效果更好。"},
-  {id:"bordeaux",name:"波尔多液",icon:"🩵",type:"杀菌剂",chemical:"无机铜制剂",target:"霜霉病、晚疫病、细菌性病害、溃疡病",desc:"硫酸铜+石灰水混配的经典铜制剂，保护性强，持效期长，果树清园首选。",dosage:"1:1:100（硫酸铜:石灰:水）",method:"喷雾",interval:"10–15天",safetyDays:14,caution:"需现配现用；碱性，不可与其他农药混用；嫩叶期有药害风险。"},
-  {id:"lime_sulfur",name:"石硫合剂",icon:"🟨",type:"杀菌杀虫剂",chemical:"无机硫制剂",target:"白粉病、锈病、红蜘蛛、介壳虫",desc:"石灰与硫磺熬制而成，广谱高效，冬季休眠期清园效果极佳。",dosage:"生长期3–5波美度；清园20–30波美度",method:"喷雾或涂干",interval:"生长期7天；清园1次/年",safetyDays:20,caution:"高温(>32°C)或花期禁用；不可与铜制剂混用。"}
-];
+// ═══ REFERENCE DATABASE ═══
+var REF_FERT={
+  "复合肥":{type:"化肥",npk:"15-15-15",usage:"土施或稀释浇根",dosage:"5–10g/株；稀释500–800倍",interval:14,suitable:"果树、蔬菜、花卉",caution:"避免直接接触根部；高温期减量"},
+  "尿素":{type:"氮肥",npk:"46-0-0",usage:"土施或叶面喷施",dosage:"土施3–5g/株；叶面0.5–1%",interval:21,suitable:"蔬菜、果树",caution:"用量过大易烧根；花期禁止过量"},
+  "磷酸二氢钾":{type:"磷钾肥",npk:"0-52-34",usage:"叶面喷施或浇根",dosage:"0.1–0.3%（1–3g/L）",interval:14,suitable:"果树、花卉、番茄",caution:"浓度过高易灼叶；高温强光下避免叶面喷施"},
+  "有机肥":{type:"有机肥",npk:"约2-1-1",usage:"基肥或穴施",dosage:"100–300g/株；盆栽20–50g",interval:90,suitable:"所有植物",caution:"务必充分腐熟，生粪会烧根"},
+  "缓释肥":{type:"缓释肥",npk:"14-14-14",usage:"混入基质或表面撒施",dosage:"5–10g/升基质",interval:120,suitable:"盆栽、观叶",caution:"高温时释放加快；勿与根系直接接触"},
+  "奥绿":{type:"缓释肥",npk:"14-14-14",usage:"混入基质或表面撒施",dosage:"5–10g/升基质",interval:120,suitable:"盆栽、观叶",caution:"高温时释放加快"},
+  "魔肥":{type:"缓释肥",npk:"14-14-14",usage:"混入基质或表面撒施",dosage:"5–10g/升基质",interval:90,suitable:"盆栽、花卉",caution:"按说明用量"},
+  "花多多":{type:"水溶肥",npk:"30-10-10/10-30-20",usage:"浇根或叶面喷施",dosage:"稀释2000–3000倍",interval:10,suitable:"花卉、多肉、蔬菜",caution:"苗期减半；按号数选择"},
+  "水溶肥":{type:"水溶肥",npk:"均衡型",usage:"浇根或叶面喷施",dosage:"稀释1000–2000倍",interval:10,suitable:"各类植物",caution:"按说明稀释"},
+  "鱼腥水":{type:"有机液肥",npk:"约5-2-2",usage:"稀释浇根",dosage:"稀释50–100倍",interval:14,suitable:"叶菜、果蔬",caution:"需充分腐熟；室内慎用"},
+  "多肉专用肥":{type:"缓释肥",npk:"低氮高钾",usage:"土施少量",dosage:"按包装说明减半",interval:45,suitable:"多肉、仙人掌",caution:"休眠期禁施"},
+  "草木灰":{type:"钾肥",npk:"0-0-5",usage:"撒施或浸水浇根",dosage:"50–100g/株",interval:30,suitable:"果树、蔬菜",caution:"碱性，不可与氮肥混用"},
+  "腐殖酸":{type:"土壤改良",npk:"微量",usage:"浇根",dosage:"稀释500–1000倍",interval:21,suitable:"所有植物",caution:"不可过量"}
+};
+var REF_MED={
+  "多菌灵":{type:"杀菌剂",chemical:"苯并咪唑类",target:"白粉病、灰霉病、炭疽病、枯萎病",dosage:"稀释800–1000倍",method:"喷雾或浇根",interval:10,safetyDays:15,caution:"连续使用易产生抗性，建议与百菌清轮换"},
+  "百菌清":{type:"杀菌剂",chemical:"有机氯",target:"霜霉病、早疫病、炭疽病、叶斑病",dosage:"稀释600–800倍",method:"喷雾",interval:10,safetyDays:7,caution:"不可与碱性农药混用"},
+  "吡虫啉":{type:"杀虫剂",chemical:"烟碱类",target:"蚜虫、粉虱、蓟马、叶蝉",dosage:"稀释1500–2000倍",method:"喷雾或灌根",interval:14,safetyDays:14,caution:"花期严禁使用（对蜜蜂高毒）"},
+  "阿维菌素":{type:"杀虫杀螨剂",chemical:"生物源",target:"红蜘蛛、叶螨、线虫、蚜虫",dosage:"稀释2000–3000倍",method:"叶面喷雾（正反面均喷）",interval:10,safetyDays:7,caution:"傍晚施用效果更好"},
+  "苦参碱":{type:"生物杀虫剂",chemical:"植物源",target:"蚜虫、红蜘蛛、菜青虫",dosage:"稀释800–1200倍",method:"喷雾",interval:7,safetyDays:3,caution:"见光分解快，傍晚或阴天使用"},
+  "波尔多液":{type:"杀菌剂",chemical:"无机铜制剂",target:"霜霉病、晚疫病、细菌性病害",dosage:"1:1:100（硫酸铜:石灰:水）",method:"喷雾",interval:14,safetyDays:14,caution:"现配现用；嫩叶期有药害"},
+  "石硫合剂":{type:"杀菌杀虫剂",chemical:"无机硫制剂",target:"白粉病、锈病、红蜘蛛、介壳虫",dosage:"生长期3–5波美度",method:"喷雾或涂干",interval:20,safetyDays:20,caution:"高温(>32°C)或花期禁用"},
+  "甲基硫菌灵":{type:"杀菌剂",chemical:"苯并咪唑类",target:"白粉病、枯萎病、菌核病",dosage:"稀释800–1000倍",method:"喷雾",interval:10,safetyDays:14,caution:"与多菌灵有交叉抗性，轮换使用"},
+  "噻虫嗪":{type:"杀虫剂",chemical:"烟碱类",target:"粉虱、蚜虫、蓟马",dosage:"稀释3000–5000倍",method:"喷雾或灌根",interval:14,safetyDays:14,caution:"花期禁用"},
+  "螺螨酯":{type:"杀螨剂",chemical:"季酮酸类",target:"红蜘蛛、二斑叶螨",dosage:"稀释4000–5000倍",method:"叶面喷雾",interval:21,safetyDays:30,caution:"需在若螨期施用；每季最多用2次"},
+  "代森锰锌":{type:"杀菌剂",chemical:"有机硫",target:"霜霉病、早晚疫病、炭疽病",dosage:"稀释600–800倍",method:"喷雾",interval:7,safetyDays:15,caution:"避免高温用药"}
+};
+
+// ═══ PERSONAL LIBRARY ═══
+function loadLib(){try{return{fert:JSON.parse(localStorage.getItem("lib_fert")||"[]"),med:JSON.parse(localStorage.getItem("lib_med")||"[]")};}catch(e){return{fert:[],med:[]};}}
+function saveLib(){try{localStorage.setItem("lib_fert",JSON.stringify(LIB.fert));localStorage.setItem("lib_med",JSON.stringify(LIB.med));}catch(e){}}
+var LIB=loadLib();
+
+function autoFillFert(name){
+  if(!name)return{};
+  var nl=name.toLowerCase();
+  var keys=Object.keys(REF_FERT);
+  for(var i=0;i<keys.length;i++){if(nl.indexOf(keys[i])>=0||keys[i].indexOf(nl)>=0)return JSON.parse(JSON.stringify(REF_FERT[keys[i]]));}
+  return{};
+}
+function autoFillMed(name){
+  if(!name)return{};
+  var nl=name.toLowerCase();
+  var keys=Object.keys(REF_MED);
+  for(var i=0;i<keys.length;i++){if(nl.indexOf(keys[i])>=0||keys[i].indexOf(nl)>=0)return JSON.parse(JSON.stringify(REF_MED[keys[i]]));}
+  return{};
+}
+function suggestFert(name){
+  var s=[];if(!name)return s;var nl=name.toLowerCase();
+  if(nl.indexOf("氮")>=0)s.push("尿素","复合肥");
+  if(nl.indexOf("磷")>=0||nl.indexOf("钾")>=0)s.push("磷酸二氢钾");
+  if(nl.indexOf("有机")>=0||nl.indexOf("organic")>=0)s.push("有机肥","鱼腥水");
+  if(nl.indexOf("缓释")>=0||nl.indexOf("slow")>=0)s.push("奥绿","魔肥");
+  if(s.length===0)s.push("复合肥","有机肥","缓释肥");
+  return s.filter(function(x,i,a){return a.indexOf(x)===i;}).slice(0,3);
+}
+function suggestMed(name){
+  var s=[];if(!name)return s;var nl=name.toLowerCase();
+  if(nl.indexOf("菌")>=0||nl.indexOf("病")>=0)s.push("多菌灵","百菌清");
+  if(nl.indexOf("虫")>=0||nl.indexOf("蚜")>=0)s.push("吡虫啉","苦参碱");
+  if(nl.indexOf("螨")>=0)s.push("阿维菌素","螺螨酯");
+  if(nl.indexOf("白粉")>=0)s.push("多菌灵","石硫合剂");
+  if(nl.indexOf("霜霉")>=0)s.push("百菌清","代森锰锌");
+  if(s.length===0)s.push("多菌灵","吡虫啉","阿维菌素");
+  return s.filter(function(x,i,a){return a.indexOf(x)===i;}).slice(0,3);
+}
 
 var CATS=[{key:"fruit",icon:"🍎",label:"果树"},{key:"shrub",icon:"🌿",label:"灌木"},{key:"veg",icon:"🥬",label:"蔬菜"},{key:"nut",icon:"🌰",label:"坚果"},{key:"perennial",icon:"🌸",label:"多年生草本"},{key:"annual",icon:"🌱",label:"一年生草本"},{key:"succulent",icon:"🌵",label:"多肉/仙人掌"},{key:"indoor",icon:"🪴",label:"室内观叶"},{key:"other",icon:"📦",label:"其他"}];
 var SRCS=[{key:"seed",icon:"🌱",label:"种子自播"},{key:"sapling",icon:"🌿",label:"购入苗木"},{key:"mature",icon:"🪴",label:"购入成株"},{key:"cutting",icon:"✂️",label:"扦插繁殖"},{key:"graft",icon:"🔗",label:"嫁接"},{key:"division",icon:"🌾",label:"分株"},{key:"other",icon:"📦",label:"其他"}];
@@ -571,43 +620,161 @@ function buildCalModal(){
 }
 
 // ═══ LIBRARY MODAL ═══
-function openLib(tab){S.showLib=true;S.libTab=tab||"fert";S.libSearch="";S.libExpanded=null;render();}
+var libForm={type:"fert",name:"",note:"",filled:{}};
+function openLib(tab){S.showLib=true;S.libTab=tab||"fert";S.libSearch="";S.libExpanded=null;S.libAdding=false;libForm={type:tab||"fert",name:"",note:"",filled:{}};render();}
 function closeLib(){S.showLib=false;render();}
-function setLibTab(t){S.libTab=t;S.libSearch="";S.libExpanded=null;render();}
+function setLibTab(t){S.libTab=t;S.libSearch="";S.libExpanded=null;S.libAdding=false;libForm={type:t,name:"",note:"",filled:{}};render();}
 function setLibSearch(v){S.libSearch=v;render();}
-function toggleLib(id){S.libExpanded=S.libExpanded===id?null:id;render();}
+function toggleLibItem(id){S.libExpanded=S.libExpanded===id?null:id;render();}
+function setLibAdding(v){S.libAdding=v;if(!v){libForm={type:S.libTab,name:"",note:"",filled:{}};}render();}
+function setLibFormField(k,v){libForm[k]=v;}
+function onLibNameChange(name){
+  libForm.name=name;
+  // Auto-fill from reference DB
+  var filled=S.libTab==="fert"?autoFillFert(name):autoFillMed(name);
+  libForm.filled=filled;
+  // Set interval default
+  if(filled.interval)libForm.interval=filled.interval;
+  render();
+}
+function saveLibItem(){
+  if(!libForm.name.trim())return;
+  var item={
+    id:Date.now().toString(),
+    name:libForm.name.trim(),
+    note:libForm.note||"",
+    lastUsed:null,
+    interval:libForm.interval||0
+  };
+  // Merge auto-filled data with any manual overrides
+  var keys=Object.keys(libForm.filled);
+  for(var i=0;i<keys.length;i++){item[keys[i]]=libForm.filled[keys[i]];}
+  // Override with manual fields if set
+  if(libForm.type_manual)item.type=libForm.type_manual;
+  if(libForm.dosage_manual)item.dosage=libForm.dosage_manual;
+  if(libForm.usage_manual)item.usage=libForm.usage_manual;
+  if(libForm.target_manual)item.target=libForm.target_manual;
+  if(libForm.caution_manual)item.caution=libForm.caution_manual;
+  if(S.libTab==="fert")LIB.fert.push(item);
+  else LIB.med.push(item);
+  saveLib();
+  S.libAdding=false;
+  libForm={type:S.libTab,name:"",note:"",filled:{}};
+  render();
+}
+function delLibItem(type,id){
+  if(type==="fert")LIB.fert=LIB.fert.filter(function(x){return x.id!==id;});
+  else LIB.med=LIB.med.filter(function(x){return x.id!==id;});
+  saveLib();render();
+}
+function recordLibUsed(type,id){
+  var arr=type==="fert"?LIB.fert:LIB.med;
+  for(var i=0;i<arr.length;i++){if(arr[i].id===id){arr[i].lastUsed=td();break;}}
+  saveLib();render();
+}
 
 function buildLibModal(){
-  var db=S.libTab==="fert"?FERT_DB:MED_DB;
+  var isFert=S.libTab==="fert";
+  var arr=isFert?LIB.fert:LIB.med;
   var ls=S.libSearch?S.libSearch.toLowerCase():"";
-  var filtered=ls?db.filter(function(item){return[item.name,item.target||"",item.desc,item.type].some(function(s){return s.toLowerCase().indexOf(ls)>=0;});}):db;
+  var filtered=ls?arr.filter(function(item){return[item.name,item.type||"",item.target||"",item.note||""].some(function(s){return s.toLowerCase().indexOf(ls)>=0;});}):arr;
+
+  // Auto-fill preview when adding
+  var filled=libForm.filled||{};
+  var notFound=libForm.name&&Object.keys(filled).length===0;
+  var suggestions=notFound?(isFert?suggestFert(libForm.name):suggestMed(libForm.name)):[];
+
+  var addForm=S.libAdding?
+    '<div style="background:rgba(200,225,185,0.25);padding:12px 14px;border-bottom:1px solid rgba(150,185,130,0.25)">'+
+    '<div style="font-size:11px;font-weight:700;color:#4a6a38;margin-bottom:10px">录入新'+(isFert?"肥料":"药品")+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
+    '<div><div style="'+LB()+'">'+(isFert?"肥料":"药品")+'名称 *</div>'+
+    '<input id="lib_name_inp" placeholder="输入名称，自动匹配资料库…" style="'+FS+'" onkeydown="if(event.key===\\'Enter\\'){onLibNameChange(this.value);}"/>'+
+    '<button onclick="onLibNameChange(document.getElementById(\\'lib_name_inp\\').value)" style="margin-top:6px;width:100%;padding:7px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(140,185,110,0.3);border:1px solid rgba(120,165,90,0.5);color:#2e4a22">🔍 匹配资料库</button></div>'+
+    // Show auto-filled info
+    (libForm.name&&Object.keys(filled).length>0?
+      '<div style="background:rgba(180,220,150,0.25);border-radius:8px;padding:10px 12px;border:1px solid rgba(150,190,120,0.4)">'+
+      '<div style="font-size:11px;font-weight:700;color:#3a5a28;margin-bottom:6px">✅ 自动匹配成功</div>'+
+      (filled.type?'<div style="font-size:11px;color:#4a6838;line-height:2">类型：'+q(filled.type)+(filled.npk?'　NPK：'+q(filled.npk):"")+(filled.chemical?"　"+q(filled.chemical):"")+"</div>":"")+
+      (filled.target?'<div style="font-size:11px;color:#4a6838;line-height:2">防治对象：'+q(filled.target)+"</div>":"")+
+      (filled.dosage?'<div style="font-size:11px;color:#4a6838;line-height:2">用量：'+q(filled.dosage)+"</div>":"")+
+      ((filled.usage||filled.method)?'<div style="font-size:11px;color:#4a6838;line-height:2">方法：'+q(filled.usage||filled.method||"")+"</div>":"")+
+      (filled.interval?'<div style="font-size:11px;color:#4a6838;line-height:2">建议间隔：'+filled.interval+"天</div>":"")+
+      (filled.caution?'<div style="font-size:11px;color:#7a5020;line-height:2">⚠️ '+q(filled.caution)+"</div>":"")+
+      '</div>'
+    :
+      (notFound?
+        '<div style="background:rgba(255,220,180,0.25);border-radius:8px;padding:10px 12px;border:1px solid rgba(200,160,100,0.4)">'+
+        '<div style="font-size:11px;font-weight:700;color:#7a5020;margin-bottom:6px">⚠️ 资料库中未找到"'+(libForm.name||"")+'"</div>'+
+        '<div style="font-size:11px;color:#6a4828;margin-bottom:8px">请手动填写，或考虑以下替代品：</div>'+
+        (suggestions.length>0?'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">'+suggestions.map(function(s){return '<button onclick="document.getElementById(\\'lib_name_inp\\').value=\\''+(s||"")+'\\';onLibNameChange(\\''+s+'\\')" style="padding:4px 10px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(180,210,160,0.3);border:1px solid rgba(150,185,130,0.5);color:#3a5a28">'+(s||"")+"</button>";}).join("")+'</div>':"")+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+
+        '<div><div style="'+LB()+'">类型</div><input placeholder="杀菌剂、有机肥…" onchange="libForm.type_manual=this.value" style="'+FS+'"/></div>'+
+        (isFert?"":'<div><div style="'+LB()+'">防治对象</div><input placeholder="白粉病、蚜虫…" onchange="libForm.target_manual=this.value" style="'+FS+'"/></div>')+
+        '<div><div style="'+LB()+'">用量/稀释</div><input placeholder="稀释1000倍、5g/L…" onchange="libForm.dosage_manual=this.value" style="'+FS+'"/></div>'+
+        '<div><div style="'+LB()+'">使用方法</div><input placeholder="叶面喷雾、浇根…" onchange="libForm.usage_manual=this.value" style="'+FS+'"/></div>'+
+        '<div><div style="'+LB()+'">使用间隔（天）</div><input type="number" min="1" placeholder="7" onchange="libForm.interval=+this.value" style="'+FS+'width:80px;text-align:center;"/></div>'+
+        '<div><div style="'+LB()+'">注意事项</div><input placeholder="注意事项…" onchange="libForm.caution_manual=this.value" style="'+FS+'"/></div>'+
+        '</div></div>'
+      :""
+      )
+    )+
+    '<div><div style="'+LB()+'">备注（可选）</div><input placeholder="购买日期、品牌、存放位置…" onchange="libForm.note=this.value" style="'+FS+'"/></div>'+
+    '<div><div style="'+LB()+'">使用间隔（天）</div><input type="number" min="1" value="'+(libForm.interval||filled.interval||"")+'" placeholder="自动填入或手动设置" onchange="libForm.interval=+this.value" style="'+FS+'width:100px;text-align:center;"/></div>'+
+    '<div style="display:flex;gap:7px">'+
+    '<button onclick="saveLibItem()" style="flex:1;padding:9px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.6);color:#2e4a22">✓ 添加到库存</button>'+
+    '<button onclick="setLibAdding(false)" style="flex:1;padding:9px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button>'+
+    '</div></div></div>'
+  :"";
+
+  // Item list
   var items=filtered.map(function(item){
     var exp=S.libExpanded===item.id;
-    var detHtml="";
+    var daysSince=item.lastUsed?ds(item.lastUsed):null;
+    var due=item.interval&&daysSince!==null&&daysSince>=item.interval;
+    var det="";
     if(exp){
-      var grid=[["💊 推荐用量",item.dosage],["📋 施用方式",item.method||item.usage],["📅 施用间隔",item.interval],S.libTab==="med"?["⏱️ 安全间隔期",(item.safetyDays||"—")+"天"]:["🌱 适用植物",item.suitable||"通用"]].map(function(x){return '<div style="background:rgba(180,210,160,0.2);border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:#6a8858;margin-bottom:3px">'+x[0]+'</div><div style="font-size:11px;color:#2e4a22;font-weight:500;line-height:1.5">'+q(x[1]||"—")+'</div></div>';}).join("");
-      detHtml='<div style="padding:0 14px 14px;border-top:1px solid rgba(150,185,130,0.25)"><div style="font-size:12px;color:#4a6838;line-height:1.8;margin-top:10px">'+q(item.desc)+'</div>'+
-        (S.libTab==="med"?'<div style="margin-top:8px;background:rgba(255,220,180,0.3);border-radius:8px;padding:7px 10px"><div style="font-size:11px;font-weight:700;color:#7a4020;margin-bottom:2px">🎯 防治对象</div><div style="font-size:11px;color:#6a4030;line-height:1.6">'+q(item.target||"")+'</div></div>':"")+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px">'+grid+'</div>'+
-        '<div style="margin-top:8px;background:rgba(220,180,140,0.25);border-radius:8px;padding:7px 10px"><span style="font-size:11px;font-weight:700;color:#7a5020">⚠️ 注意：</span><span style="font-size:11px;color:#6a4828;line-height:1.7">'+q(item.caution||"")+'</span></div></div>';
+      det='<div style="padding:0 14px 14px;border-top:1px solid rgba(150,185,130,0.2)">'+
+        (item.target?'<div style="margin-top:8px;background:rgba(255,220,180,0.25);border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:#7a5020;font-weight:700;margin-bottom:2px">🎯 '+( isFert?"适用场景":"防治对象")+"</div>"+'<div style="font-size:11px;color:#6a4028;line-height:1.6">'+(item.target||item.suitable||"")+'</div></div>':"")+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">'+
+        [["💊 用量/稀释",item.dosage],["📋 使用方法",item.usage||item.method],["📅 建议间隔",(item.interval||"—")+"天"],(isFert?["🌱 类型",item.type]:["⚗️ 成分",item.chemical])].filter(function(x){return x[1];}).map(function(x){return '<div style="background:rgba(180,210,160,0.2);border-radius:8px;padding:6px 9px"><div style="font-size:10px;color:#6a8858;margin-bottom:2px">'+(x[0]||"")+"</div>"+'<div style="font-size:11px;color:#2e4a22;line-height:1.5">'+(x[1]||"")+"</div></div>";}).join("")+'</div>'+
+        (item.caution?'<div style="margin-top:7px;background:rgba(220,180,140,0.2);border-radius:8px;padding:7px 9px"><span style="font-size:11px;font-weight:700;color:#7a5020">⚠️ </span><span style="font-size:11px;color:#6a4828">'+(item.caution||"")+'</span></div>':"")+
+        (item.note?'<div style="margin-top:6px;font-size:11px;color:#7a9060">📝 '+(item.note||"")+"</div>":"")+
+        '<div style="display:flex;gap:6px;margin-top:10px">'+
+        '<button onclick="recordLibUsed(\\''+(isFert?"fert":"med")+'\\',\\''+(item.id||"")+'\\')" style="flex:1;padding:7px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(140,185,110,0.3);border:1px solid rgba(120,165,90,0.5);color:#2e4a22">✓ 记录使用（今天）</button>'+
+        '<button onclick="confirm2(\\'确认从库存中删除 "'+(item.name||"")+'" 吗？\\',function(){delLibItem(\\''+(isFert?"fert":"med")+'\\',\\''+(item.id||"")+'\\');})" style="padding:7px 12px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,160,140,0.2);border:1px solid rgba(190,120,100,0.4);color:#8a3020">删除</button>'+
+        '</div></div>';
     }
-    return '<div style="background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);border-radius:12px;margin-bottom:8px;overflow:hidden">'+
-      '<button onclick="toggleLib(\''+item.id+'\')" style="width:100%;background:none;border:none;cursor:pointer;font-family:inherit;padding:11px 14px;display:flex;align-items:center;gap:10px;text-align:left">'+
-      '<span style="font-size:20px">'+item.icon+'</span>'+
-      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13px;font-weight:700;color:#2e4a22">'+q(item.name)+'</span>'+
-      '<span style="font-size:10px;background:rgba(150,190,120,0.25);border-radius:10px;padding:1px 7px;color:#5a7840">'+q(item.type)+'</span>'+
-      (S.libTab==="fert"&&item.npk?'<span style="font-size:10px;color:#7a9060">NPK '+q(item.npk)+'</span>':"")+(S.libTab==="med"&&item.chemical?'<span style="font-size:10px;color:#8a8060">'+q(item.chemical)+'</span>':"")+'</div>'+
-      '<div style="font-size:11px;color:#7a9060;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(S.libTab==="fert"?q(item.desc):q(item.target||""))+'</div></div>'+
-      '<span style="font-size:11px;color:#8aaa78;flex-shrink:0">'+(exp?"▲":"▼")+'</span></button>'+detHtml+'</div>';
+    return '<div style="background:rgba(255,255,255,0.6);border:1px solid '+(due?"rgba(200,140,50,0.5)":"rgba(150,185,130,0.35)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
+      '<button onclick="toggleLibItem(\\''+(item.id||"")+'\\')" style="width:100%;background:none;border:none;cursor:pointer;font-family:inherit;padding:11px 14px;display:flex;align-items:center;gap:10px;text-align:left">'+
+      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+
+      '<span style="font-size:13px;font-weight:700;color:#2e4a22">'+(item.name||"")+"</span>"+
+      (item.type?'<span style="font-size:10px;background:rgba(150,190,120,0.25);border-radius:10px;padding:1px 7px;color:#5a7840">'+(item.type||"")+"</span>":"")+
+      (due?'<span style="font-size:10px;color:#8a5010;background:rgba(240,190,100,0.25);border-radius:10px;padding:1px 7px">⚠️ 该用了</span>':"")+
+      '</div><div style="font-size:11px;color:#7a9060;margin-top:2px">'+(daysSince!==null?"上次使用："+daysSince+"天前":"尚未记录使用")+(item.interval?"　间隔："+item.interval+"天":"")+'</div></div>'+
+      '<span style="font-size:11px;color:#8aaa78;flex-shrink:0">'+(exp?"▲":"▼")+"</span></button>"+det+'</div>';
   }).join("");
-  var tabs=[["fert","🌿 肥料库"],["med","💊 药品库"]].map(function(x){return '<button onclick="setLibTab(\''+x[0]+'\')" style="flex:1;padding:10px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:'+(S.libTab===x[0]?700:400)+';background:'+(S.libTab===x[0]?"rgba(180,210,160,0.35)":"transparent")+';border:none;border-bottom:'+(S.libTab===x[0]?"2px solid #5a8040":"2px solid transparent")+';color:'+(S.libTab===x[0]?"#2e4a22":"#7a9868")+'">'+x[1]+'</button>';}).join("");
+
+  var tabs=[["fert","🌿 肥料库"],["med","💊 药品库"]].map(function(x){return '<button onclick="setLibTab(\\''+(x[0]||"")+'\\')" style="flex:1;padding:10px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:'+(S.libTab===x[0]?700:400)+';background:'+(S.libTab===x[0]?"rgba(180,210,160,0.35)":"transparent")+';border:none;border-bottom:'+(S.libTab===x[0]?"2px solid #5a8040":"2px solid transparent")+';color:'+(S.libTab===x[0]?"#2e4a22":"#7a9868")+'">'+(x[1]||"")+"</button>";}).join("");
+
   return '<div style="position:fixed;inset:0;background:rgba(50,80,30,0.45);z-index:200;display:flex;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeLib()">'+
     '<div style="background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">'+
-    '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:700;color:#2e4a22">📚 养护库</span><button onclick="closeLib()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
+    '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center">'+
+    '<span style="font-size:15px;font-weight:700;color:#2e4a22">📦 我的库存</span>'+
+    '<button onclick="closeLib()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
     '<div style="display:flex;border-bottom:1px solid rgba(150,185,130,0.3)">'+tabs+'</div>'+
-    '<div style="padding:10px 14px;border-bottom:1px solid rgba(150,185,130,0.2)"><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#8aaa78">🔍</span><input id="lib_search" value="'+q(S.libSearch||"")+'" onchange="setLibSearch(this.value)" onkeydown="if(event.key==='Enter'){setLibSearch(this.value);this.blur();}" placeholder="'+(S.libTab==="fert"?"搜索肥料名称、类型…":"搜索药品、目标病虫害…")+'" style="'+FS+'padding-left:30px;background:rgba(255,255,255,0.6);"/>'+(S.libSearch?'<button onclick="setLibSearch(\'\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:13px;color:#8aaa78">✕</button>':"")+'</div></div>'+
-    '<div style="flex:1;overflow-y:auto;padding:10px 14px">'+(filtered.length===0?'<div style="text-align:center;padding:30px 0;color:#9aaa88;font-size:12px">未找到匹配项</div>':items)+'</div>'+
-    '<div style="padding:8px 16px;text-align:center;font-size:10px;color:#8a9a7a;border-top:1px solid rgba(150,185,130,0.2)">'+(S.libTab==="fert"?"共 "+FERT_DB.length+" 种常用肥料":"共 "+MED_DB.length+" 种常用药品")+" · 仅供参考</div></div></div>";
+    addForm+
+    (!S.libAdding?
+      '<div style="padding:8px 14px;border-bottom:1px solid rgba(150,185,130,0.2);display:flex;gap:7px">'+
+      '<div style="flex:1;position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#8aaa78">🔍</span>'+
+      '<input type="search" autocomplete="off" autocorrect="off" placeholder="搜索库存…" style="'+FS+'padding-left:30px;background:rgba(255,255,255,0.6);" onkeydown="if(event.key===\\'Enter\\'){S.libSearch=this.value;render();}"/></div>'+
+      '<button onclick="S.libSearch=document.querySelector(\\'#lib_search_inp\\')&&document.querySelector(\\'#lib_search_inp\\').value||S.libSearch;render()" style="padding:7px 10px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(180,210,155,0.3);border:1px solid rgba(150,185,130,0.4);color:#3a5a28">搜索</button>'+
+      '<button onclick="setLibAdding(true)" style="padding:7px 12px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;background:rgba(140,185,110,0.35);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap">+ 添加</button></div>'
+    :"")+
+    '<div style="flex:1;overflow-y:auto;padding:10px 14px">'+
+    (arr.length===0&&!S.libAdding?'<div style="text-align:center;padding:30px 0;color:#9aaa88;font-size:12px">库存为空<br/>点击「+ 添加」录入你的'+(isFert?"肥料":"药品")+"</div>":"")+
+    (filtered.length===0&&arr.length>0?'<div style="text-align:center;padding:20px 0;color:#9aaa88;font-size:12px">未找到匹配项</div>':items)+
+    '</div></div></div>';
 }
 
 // ═══ MAIN APP ═══
@@ -642,10 +809,11 @@ function buildApp(){
     '<div style="margin-top:7px;font-size:10px;color:#8a9a7a;text-align:center">每次打开自动更新天气</div></div>'+
     // Search & filter
     '<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">'+
-    '<div style="position:relative"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;color:#8aaa78">🔍</span>'+
-    '<input id="search_inp" value="'+q(S.search)+'" onchange="setSearch(this.value)" onkeydown="if(event.key===\'Enter\'){setSearch(this.value);this.blur();}" placeholder="搜索名称、品种、位置…" style="'+FS+'padding-left:32px;background:rgba(255,255,255,0.6);"/>'+
-    (S.search?'<button onclick="setSearch(\'\')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:#8aaa78">✕</button>':"")+'</div>'+
-    catFilter+
+    '<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">'+
+    '<div style="display:flex;gap:7px;align-items:center"><div style="flex:1;position:relative"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;color:#8aaa78">🔍</span>'+
+    '<input id="search_inp" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="名称、品种、位置（回车搜索）" style="'+FS+'padding-left:32px;padding-right:36px;background:rgba(255,255,255,0.6);" onkeydown="if(event.key===\\'Enter\\'){S.search=this.value;this.blur();render();}"/>'+
+    (S.search?'<button onclick="S.search=\\'\\';render()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:#8aaa78">✕</button>':"")+'</div>'+
+    '<button onclick="S.search=document.getElementById(\\'search_inp\\').value;render()" style="padding:8px 14px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(140,185,110,0.35);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap;flex-shrink:0">搜索</button></div>'+
     '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#8aaa78;white-space:nowrap">排序：</span><div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:2px">'+sortBtns+'</div></div></div>'+
     // Plant list
     '<div style="margin-top:14px">'+
