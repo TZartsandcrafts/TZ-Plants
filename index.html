@@ -25,6 +25,7 @@ var SK="plants_v9";
 
 // 科属数据库
 var GENUS_DB={
+  // 中文名
   "玫瑰":"蔷薇科 蔷薇属","月季":"蔷薇科 蔷薇属","牡丹":"芍药科 芍药属","茶花":"山茶科 山茶属",
   "杜鹃":"杜鹃花科 杜鹃属","绣球":"虎耳草科 绣球属","薰衣草":"唇形科 薰衣草属",
   "桂花":"木犀科 木犀属","茉莉":"木犀科 素馨属","丁香":"木犀科 丁香属",
@@ -43,12 +44,48 @@ var GENUS_DB={
   "柠檬":"芸香科 柑橘属","橙":"芸香科 柑橘属","金桔":"芸香科 金柑属",
   "核桃":"胡桃科 胡桃属","板栗":"壳斗科 栗属","山茶":"山茶科 山茶属",
   "散尾葵":"棕榈科 散尾葵属","鱼尾葵":"棕榈科 鱼尾葵属",
-  "龙血树":"天门冬科 龙血树属","朱蕉":"天门冬科 朱蕉属"
+  "龙血树":"天门冬科 龙血树属","朱蕉":"天门冬科 朱蕉属",
+  // 英文名（不区分大小写，统一转小写匹配）
+  "rose":"Rosaceae / Rosa","peony":"Paeoniaceae / Paeonia",
+  "lavender":"Lamiaceae / Lavandula","mint":"Lamiaceae / Mentha",
+  "basil":"Lamiaceae / Ocimum","rosemary":"Lamiaceae / Salvia",
+  "hosta":"Asparagaceae / Hosta","hydrangea":"Hydrangeaceae / Hydrangea",
+  "orchid":"Orchidaceae","phalaenopsis":"Orchidaceae / Phalaenopsis",
+  "pothos":"Araceae / Epipremnum","monstera":"Araceae / Monstera",
+  "peace lily":"Araceae / Spathiphyllum","spider plant":"Asparagaceae / Chlorophytum",
+  "snake plant":"Asparagaceae / Dracaena","rubber plant":"Moraceae / Ficus",
+  "fiddle leaf":"Moraceae / Ficus","ficus":"Moraceae / Ficus",
+  "tomato":"Solanaceae / Solanum","pepper":"Solanaceae / Capsicum",
+  "eggplant":"Solanaceae / Solanum","cucumber":"Cucurbitaceae / Cucumis",
+  "strawberry":"Rosaceae / Fragaria","blueberry":"Ericaceae / Vaccinium",
+  "apple":"Rosaceae / Malus","peach":"Rosaceae / Prunus",
+  "cherry":"Rosaceae / Prunus","plum":"Rosaceae / Prunus",
+  "lemon":"Rutaceae / Citrus","orange":"Rutaceae / Citrus",
+  "walnut":"Juglandaceae / Juglans","chestnut":"Fagaceae / Castanea",
+  "camellia":"Theaceae / Camellia","azalea":"Ericaceae / Rhododendron",
+  "rhododendron":"Ericaceae / Rhododendron","lilac":"Oleaceae / Syringa",
+  "jasmine":"Oleaceae / Jasminum","osmanthus":"Oleaceae / Osmanthus",
+  "succulent":"Crassulaceae (多科)","cactus":"Cactaceae",
+  "aloe":"Asphodelaceae / Aloe","agave":"Asparagaceae / Agave",
+  "lettuce":"Asteraceae / Lactuca","spinach":"Amaranthaceae / Spinacia",
+  "palm":"Arecaceae","bamboo":"Poaceae / Bambusoideae",
+  "grape":"Vitaceae / Vitis","fig":"Moraceae / Ficus",
+  "magnolia":"Magnoliaceae / Magnolia","wisteria":"Fabaceae / Wisteria",
+  "dahlia":"Asteraceae / Dahlia","zinnia":"Asteraceae / Zinnia",
+  "marigold":"Asteraceae / Tagetes","sunflower":"Asteraceae / Helianthus",
+  "geranium":"Geraniaceae / Pelargonium","begonia":"Begoniaceae / Begonia",
+  "impatiens":"Balsaminaceae / Impatiens","petunia":"Solanaceae / Petunia",
+  "pansy":"Violaceae / Viola","viola":"Violaceae / Viola"
 };
 function lookupGenus(name){
   if(!name)return"";
+  var nl=name.toLowerCase();
   var keys=Object.keys(GENUS_DB);
-  for(var i=0;i<keys.length;i++){if(name.indexOf(keys[i])>=0)return GENUS_DB[keys[i]];}
+  // exact or partial match (case-insensitive)
+  for(var i=0;i<keys.length;i++){
+    if(nl.indexOf(keys[i].toLowerCase())>=0||keys[i].toLowerCase().indexOf(nl)>=0)
+      return GENUS_DB[keys[i]];
+  }
   return"";
 }
 
@@ -243,13 +280,13 @@ function buildPlantForm(){
   if(S.formTab==="basic"){
     var genusHint=lookupGenus(v.name);
     body='<div style="display:flex;flex-direction:column;gap:10px">'+
-    '<div><div style="'+LB()+'">植物名称 *</div><input value="'+q(v.name)+'" oninput="setFormField(\'name\',this.value)" placeholder="填写后自动推荐护理周期和科属" style="'+FS+'"/></div>'+
+    '<div><div style="'+LB()+'">植物名称 *</div><input value="'+q(v.name)+'" onchange="setFormField(\'name\',this.value)" placeholder="填写后自动推荐护理周期和科属" style="'+FS+'"/></div>'+
     (genusHint?'<div style="font-size:11px;color:#5a8040;padding:4px 8px;background:rgba(150,200,100,0.15);border-radius:6px">🌿 科属参考：'+q(genusHint)+'</div>':'')+
-    '<div><div style="'+LB()+'">品种</div><input value="'+q(v.variety)+'" oninput="setFormField(\'variety\',this.value)" placeholder="金满堂、早熟5号…" style="'+FS+'"/></div>'+
+    '<div><div style="'+LB()+'">品种</div><input value="'+q(v.variety)+'" onchange="setFormField(\'variety\',this.value)" placeholder="金满堂、早熟5号…" style="'+FS+'"/></div>'+
     '<div><div style="'+LB()+'">植物类别</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+CATS.map(function(c){return '<button onclick="setFormField(\'category\',\''+c.key+'\')" style="'+gbtn(v.category===c.key)+'padding:5px 10px;border-radius:16px;">'+c.icon+' '+c.label+'</button>';}).join('')+'</div></div>'+
-    '<div><div style="'+LB()+'">植物种类/科属</div><input value="'+q(v.type)+'" oninput="setFormField(\'type\',this.value)" placeholder="木犀科、蔷薇科…（可自动填入）" style="'+FS+'"/></div>'+
+    '<div><div style="'+LB()+'">植物种类/科属</div><input value="'+q(v.type)+'" onchange="setFormField(\'type\',this.value)" placeholder="木犀科、蔷薇科…（可自动填入）" style="'+FS+'"/></div>'+
     '<div><div style="'+LB()+'">植物来源</div><div style="display:flex;flex-direction:column;gap:5px">'+SRCS.map(function(s){return '<button onclick="setFormField(\'source\',\''+s.key+'\')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;cursor:pointer;font-family:inherit;text-align:left;background:'+(v.source===s.key?"rgba(155,195,125,0.35)":"rgba(180,210,160,0.1)")+';border:1px solid '+(v.source===s.key?"rgba(130,175,100,0.6)":"rgba(150,185,130,0.25)")+'"><span style="font-size:17px">'+s.icon+'</span><span style="font-size:13px;color:#2e4a22;font-weight:'+(v.source===s.key?700:400)+'">'+s.label+'</span>'+(v.source===s.key?'<span style="margin-left:auto;color:#5a8040">✓</span>':'')+'</button>';}).join('')+'</div></div>'+
-    '<div><div style="'+LB()+'">备注</div><textarea oninput="setFormField(\'notes\',this.value)" placeholder="特殊说明…" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(v.notes)+'</textarea></div>'+
+    '<div><div style="'+LB()+'">备注</div><textarea onchange="setFormField(\'notes\',this.value)" placeholder="特殊说明…" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(v.notes)+'</textarea></div>'+
     '</div>';
   } else if(S.formTab==="growth"){
     body=buildGrowthTab(v);
@@ -277,17 +314,17 @@ function buildPlantForm(){
 }
 
 function dRow(label,key,val){
-  return '<div><div style="'+LB()+'">'+label+'</div><input type="number" min="1" value="'+q(val)+'" oninput="setFormField(\''+key+'\',+this.value)" style="'+FS+'width:100px;text-align:center;"/></div>';
+  return '<div><div style="'+LB()+'">'+label+'</div><input type="number" min="1" value="'+q(val)+'" onchange="setFormField(\''+key+'\',+this.value)" style="'+FS+'width:100px;text-align:center;"/></div>';
 }
 function dateRow(label,key,val){
   return '<div><div style="'+LB()+'">'+label+'</div><div style="display:flex;gap:6px;align-items:center"><input type="date" value="'+q(val||"")+'" onchange="setFormField(\''+key+'\',this.value)" style="'+FS+'flex:1;color-scheme:light;"/>'+
   (val?'<button onclick="setFormField(\''+key+'\',\'\')" style="background:none;border:none;cursor:pointer;color:#9a8878;font-size:16px;padding:0 4px">✕</button>':'')+'</div></div>';
 }
 function textRow(label,key,val,ph){
-  return '<div><div style="'+LB()+'">'+label+'</div><input value="'+q(val||"")+'" oninput="setFormField(\''+key+'\',this.value)" placeholder="'+(ph||"")+'" style="'+FS+'"/></div>';
+  return '<div><div style="'+LB()+'">'+label+'</div><input value="'+q(val||"")+'" onchange="setFormField(\''+key+'\',this.value)" placeholder="'+(ph||"")+'" style="'+FS+'"/></div>';
 }
 function taRow(label,key,val,ph){
-  return '<div><div style="'+LB()+'">'+label+'</div><textarea oninput="setFormField(\''+key+'\',this.value)" placeholder="'+(ph||"")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(val||"")+'</textarea></div>';
+  return '<div><div style="'+LB()+'">'+label+'</div><textarea onchange="setFormField(\''+key+'\',this.value)" placeholder="'+(ph||"")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(val||"")+'</textarea></div>';
 }
 function envBtns(v){
   return '<div><div style="'+LB()+'">种植环境</div><div style="display:flex;gap:7px">'+
@@ -333,7 +370,7 @@ function buildGrowthTab(v){
     html+='<div style="'+secBox("rgba(255,235,150,0.25)")+'"><div style="font-size:11px;font-weight:700;color:#8a7a30;margin-bottom:8px">🌤️ 炼苗（室内→室外过渡）</div>'+
       '<div style="font-size:11px;color:#9a8a40;margin-bottom:8px;line-height:1.6">室内苗直接移到室外会萎蔫，需逐步延长室外暴露时间（5–14天）。</div>'+
       '<div style="display:flex;flex-direction:column;gap:8px">'+dateRow("开始炼苗日期","hardeningDate",v.hardeningDate)+
-      '<div><div style="'+LB()+'">计划炼苗天数</div><div style="display:flex;align-items:center;gap:10px"><input type="range" min="5" max="21" value="'+(v.hardeningDays||7)+'" oninput="setFormField(\'hardeningDays\',+this.value)" style="flex:1;accent-color:#7aaa54"/><span style="font-size:13px;color:#4a6a38;min-width:40px">'+(v.hardeningDays||7)+'天</span></div></div>'+
+      '<div><div style="'+LB()+'">计划炼苗天数</div><div style="display:flex;align-items:center;gap:10px"><input type="range" min="5" max="21" value="'+(v.hardeningDays||7)+'" onchange="setFormField(\'hardeningDays\',+this.value)" style="flex:1;accent-color:#7aaa54"/><span style="font-size:13px;color:#4a6a38;min-width:40px">'+(v.hardeningDays||7)+'天</span></div></div>'+
       taRow("炼苗备注","hardeningNotes",v.hardeningNotes,"每日室外时长…")+'</div></div>';
   }
   // prePlant
@@ -452,11 +489,11 @@ function buildLogModal(){
   var log=type==="water"?(p.waterLog||[]):type==="fert"?(p.fertLog||[]):(p.medLog||[]);
   var isEdit=logEditIdx!==null;
   var extraFields="";
-  if(type==="fert")extraFields='<div><div style="'+LB()+'">肥料名称</div><input value="'+q(logForm.name)+'" oninput="setLogField(\'name\',this.value)" placeholder="复合肥、磷酸二氢钾…" style="'+FS+'"/></div>'+
-    '<div><div style="'+LB()+'">用量/浓度</div><input value="'+q(logForm.amount)+'" oninput="setLogField(\'amount\',this.value)" placeholder="5g/L…" style="'+FS+'"/></div>';
-  else if(type==="med")extraFields='<div><div style="'+LB()+'">药品名称</div><input value="'+q(logForm.name)+'" oninput="setLogField(\'name\',this.value)" placeholder="多菌灵、吡虫啉…" style="'+FS+'"/></div>'+
-    '<div><div style="'+LB()+'">病症/原因</div><input value="'+q(logForm.reason)+'" oninput="setLogField(\'reason\',this.value)" placeholder="白粉病、蚜虫…" style="'+FS+'"/></div>'+
-    '<div><div style="'+LB()+'">用量/浓度</div><input value="'+q(logForm.amount)+'" oninput="setLogField(\'amount\',this.value)" placeholder="稀释800倍…" style="'+FS+'"/></div>';
+  if(type==="fert")extraFields='<div><div style="'+LB()+'">肥料名称</div><input value="'+q(logForm.name)+'" onchange="setLogField(\'name\',this.value)" placeholder="复合肥、磷酸二氢钾…" style="'+FS+'"/></div>'+
+    '<div><div style="'+LB()+'">用量/浓度</div><input value="'+q(logForm.amount)+'" onchange="setLogField(\'amount\',this.value)" placeholder="5g/L…" style="'+FS+'"/></div>';
+  else if(type==="med")extraFields='<div><div style="'+LB()+'">药品名称</div><input value="'+q(logForm.name)+'" onchange="setLogField(\'name\',this.value)" placeholder="多菌灵、吡虫啉…" style="'+FS+'"/></div>'+
+    '<div><div style="'+LB()+'">病症/原因</div><input value="'+q(logForm.reason)+'" onchange="setLogField(\'reason\',this.value)" placeholder="白粉病、蚜虫…" style="'+FS+'"/></div>'+
+    '<div><div style="'+LB()+'">用量/浓度</div><input value="'+q(logForm.amount)+'" onchange="setLogField(\'amount\',this.value)" placeholder="稀释800倍…" style="'+FS+'"/></div>';
   var histHtml=[].concat(log).reverse().map(function(r,ri){
     var oi=log.length-1-ri;
     return '<div style="background:rgba(255,255,255,0.6);border-radius:10px;padding:10px 12px;margin-bottom:7px;border:1px solid rgba(150,185,130,0.3)">'+
@@ -474,7 +511,7 @@ function buildLogModal(){
     '<div style="display:flex;flex-direction:column;gap:7px">'+
     '<div><div style="'+LB()+'">日期</div><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="setLogField(\'date\',this.value)" style="'+FS+'color-scheme:light;"/></div>'+
     extraFields+
-    '<div><div style="'+LB()+'">'+(type==="water"?"备注（可选）":"备注")+'</div><textarea oninput="setLogField(\'note\',this.value)" placeholder="'+(type==="water"?"浇水量、方式…":type==="fert"?"施肥观察…":"用药后观察…")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(logForm.note)+'</textarea></div>'+
+    '<div><div style="'+LB()+'">'+(type==="water"?"备注（可选）":"备注")+'</div><textarea onchange="setLogField(\'note\',this.value)" placeholder="'+(type==="water"?"浇水量、方式…":type==="fert"?"施肥观察…":"用药后观察…")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(logForm.note)+'</textarea></div>'+
     '<div style="display:flex;gap:7px"><button onclick="saveLog()" style="flex:1;padding:8px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.6);color:#2e4a22">✓ '+(isEdit?"保存修改":"添加")+'</button>'+(isEdit?'<button onclick="logEditIdx=null;logForm.date=td();logForm.note=logForm.name=logForm.reason=logForm.amount=\'\';render()" style="flex:1;padding:8px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button>':"")+'</div>'+
     '</div></div>'+
     '<div style="flex:1;overflow-y:auto;padding:10px 18px"><div style="font-size:11px;color:#6a8858;margin-bottom:8px;font-weight:700">历史记录（'+log.length+'条）</div>'+(log.length===0?'<div style="font-size:12px;color:#9aaa88;text-align:center;padding:20px 0">暂无记录</div>':histHtml)+'</div>'+
