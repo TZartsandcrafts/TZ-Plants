@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="植物志"/>
+<meta name="theme-color" content="#3a5030"/>
 <title>植物志</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -22,42 +26,174 @@ var SK="plants_v9";
 
 // ── Genus DB ──
 var GENUS_DB={
-  "玫瑰":"蔷薇科 蔷薇属","月季":"蔷薇科 蔷薇属","牡丹":"芍药科 芍药属","茶花":"山茶科 山茶属",
-  "杜鹃":"杜鹃花科 杜鹃属","绣球":"虎耳草科 绣球属","薰衣草":"唇形科 薰衣草属",
+  // 蔷薇科
+  "玫瑰":"蔷薇科 蔷薇属","月季":"蔷薇科 蔷薇属","蔷薇":"蔷薇科 蔷薇属",
+  "苹果":"蔷薇科 苹果属","海棠":"蔷薇科 苹果属","木瓜":"蔷薇科 木瓜属",
+  "梨":"蔷薇科 梨属","桃":"蔷薇科 桃属","李":"蔷薇科 李属",
+  "樱桃":"蔷薇科 李属","杏":"蔷薇科 杏属","李子":"蔷薇科 李属",
+  "草莓":"蔷薇科 草莓属","棣棠":"蔷薇科 棣棠属","绣线菊":"蔷薇科 绣线菊属",
+  "枇杷":"蔷薇科 枇杷属","山楂":"蔷薇科 山楂属",
+  // 芍药科
+  "牡丹":"芍药科 芍药属","芍药":"芍药科 芍药属",
+  // 山茶科
+  "茶花":"山茶科 山茶属","山茶":"山茶科 山茶属","茶树":"山茶科 山茶属",
+  // 杜鹃花科
+  "杜鹃":"杜鹃花科 杜鹃属","映山红":"杜鹃花科 杜鹃属",
+  "蓝莓":"杜鹃花科 越橘属","越橘":"杜鹃花科 越橘属",
+  // 虎耳草科
+  "绣球":"虎耳草科 绣球属","八仙花":"虎耳草科 绣球属",
+  // 唇形科
+  "薰衣草":"唇形科 薰衣草属","薄荷":"唇形科 薄荷属",
+  "罗勒":"唇形科 罗勒属","迷迭香":"唇形科 迷迭香属",
+  "鼠尾草":"唇形科 鼠尾草属","百里香":"唇形科 百里香属",
+  "薄荷":"唇形科 薄荷属","香薷":"唇形科 香薷属","牛至":"唇形科 牛至属",
+  // 木犀科
   "桂花":"木犀科 木犀属","茉莉":"木犀科 素馨属","丁香":"木犀科 丁香属",
-  "薄荷":"唇形科 薄荷属","罗勒":"唇形科 罗勒属","迷迭香":"唇形科 迷迭香属",
+  "连翘":"木犀科 连翘属","迎春":"木犀科 素馨属","女贞":"木犀科 女贞属",
+  "木犀":"木犀科 木犀属",
+  // 天南星科
   "绿萝":"天南星科 麒麟叶属","龟背竹":"天南星科 龟背竹属","白掌":"天南星科 白鹤芋属",
-  "吊兰":"天门冬科 吊兰属","虎皮兰":"天门冬科 虎尾兰属","富贵竹":"天门冬科 龙血树属",
+  "合果芋":"天南星科 合果芋属","花叶万年青":"天南星科 花叶万年青属",
+  "广东万年青":"天南星科 广东万年青属","海芋":"天南星科 海芋属",
+  "马蹄莲":"天南星科 马蹄莲属",
+  // 天门冬科
+  "吊兰":"天门冬科 吊兰属","虎皮兰":"天门冬科 虎尾兰属",
+  "富贵竹":"天门冬科 龙血树属","龙血树":"天门冬科 龙血树属",
+  "朱蕉":"天门冬科 朱蕉属","散尾葵":"棕榈科 散尾葵属",
+  "玉簪":"天门冬科 玉簪属","吉祥草":"天门冬科 吉祥草属",
+  // 桑科
   "橡皮树":"桑科 榕属","榕树":"桑科 榕属","琴叶榕":"桑科 榕属",
+  "无花果":"桑科 榕属",
+  // 兰科
   "蝴蝶兰":"兰科 蝴蝶兰属","石斛":"兰科 石斛属","文心兰":"兰科 文心兰属",
-  "多肉":"景天科（多科）","仙人掌":"仙人掌科","仙人球":"仙人掌科",
+  "君子兰":"石蒜科 君子兰属","卡特兰":"兰科 卡特兰属",
+  // 景天科/仙人掌科
+  "多肉":"景天科（多科）","景天":"景天科 景天属","石莲花":"景天科 拟石莲属",
+  "仙人掌":"仙人掌科","仙人球":"仙人掌科","芦荟":"阿福花科 芦荟属",
+  // 茄科
   "番茄":"茄科 番茄属","辣椒":"茄科 辣椒属","茄子":"茄科 茄属",
+  "甜椒":"茄科 辣椒属","彩椒":"茄科 辣椒属","西红柿":"茄科 番茄属",
+  // 葫芦科
   "黄瓜":"葫芦科 黄瓜属","南瓜":"葫芦科 南瓜属","西葫芦":"葫芦科 南瓜属",
-  "生菜":"菊科 莴苣属","菠菜":"苋科 菠菜属","韭菜":"石蒜科 葱属",
-  "苹果":"蔷薇科 苹果属","梨":"蔷薇科 梨属","桃":"蔷薇科 桃属",
-  "李":"蔷薇科 李属","樱桃":"蔷薇科 李属","杏":"蔷薇科 杏属",
-  "葡萄":"葡萄科 葡萄属","蓝莓":"杜鹃花科 越橘属","草莓":"蔷薇科 草莓属",
+  "西瓜":"葫芦科 西瓜属","甜瓜":"葫芦科 黄瓜属","苦瓜":"葫芦科 苦瓜属",
+  "丝瓜":"葫芦科 丝瓜属","冬瓜":"葫芦科 冬瓜属",
+  // 菊科
+  "生菜":"菊科 莴苣属","莴苣":"菊科 莴苣属","向日葵":"菊科 向日葵属",
+  "菊花":"菊科 菊属","大丽花":"菊科 大丽花属","百日草":"菊科 百日草属",
+  "千日菊":"菊科 菊属","雏菊":"菊科 雏菊属","金盏菊":"菊科 金盏花属",
+  "翠菊":"菊科 翠菊属","万寿菊":"菊科 万寿菊属",
+  // 苋科/藜科
+  "菠菜":"苋科 菠菜属","甜菜":"苋科 甜菜属","苋菜":"苋科 苋属",
+  "千日红":"苋科 千日红属","鸡冠花":"苋科 青葙属",
+  // 石蒜科/葱属
+  "韭菜":"石蒜科 葱属","葱":"石蒜科 葱属","大蒜":"石蒜科 葱属",
+  "洋葱":"石蒜科 葱属","水仙":"石蒜科 水仙属","君子兰":"石蒜科 君子兰属",
+  // 芸香科
   "柠檬":"芸香科 柑橘属","橙":"芸香科 柑橘属","金桔":"芸香科 金柑属",
-  "核桃":"胡桃科 胡桃属","板栗":"壳斗科 栗属","山茶":"山茶科 山茶属",
-  "散尾葵":"棕榈科 散尾葵属","龙血树":"天门冬科 龙血树属","朱蕉":"天门冬科 朱蕉属",
+  "柚子":"芸香科 柑橘属","柑橘":"芸香科 柑橘属","橘子":"芸香科 柑橘属",
+  "柠檬草":"禾本科 柠檬草属",
+  // 葡萄科/胡桃科/壳斗科
+  "葡萄":"葡萄科 葡萄属","核桃":"胡桃科 胡桃属","板栗":"壳斗科 栗属",
+  "橡树":"壳斗科 栎属","栎树":"壳斗科 栎属",
+  // 棕榈科
+  "棕榈":"棕榈科 棕榈属","椰子":"棕榈科 椰子属",
+  "蒲葵":"棕榈科 蒲葵属","鱼尾葵":"棕榈科 鱼尾葵属",
+  // 禾本科
+  "竹":"禾本科 竹亚科","芦苇":"禾本科 芦苇属",
+  "芒草":"禾本科 芒属","薏苡":"禾本科 薏苡属",
+  // 百合科/鸢尾科
+  "百合":"百合科 百合属","郁金香":"百合科 郁金香属",
+  "风信子":"百合科 风信子属","鸢尾":"鸢尾科 鸢尾属",
+  "美人蕉":"美人蕉科 美人蕉属",
+  // 秋海棠科/报春花科
+  "秋海棠":"秋海棠科 秋海棠属","报春花":"报春花科 报春花属",
+  "仙客来":"报春花科 仙客来属",
+  // 大戟科
+  "一品红":"大戟科 大戟属","橡皮草":"大戟科",
+  // 旋花科
+  "牵牛花":"旋花科 牵牛属",
+  // 锦葵科
+  "木槿":"锦葵科 木槿属","扶桑":"锦葵科 木槿属","芙蓉":"锦葵科 木槿属",
+  // 豆科
+  "紫藤":"豆科 紫藤属","紫荆":"豆科 紫荆属","合欢":"豆科 合欢属",
+  "豇豆":"豆科 豇豆属","大豆":"豆科 大豆属","蚕豆":"豆科 野豌豆属",
+  "豌豆":"豆科 豌豆属","菜豆":"豆科 菜豆属",
+  // 忍冬科
+  "金银花":"忍冬科 忍冬属","忍冬":"忍冬科 忍冬属",
+  // 藤本/攀援
+  "凌霄":"紫葳科 凌霄属","爬山虎":"葡萄科 地锦属","常春藤":"五加科 常春藤属",
+  "铁线莲":"毛茛科 铁线莲属",
+  // 银杏/松柏
+  "银杏":"银杏科 银杏属","松树":"松科 松属","柏树":"柏科 柏属",
+  "冬青":"冬青科 冬青属","紫杉":"红豆杉科 红豆杉属",
+  // 芭蕉/棕榈
+  "芭蕉":"芭蕉科 芭蕉属","香蕉":"芭蕉科 芭蕉属",
+  "苏铁":"苏铁科 苏铁属","龙舌兰":"天门冬科 龙舌兰属",
+  // 天竺葵/堇菜
+  "天竺葵":"牻牛儿苗科 天竺葵属","三色堇":"堇菜科 堇菜属",
+  "角堇":"堇菜科 堇菜属","矮牵牛":"茄科 矮牵牛属",
+  // 荷花/睡莲
+  "荷花":"莲科 莲属","睡莲":"睡莲科 睡莲属",
+  // 紫薇/梧桐
+  "紫薇":"千屈菜科 紫薇属","梧桐":"锦葵科 梧桐属",
+  // 鸭跖草科
+  "鸭跖草":"鸭跖草科 鸭跖草属","紫露草":"鸭跖草科 紫露草属","吊竹梅":"鸭跖草科 紫露草属",
+  // 凤梨科/苦苣苔科
+  "凤梨":"凤梨科","非洲紫罗兰":"苦苣苔科 非洲紫罗兰属",
+  // English names
   "hosta":"Asparagaceae / Hosta","hydrangea":"Hydrangeaceae / Hydrangea",
   "rose":"Rosaceae / Rosa","lavender":"Lamiaceae / Lavandula",
   "mint":"Lamiaceae / Mentha","basil":"Lamiaceae / Ocimum",
-  "rosemary":"Lamiaceae / Salvia","orchid":"Orchidaceae",
+  "rosemary":"Lamiaceae / Salvia","sage":"Lamiaceae / Salvia",
+  "thyme":"Lamiaceae / Thymus","oregano":"Lamiaceae / Origanum",
+  "orchid":"Orchidaceae","moth orchid":"Orchidaceae / Phalaenopsis",
   "pothos":"Araceae / Epipremnum","monstera":"Araceae / Monstera",
   "peace lily":"Araceae / Spathiphyllum","snake plant":"Asparagaceae / Dracaena",
   "rubber plant":"Moraceae / Ficus","fiddle leaf":"Moraceae / Ficus",
+  "spider plant":"Asparagaceae / Chlorophytum","zz plant":"Araceae / Zamioculcas",
+  "philodendron":"Araceae / Philodendron","calathea":"Marantaceae / Calathea",
+  "anthurium":"Araceae / Anthurium","croton":"Euphorbiaceae / Codiaeum",
+  "dracaena":"Asparagaceae / Dracaena","yucca":"Asparagaceae / Yucca",
+  "bromeliad":"Bromeliaceae","air plant":"Bromeliaceae / Tillandsia",
+  "boston fern":"Nephrolepidaceae / Nephrolepis","maidenhair":"Pteridaceae / Adiantum",
+  "prayer plant":"Marantaceae / Maranta","nerve plant":"Acanthaceae / Fittonia",
+  "string of pearls":"Asteraceae / Senecio","string of hearts":"Apocynaceae / Ceropegia",
+  "bird of paradise":"Strelitziaceae / Strelitzia",
+  "wisteria":"Fabaceae / Wisteria","bougainvillea":"Nyctaginaceae / Bougainvillea",
+  "hibiscus":"Malvaceae / Hibiscus","magnolia":"Magnoliaceae / Magnolia",
+  "dogwood":"Cornaceae / Cornus","forsythia":"Oleaceae / Forsythia",
   "tomato":"Solanaceae / Solanum","pepper":"Solanaceae / Capsicum",
+  "eggplant":"Solanaceae / Solanum","cucumber":"Cucurbitaceae / Cucumis",
+  "pumpkin":"Cucurbitaceae / Cucurbita","zucchini":"Cucurbitaceae / Cucurbita",
+  "watermelon":"Cucurbitaceae / Citrullus","lettuce":"Asteraceae / Lactuca",
+  "spinach":"Amaranthaceae / Spinacia","onion":"Amaryllidaceae / Allium",
+  "garlic":"Amaryllidaceae / Allium","leek":"Amaryllidaceae / Allium",
   "strawberry":"Rosaceae / Fragaria","blueberry":"Ericaceae / Vaccinium",
+  "raspberry":"Rosaceae / Rubus","blackberry":"Rosaceae / Rubus",
   "apple":"Rosaceae / Malus","peach":"Rosaceae / Prunus",
-  "cherry":"Rosaceae / Prunus","lemon":"Rutaceae / Citrus",
-  "walnut":"Juglandaceae / Juglans","camellia":"Theaceae / Camellia",
-  "azalea":"Ericaceae / Rhododendron","jasmine":"Oleaceae / Jasminum",
+  "cherry":"Rosaceae / Prunus","plum":"Rosaceae / Prunus",
+  "pear":"Rosaceae / Pyrus","apricot":"Rosaceae / Prunus",
+  "lemon":"Rutaceae / Citrus","orange":"Rutaceae / Citrus",
+  "lime":"Rutaceae / Citrus","grapefruit":"Rutaceae / Citrus",
+  "walnut":"Juglandaceae / Juglans","chestnut":"Fagaceae / Castanea",
+  "fig":"Moraceae / Ficus","grape":"Vitaceae / Vitis",
+  "camellia":"Theaceae / Camellia","azalea":"Ericaceae / Rhododendron",
+  "jasmine":"Oleaceae / Jasminum","lilac":"Oleaceae / Syringa",
   "succulent":"Crassulaceae","cactus":"Cactaceae","aloe":"Asphodelaceae / Aloe",
-  "grape":"Vitaceae / Vitis","fig":"Moraceae / Ficus",
   "sunflower":"Asteraceae / Helianthus","dahlia":"Asteraceae / Dahlia",
+  "chrysanthemum":"Asteraceae / Chrysanthemum","marigold":"Asteraceae / Tagetes",
   "geranium":"Geraniaceae / Pelargonium","begonia":"Begoniaceae / Begonia",
-  "petunia":"Solanaceae / Petunia","pansy":"Violaceae / Viola"
+  "petunia":"Solanaceae / Petunia","pansy":"Violaceae / Viola",
+  "violet":"Violaceae / Viola","tulip":"Liliaceae / Tulipa",
+  "hyacinth":"Asparagaceae / Hyacinthus","narcissus":"Amaryllidaceae / Narcissus",
+  "daffodil":"Amaryllidaceae / Narcissus","lily":"Liliaceae / Lilium",
+  "iris":"Iridaceae / Iris","lotus":"Nelumbonaceae / Nelumbo",
+  "water lily":"Nymphaeaceae / Nymphaea","bamboo":"Poaceae / Bambusoideae",
+  "banana":"Musaceae / Musa","palm":"Arecaceae",
+  "ivy":"Araliaceae / Hedera","clematis":"Ranunculaceae / Clematis",
+  "honeysuckle":"Caprifoliaceae / Lonicera",
+  "bleeding heart":"Papaveraceae / Lamprocapnos",
+  "impatiens":"Balsaminaceae / Impatiens","coleus":"Lamiaceae / Plectranthus"
 };
 function lookupGenus(name){
   if(!name)return "";
@@ -386,7 +522,7 @@ function buildPlantCard(p){
     (p.notes?'<div style="font-size:11px;color:#7a8e68;margin-top:3px;line-height:1.5">'+q(p.notes)+'</div>':'')+'</div>'+
     '<div style="display:flex;gap:5px;margin-left:8px">'+
     '<button onclick="startEdit(\''+pid+'\')" style="background:none;border:none;color:#6a8858;cursor:pointer;font-size:14px">✏️</button>'+
-    '<button onclick="confirm2(\'确认删除 \\\"'+q(p.name)+'\\\" 吗？此操作不可撤销。\',function(){delPlant(\''+pid+'\');})" style="background:none;border:none;color:#9a7060;cursor:pointer;font-size:14px">✕</button>'+
+    '<button onclick="confirm2(\'确认删除「'+q(p.name)+'」吗？此操作不可撤销。\',function(){delPlant(\''+pid+'\');})" style="background:none;border:none;color:#9a7060;cursor:pointer;font-size:14px">✕</button>'+
     '</div></div>'+
     '<div style="background:rgba(180,210,160,0.35);border:1px solid rgba(150,190,130,0.4);border-radius:9px;padding:10px 13px;font-size:12.5px;color:#3a5228;line-height:1.8;white-space:pre-wrap">'+q(adv)+'</div>'+
     '<div style="display:flex;gap:6px">'+
@@ -499,7 +635,19 @@ function openLib(tab){S.showLib=true;S.libTab=tab||"fert";S.libSearch="";S.libEx
 function closeLib(){S.showLib=false;render();}
 function setLibTab(t){S.libTab=t;S.libSearch="";S.libExpanded=null;S.libAdding=false;libForm={name:"",note:"",interval:0,filled:{},manualFields:{}};render();}
 function toggleLibItem(id){S.libExpanded=S.libExpanded===id?null:id;render();}
-function setLibAdding(v){S.libAdding=v;if(!v)libForm={name:"",note:"",interval:0,filled:{},manualFields:{}};render();}
+function setLibAdding(v,initName){
+  S.libAdding=v;
+  if(!v){libForm={name:"",note:"",interval:0,filled:{},manualFields:{}};}
+  else{
+    libForm={name:initName||"",note:"",interval:0,filled:{},manualFields:{}};
+    if(libForm.name){
+      var isFert=S.libTab==="fert";
+      libForm.filled=autoFill(libForm.name,isFert);
+      if(libForm.filled.interval)libForm.interval=libForm.filled.interval;
+    }
+  }
+  render();
+}
 function doLibMatch(){
   var el=document.getElementById("lib_name_inp");
   if(el)libForm.name=el.value;
@@ -545,7 +693,7 @@ function buildLibModal(){
     '<div style="background:rgba(200,225,185,0.25);padding:12px 14px;border-bottom:1px solid rgba(150,185,130,0.25)">'+
     '<div style="font-size:11px;font-weight:700;color:#4a6a38;margin-bottom:10px">录入新'+(isFert?"肥料":"药品")+'</div>'+
     '<div style="display:flex;flex-direction:column;gap:8px">'+
-    '<div><span style="'+LB()+'">'+(isFert?"肥料":"药品")+'名称 *</span><input id="lib_name_inp" placeholder="输入名称，点击匹配查询…" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">'+(isFert?"肥料":"药品")+'名称 *</span><input id="lib_name_inp" value="'+q(libForm.name||"")+'" placeholder="输入名称，点击匹配查询…" style="'+FS+'"/></div>'+
     '<button onclick="doLibMatch()" style="width:100%;padding:8px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(140,185,110,0.3);border:1px solid rgba(120,165,90,0.5);color:#2e4a22">🔍 匹配资料库</button>'+
     (libForm.name&&Object.keys(filled).length>0?
       '<div style="background:rgba(180,220,150,0.25);border-radius:8px;padding:10px 12px;border:1px solid rgba(150,190,120,0.4)">'+
@@ -588,7 +736,7 @@ function buildLibModal(){
       (item.note?'<div style="margin-top:6px;font-size:11px;color:#7a9060">📝 '+q(item.note)+'</div>':"")+
       '<div style="display:flex;gap:6px;margin-top:10px">'+
       '<button onclick="recordLibUsed(\''+(isFert?"fert":"med")+'\',\''+item.id+'\')" style="flex:1;padding:7px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(140,185,110,0.3);border:1px solid rgba(120,165,90,0.5);color:#2e4a22">✓ 记录使用（今天）</button>'+
-      '<button onclick="confirm2(\'确认从库存中删除 \\\"'+q(item.name)+'\\\" 吗？\',function(){delLibItem(\''+(isFert?"fert":"med")+'\',\''+item.id+'\');})" style="padding:7px 12px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,160,140,0.2);border:1px solid rgba(190,120,100,0.4);color:#8a3020">删除</button>'+
+      '<button onclick="confirm2(\'确认从库存中删除「'+q(item.name)+'」吗？\',function(){delLibItem(\''+(isFert?"fert":"med")+'\',\''+item.id+'\');})" style="padding:7px 12px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,160,140,0.2);border:1px solid rgba(190,120,100,0.4);color:#8a3020">删除</button>'+
       '</div></div>';}
     return '<div style="background:rgba(255,255,255,0.6);border:1px solid '+(due?"rgba(200,140,50,0.5)":"rgba(150,185,130,0.35)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
       '<button onclick="toggleLibItem(\''+item.id+'\')" style="width:100%;background:none;border:none;cursor:pointer;font-family:inherit;padding:11px 14px;display:flex;align-items:center;gap:10px;text-align:left">'+
@@ -603,8 +751,8 @@ function buildLibModal(){
     addForm+
     (!S.libAdding?'<div style="padding:8px 14px;border-bottom:1px solid rgba(150,185,130,0.2);display:flex;gap:7px">'+
       '<div style="flex:1;position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#8aaa78">🔍</span>'+
-      '<input type="search" autocomplete="off" placeholder="搜索库存…" style="'+FS+'padding-left:30px;" onkeydown="if(event.key===\'Enter\'){S.libSearch=this.value;render();}"/></div>'+
-      '<button onclick="setLibAdding(true)" style="padding:7px 14px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;background:rgba(140,185,110,0.35);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap">+ 添加</button></div>'
+      '<input id="lib_search_inp" type="search" autocomplete="off" placeholder="搜索库存…" style="'+FS+'padding-left:30px;" onkeydown="if(event.key===\'Enter\'){S.libSearch=this.value;render();}"/></div>'+
+      '<button onclick="var el=document.getElementById(\'lib_search_inp\');setLibAdding(true,el?el.value:\'\')" style="padding:7px 14px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;background:rgba(140,185,110,0.35);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap">+ 添加</button></div>'
     :"")+
     '<div style="flex:1;overflow-y:auto;padding:10px 14px">'+
     (arr.length===0&&!S.libAdding?'<div style="text-align:center;padding:30px 0;color:#9aaa88;font-size:12px">库存为空<br/>点击「+ 添加」录入你的'+(isFert?"肥料":"药品")+'</div>':"")+
@@ -613,7 +761,42 @@ function buildLibModal(){
     '</div></div>';
 }
 
-// ── Main App ──
+// ── Export / Import ──
+function exportData(){
+  var data={plants:S.plants,fert:LIB.fert,med:LIB.med,exportTime:new Date().toISOString()};
+  var json=JSON.stringify(data,null,2);
+  var blob=new Blob([json],{type:"application/json;charset=utf-8"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  var now=new Date();
+  a.href=url;
+  a.download="植物志备份_"+now.getFullYear()+(now.getMonth()+1)+now.getDate()+".json";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importData(){
+  var input=document.createElement("input");
+  input.type="file";input.accept=".json,application/json";
+  input.onchange=function(e){
+    var file=e.target.files[0];if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(evt){
+      try{
+        var data=JSON.parse(evt.target.result);
+        var pc=0,fc=0,mc=0;
+        if(Array.isArray(data.plants)){S.plants=data.plants;pc=data.plants.length;}
+        if(Array.isArray(data.fert)){LIB.fert=data.fert;fc=data.fert.length;}
+        if(Array.isArray(data.med)){LIB.med=data.med;mc=data.med.length;}
+        storePlants();saveLib();render();
+        alert("✅ 导入成功！\n植物："+pc+"株\n肥料库："+fc+"种\n药品库："+mc+"种");
+      }catch(err){alert("❌ 导入失败，请确认文件是由「植物志」导出的备份。");}
+    };
+    reader.readAsText(file);
+  };
+  document.body.appendChild(input);input.click();document.body.removeChild(input);
+}
+
+
 function buildApp(){
   var urgent=0;for(var i=0;i<S.plants.length;i++){var p=S.plants[i];var w=ds(ld(p.waterLog)),f=ds(ld(p.fertLog));if(getN(w)>=p.wi||getN(f)>=p.fi)urgent++;}
   var usedCats=[];for(var j=0;j<S.plants.length;j++){var c=S.plants[j].category;if(c&&usedCats.indexOf(c)<0)usedCats.push(c);}
@@ -632,6 +815,10 @@ function buildApp(){
     (urgent>0?'<div style="background:rgba(210,150,60,0.18);border:1px solid rgba(180,130,50,0.4);border-radius:20px;padding:3px 14px;font-size:12px;color:#7a5010">⚠️ '+urgent+'株植物待处理</div>':"")+
     '<button onclick="openLib(\'fert\')" style="background:rgba(150,195,130,0.2);border:1px solid rgba(130,175,110,0.4);border-radius:20px;padding:3px 14px;font-size:12px;color:#3a5a28;cursor:pointer;font-family:inherit">🌿 肥料库</button>'+
     '<button onclick="openLib(\'med\')" style="background:rgba(210,160,130,0.2);border:1px solid rgba(190,140,110,0.4);border-radius:20px;padding:3px 14px;font-size:12px;color:#5a3a28;cursor:pointer;font-family:inherit">💊 药品库</button>'+
+    '</div>'+
+    '<div style="margin-top:8px;display:flex;justify-content:center;gap:6px">'+
+    '<button onclick="exportData()" style="background:rgba(140,185,110,0.2);border:1px solid rgba(120,165,90,0.4);border-radius:16px;padding:3px 12px;font-size:11px;color:#3a5a28;cursor:pointer;font-family:inherit" title="导出备份（解决桌面图标数据丢失）">💾 备份数据</button>'+
+    '<button onclick="importData()" style="background:rgba(165,195,220,0.2);border:1px solid rgba(140,175,210,0.4);border-radius:16px;padding:3px 12px;font-size:11px;color:#384a68;cursor:pointer;font-family:inherit" title="从备份文件恢复数据">📂 恢复数据</button>'+
     '</div></div>'+
     '<div style="max-width:460px;margin:0 auto;padding:0 16px">'+
     '<div style="background:rgba(255,255,255,0.55);border:1px solid rgba(150,185,130,0.5);border-radius:18px;padding:17px 19px;margin-top:18px">'+
@@ -658,7 +845,7 @@ function buildApp(){
     (S.plants.length===0&&!S.showAdd?'<div style="text-align:center;padding:44px 0"><div style="font-size:40px;margin-bottom:10px">🪴</div><div style="font-size:12px;color:#8a9e78;line-height:2.4">还没有植物<br/>点击「+ 添加植物」开始</div></div>':"")+
     (S.plants.length>0&&list.length===0?'<div style="text-align:center;padding:30px 0;color:#8aaa78;font-size:12px">没有符合条件的植物</div>':"")+
     '<div style="display:flex;flex-direction:column;gap:11px">'+plantRows+'</div></div>'+
-    '<div style="text-align:center;margin-top:30px;font-size:10px;color:#8a9a7a;line-height:2">植物数据本地保存 · 天气自动更新</div></div></div>';
+    '<div style="text-align:center;margin-top:30px;font-size:10px;color:#8a9a7a;line-height:2">植物数据本地保存 · 天气自动更新<br/>📌 添加到桌面前请先「备份数据」，再在桌面图标中「恢复数据」</div></div></div>';
 }
 
 // ── Weather ──
