@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="植物志"/>
+<meta name="theme-color" content="#3a5030"/>
+<title>植物志</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Noto Sans SC',sans-serif;min-height:100vh;background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc);color:#3a5030}
+button:active{opacity:.7}
+input::placeholder,textarea::placeholder{color:#9aaa88;opacity:1}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+var APPNAME="植物志";
+var W={loc:"Surrey, BC",upd:"加载中",temp:16,hum:83,pre:0,cond:"多云",emo:"⛅",rain:false,
+  fc:[{d:"今天",e:"⛅",t:"多云",hi:null,lo:null},{d:"明天",e:"☀️",t:"晴天",hi:null,lo:null},{d:"后天",e:"🌤️",t:"晴转多云",hi:null,lo:null}],
+  tip:"正在获取天气..."};
+var SK="plants_v9";
+
+// ── Genus DB ──
+var GENUS_DB={
+  // 蔷薇科
+  "玫瑰":"蔷薇科 蔷薇属","月季":"蔷薇科 蔷薇属","蔷薇":"蔷薇科 蔷薇属",
+  "苹果":"蔷薇科 苹果属","海棠":"蔷薇科 苹果属","木瓜":"蔷薇科 木瓜属",
+  "梨":"蔷薇科 梨属","桃":"蔷薇科 桃属","李":"蔷薇科 李属",
+  "樱桃":"蔷薇科 李属","杏":"蔷薇科 杏属","李子":"蔷薇科 李属",
+  "草莓":"蔷薇科 草莓属","棣棠":"蔷薇科 棣棠属","绣线菊":"蔷薇科 绣线菊属",
+  "枇杷":"蔷薇科 枇杷属","山楂":"蔷薇科 山楂属",
+  // 芍药科
+  "牡丹":"芍药科 芍药属","芍药":"芍药科 芍药属",
+  // 山茶科
+  "茶花":"山茶科 山茶属","山茶":"山茶科 山茶属","茶树":"山茶科 山茶属",
+  // 杜鹃花科
+  "杜鹃":"杜鹃花科 杜鹃属","映山红":"杜鹃花科 杜鹃属",
+  "蓝莓":"杜鹃花科 越橘属","越橘":"杜鹃花科 越橘属",
+  // 虎耳草科
+  "绣球":"虎耳草科 绣球属","八仙花":"虎耳草科 绣球属",
+  // 唇形科
+  "薰衣草":"唇形科 薰衣草属","薄荷":"唇形科 薄荷属",
+  "罗勒":"唇形科 罗勒属","迷迭香":"唇形科 迷迭香属",
+  "鼠尾草":"唇形科 鼠尾草属","百里香":"唇形科 百里香属",
+  "薄荷":"唇形科 薄荷属","香薷":"唇形科 香薷属","牛至":"唇形科 牛至属",
+  // 木犀科
+  "桂花":"木犀科 木犀属","茉莉":"木犀科 素馨属","丁香":"木犀科 丁香属",
+  "连翘":"木犀科 连翘属","迎春":"木犀科 素馨属","女贞":"木犀科 女贞属",
+  "木犀":"木犀科 木犀属",
+  // 天南星科
+  "绿萝":"天南星科 麒麟叶属","龟背竹":"天南星科 龟背竹属","白掌":"天南星科 白鹤芋属",
+  "合果芋":"天南星科 合果芋属","花叶万年青":"天南星科 花叶万年青属",
+  "广东万年青":"天南星科 广东万年青属","海芋":"天南星科 海芋属",
+  "马蹄莲":"天南星科 马蹄莲属",
+  // 天门冬科
+  "吊兰":"天门冬科 吊兰属","虎皮兰":"天门冬科 虎尾兰属",
+  "富贵竹":"天门冬科 龙血树属","龙血树":"天门冬科 龙血树属",
+  "朱蕉":"天门冬科 朱蕉属","散尾葵":"棕榈科 散尾葵属",
+  "玉簪":"天门冬科 玉簪属","吉祥草":"天门冬科 吉祥草属",
+  // 桑科
+  "橡皮树":"桑科 榕属","榕树":"桑科 榕属","琴叶榕":"桑科 榕属",
+  "无花果":"桑科 榕属",
+  // 兰科
+  "蝴蝶兰":"兰科 蝴蝶兰属","石斛":"兰科 石斛属","文心兰":"兰科 文心兰属",
+  "君子兰":"石蒜科 君子兰属","卡特兰":"兰科 卡特兰属",
+  // 景天科/仙人掌科
+  "多肉":"景天科（多科）","景天":"景天科 景天属","石莲花":"景天科 拟石莲属",
+  "仙人掌":"仙人掌科","仙人球":"仙人掌科","芦荟":"阿福花科 芦荟属",
+  // 茄科
+  "番茄":"茄科 番茄属","辣椒":"茄科 辣椒属","茄子":"茄科 茄属",
+  "甜椒":"茄科 辣椒属","彩椒":"茄科 辣椒属","西红柿":"茄科 番茄属",
+  // 葫芦科
+  "黄瓜":"葫芦科 黄瓜属","南瓜":"葫芦科 南瓜属","西葫芦":"葫芦科 南瓜属",
+  "西瓜":"葫芦科 西瓜属","甜瓜":"葫芦科 黄瓜属","苦瓜":"葫芦科 苦瓜属",
+  "丝瓜":"葫芦科 丝瓜属","冬瓜":"葫芦科 冬瓜属",
+  // 菊科
+  "生菜":"菊科 莴苣属","莴苣":"菊科 莴苣属","向日葵":"菊科 向日葵属",
+  "菊花":"菊科 菊属","大丽花":"菊科 大丽花属","百日草":"菊科 百日草属",
+  "千日菊":"菊科 菊属","雏菊":"菊科 雏菊属","金盏菊":"菊科 金盏花属",
+  "翠菊":"菊科 翠菊属","万寿菊":"菊科 万寿菊属",
+  // 苋科/藜科
+  "菠菜":"苋科 菠菜属","甜菜":"苋科 甜菜属","苋菜":"苋科 苋属",
+  "千日红":"苋科 千日红属","鸡冠花":"苋科 青葙属",
+  // 石蒜科/葱属
+  "韭菜":"石蒜科 葱属","葱":"石蒜科 葱属","大蒜":"石蒜科 葱属",
+  "洋葱":"石蒜科 葱属","水仙":"石蒜科 水仙属","君子兰":"石蒜科 君子兰属",
+  // 芸香科
+  "柠檬":"芸香科 柑橘属","橙":"芸香科 柑橘属","金桔":"芸香科 金柑属",
+  "柚子":"芸香科 柑橘属","柑橘":"芸香科 柑橘属","橘子":"芸香科 柑橘属",
+  "柠檬草":"禾本科 柠檬草属",
+  // 葡萄科/胡桃科/壳斗科
+  "葡萄":"葡萄科 葡萄属","核桃":"胡桃科 胡桃属","板栗":"壳斗科 栗属",
+  "橡树":"壳斗科 栎属","栎树":"壳斗科 栎属",
+  // 棕榈科
+  "棕榈":"棕榈科 棕榈属","椰子":"棕榈科 椰子属",
+  "蒲葵":"棕榈科 蒲葵属","鱼尾葵":"棕榈科 鱼尾葵属",
+  // 禾本科
+  "竹":"禾本科 竹亚科","芦苇":"禾本科 芦苇属",
+  "芒草":"禾本科 芒属","薏苡":"禾本科 薏苡属",
+  // 百合科/鸢尾科
+  "百合":"百合科 百合属","郁金香":"百合科 郁金香属",
+  "风信子":"百合科 风信子属","鸢尾":"鸢尾科 鸢尾属",
+  "美人蕉":"美人蕉科 美人蕉属",
+  // 秋海棠科/报春花科
+  "秋海棠":"秋海棠科 秋海棠属","报春花":"报春花科 报春花属",
+  "仙客来":"报春花科 仙客来属",
+  // 大戟科
+  "一品红":"大戟科 大戟属","橡皮草":"大戟科",
+  // 旋花科
+  "牵牛花":"旋花科 牵牛属",
+  // 锦葵科
+  "木槿":"锦葵科 木槿属","扶桑":"锦葵科 木槿属","芙蓉":"锦葵科 木槿属",
+  // 豆科
+  "紫藤":"豆科 紫藤属","紫荆":"豆科 紫荆属","合欢":"豆科 合欢属",
+  "豇豆":"豆科 豇豆属","大豆":"豆科 大豆属","蚕豆":"豆科 野豌豆属",
+  "豌豆":"豆科 豌豆属","菜豆":"豆科 菜豆属",
+  // 忍冬科
+  "金银花":"忍冬科 忍冬属","忍冬":"忍冬科 忍冬属",
+  // 藤本/攀援
+  "凌霄":"紫葳科 凌霄属","爬山虎":"葡萄科 地锦属","常春藤":"五加科 常春藤属",
+  "铁线莲":"毛茛科 铁线莲属",
+  // 银杏/松柏
+  "银杏":"银杏科 银杏属","松树":"松科 松属","柏树":"柏科 柏属",
+  "冬青":"冬青科 冬青属","紫杉":"红豆杉科 红豆杉属",
+  // 芭蕉/棕榈
+  "芭蕉":"芭蕉科 芭蕉属","香蕉":"芭蕉科 芭蕉属",
+  "苏铁":"苏铁科 苏铁属","龙舌兰":"天门冬科 龙舌兰属",
+  // 天竺葵/堇菜
+  "天竺葵":"牻牛儿苗科 天竺葵属","三色堇":"堇菜科 堇菜属",
+  "角堇":"堇菜科 堇菜属","矮牵牛":"茄科 矮牵牛属",
+  // 荷花/睡莲
+  "荷花":"莲科 莲属","睡莲":"睡莲科 睡莲属",
+  // 紫薇/梧桐
+  "紫薇":"千屈菜科 紫薇属","梧桐":"锦葵科 梧桐属",
+  // 鸭跖草科
+  "鸭跖草":"鸭跖草科 鸭跖草属","紫露草":"鸭跖草科 紫露草属","吊竹梅":"鸭跖草科 紫露草属",
+  // 凤梨科/苦苣苔科
+  "凤梨":"凤梨科","非洲紫罗兰":"苦苣苔科 非洲紫罗兰属",
+  // 十字花科（修正：防止被蔷薇科"樱桃"误匹配）
+  "樱桃萝卜":"十字花科 萝卜属","樱桃番茄":"茄科 番茄属","樱桃椒":"茄科 辣椒属",
+  "萝卜":"十字花科 萝卜属","白萝卜":"十字花科 萝卜属","胡萝卜":"伞形科 胡萝卜属",
+  "油菜":"十字花科 芸薹属","白菜":"十字花科 芸薹属","大白菜":"十字花科 芸薹属",
+  "小白菜":"十字花科 芸薹属","芥菜":"十字花科 芸薹属","卷心菜":"十字花科 芸薹属",
+  "花椰菜":"十字花科 芸薹属","西兰花":"十字花科 芸薹属","羽衣甘蓝":"十字花科 芸薹属",
+  "芝麻菜":"十字花科 芝麻菜属","荠菜":"十字花科 荠属","独行菜":"十字花科 独行菜属",
+  "radish":"Brassicaceae / Raphanus","daikon":"Brassicaceae / Raphanus",
+  "cabbage":"Brassicaceae / Brassica","broccoli":"Brassicaceae / Brassica",
+  "kale":"Brassicaceae / Brassica","cauliflower":"Brassicaceae / Brassica",
+  "bok choy":"Brassicaceae / Brassica","arugula":"Brassicaceae / Eruca",
+  "carrot":"Apiaceae / Daucus","turnip":"Brassicaceae / Brassica",
+  "猕猴桃":"猕猴桃科 猕猴桃属","奇异果":"猕猴桃科 猕猴桃属",
+  // 芸香科（花椒等香料）
+  "花椒":"芸香科 花椒属","青花椒":"芸香科 花椒属","红花椒":"芸香科 花椒属",
+  // 樟科（月桂/香叶）
+  "香叶":"樟科 月桂属","月桂":"樟科 月桂属","肉桂":"樟科 肉桂属","桂皮":"樟科 肉桂属",
+  // 胡椒科
+  "胡椒":"胡椒科 胡椒属","黑胡椒":"胡椒科 胡椒属","白胡椒":"胡椒科 胡椒属",
+  // 木兰科
+  "八角":"木兰科 八角属","八角茴香":"木兰科 八角属",
+  // 伞形科（香料）
+  "小茴香":"伞形科 茴香属","茴香":"伞形科 茴香属","莳萝":"伞形科 莳萝属",
+  "香菜":"伞形科 芫荽属","芫荽":"伞形科 芫荽属","芹菜":"伞形科 芹属",
+  "欧芹":"伞形科 欧芹属","香芹":"伞形科 欧芹属","细叶芹":"伞形科 细叶芹属",
+  "独活":"伞形科 独活属","前胡":"伞形科 前胡属",
+  // 唇形科（补充香料）
+  "紫苏":"唇形科 紫苏属","藿香":"唇形科 藿香属","香蜂草":"唇形科 蜜蜂花属",
+  "柠檬香蜂草":"唇形科 蜜蜂花属","甜罗勒":"唇形科 罗勒属",
+  "泰国罗勒":"唇形科 罗勒属","圣罗勒":"唇形科 罗勒属",
+  "冬香薄荷":"唇形科 香薄荷属","夏香薄荷":"唇形科 香薄荷属",
+  // 姜科
+  "姜":"姜科 姜属","生姜":"姜科 姜属","姜黄":"姜科 姜黄属","高良姜":"姜科 山姜属",
+  "砂仁":"姜科 豆蔻属","草果":"姜科 豆蔻属","豆蔻":"姜科 豆蔻属",
+  // 桃金娘科
+  "丁香花":"桃金娘科 蒲桃属","多香果":"桃金娘科 多香果属","番石榴":"桃金娘科 番石榴属",
+  // 荨麻科/大麻科
+  "啤酒花":"大麻科 葎草属",
+  // English spice names
+  "kiwi":"Actinidiaceae / Actinidia","kiwifruit":"Actinidiaceae / Actinidia",
+  "sichuan pepper":"Rutaceae / Zanthoxylum","bay leaf":"Lauraceae / Laurus",
+  "bay laurel":"Lauraceae / Laurus","cinnamon":"Lauraceae / Cinnamomum",
+  "black pepper":"Piperaceae / Piper","star anise":"Schisandraceae / Illicium",
+  "fennel":"Apiaceae / Foeniculum","dill":"Apiaceae / Anethum",
+  "cilantro":"Apiaceae / Coriandrum","coriander":"Apiaceae / Coriandrum",
+  "parsley":"Apiaceae / Petroselinum","chervil":"Apiaceae / Anthriscus",
+  "shiso":"Lamiaceae / Perilla","perilla":"Lamiaceae / Perilla",
+  "lemon balm":"Lamiaceae / Melissa","agastache":"Lamiaceae / Agastache",
+  "ginger":"Zingiberaceae / Zingiber","turmeric":"Zingiberaceae / Curcuma",
+  "galangal":"Zingiberaceae / Alpinia","cardamom":"Zingiberaceae / Elettaria",
+  "clove":"Myrtaceae / Syzygium","allspice":"Myrtaceae / Pimenta",
+  "guava":"Myrtaceae / Psidium","hops":"Cannabaceae / Humulus",
+  "hosta":"Asparagaceae / Hosta","hydrangea":"Hydrangeaceae / Hydrangea",
+  "rose":"Rosaceae / Rosa","lavender":"Lamiaceae / Lavandula",
+  "mint":"Lamiaceae / Mentha","basil":"Lamiaceae / Ocimum",
+  "rosemary":"Lamiaceae / Salvia","sage":"Lamiaceae / Salvia",
+  "thyme":"Lamiaceae / Thymus","oregano":"Lamiaceae / Origanum",
+  "orchid":"Orchidaceae","moth orchid":"Orchidaceae / Phalaenopsis",
+  "pothos":"Araceae / Epipremnum","monstera":"Araceae / Monstera",
+  "peace lily":"Araceae / Spathiphyllum","snake plant":"Asparagaceae / Dracaena",
+  "rubber plant":"Moraceae / Ficus","fiddle leaf":"Moraceae / Ficus",
+  "spider plant":"Asparagaceae / Chlorophytum","zz plant":"Araceae / Zamioculcas",
+  "philodendron":"Araceae / Philodendron","calathea":"Marantaceae / Calathea",
+  "anthurium":"Araceae / Anthurium","croton":"Euphorbiaceae / Codiaeum",
+  "dracaena":"Asparagaceae / Dracaena","yucca":"Asparagaceae / Yucca",
+  "bromeliad":"Bromeliaceae","air plant":"Bromeliaceae / Tillandsia",
+  "boston fern":"Nephrolepidaceae / Nephrolepis","maidenhair":"Pteridaceae / Adiantum",
+  "prayer plant":"Marantaceae / Maranta","nerve plant":"Acanthaceae / Fittonia",
+  "string of pearls":"Asteraceae / Senecio","string of hearts":"Apocynaceae / Ceropegia",
+  "bird of paradise":"Strelitziaceae / Strelitzia",
+  "wisteria":"Fabaceae / Wisteria","bougainvillea":"Nyctaginaceae / Bougainvillea",
+  "hibiscus":"Malvaceae / Hibiscus","magnolia":"Magnoliaceae / Magnolia",
+  "dogwood":"Cornaceae / Cornus","forsythia":"Oleaceae / Forsythia",
+  "tomato":"Solanaceae / Solanum","pepper":"Solanaceae / Capsicum",
+  "eggplant":"Solanaceae / Solanum","cucumber":"Cucurbitaceae / Cucumis",
+  "pumpkin":"Cucurbitaceae / Cucurbita","zucchini":"Cucurbitaceae / Cucurbita",
+  "watermelon":"Cucurbitaceae / Citrullus","lettuce":"Asteraceae / Lactuca",
+  "spinach":"Amaranthaceae / Spinacia","onion":"Amaryllidaceae / Allium",
+  "garlic":"Amaryllidaceae / Allium","leek":"Amaryllidaceae / Allium",
+  "strawberry":"Rosaceae / Fragaria","blueberry":"Ericaceae / Vaccinium",
+  "raspberry":"Rosaceae / Rubus","blackberry":"Rosaceae / Rubus",
+  "apple":"Rosaceae / Malus","peach":"Rosaceae / Prunus",
+  "cherry":"Rosaceae / Prunus","plum":"Rosaceae / Prunus",
+  "pear":"Rosaceae / Pyrus","apricot":"Rosaceae / Prunus",
+  "lemon":"Rutaceae / Citrus","orange":"Rutaceae / Citrus",
+  "lime":"Rutaceae / Citrus","grapefruit":"Rutaceae / Citrus",
+  "walnut":"Juglandaceae / Juglans","chestnut":"Fagaceae / Castanea",
+  "fig":"Moraceae / Ficus","grape":"Vitaceae / Vitis",
+  "camellia":"Theaceae / Camellia","azalea":"Ericaceae / Rhododendron",
+  "jasmine":"Oleaceae / Jasminum","lilac":"Oleaceae / Syringa",
+  "succulent":"Crassulaceae","cactus":"Cactaceae","aloe":"Asphodelaceae / Aloe",
+  "sunflower":"Asteraceae / Helianthus","dahlia":"Asteraceae / Dahlia",
+  "chrysanthemum":"Asteraceae / Chrysanthemum","marigold":"Asteraceae / Tagetes",
+  "geranium":"Geraniaceae / Pelargonium","begonia":"Begoniaceae / Begonia",
+  "petunia":"Solanaceae / Petunia","pansy":"Violaceae / Viola",
+  "violet":"Violaceae / Viola","tulip":"Liliaceae / Tulipa",
+  "hyacinth":"Asparagaceae / Hyacinthus","narcissus":"Amaryllidaceae / Narcissus",
+  "daffodil":"Amaryllidaceae / Narcissus","lily":"Liliaceae / Lilium",
+  "iris":"Iridaceae / Iris","lotus":"Nelumbonaceae / Nelumbo",
+  "water lily":"Nymphaeaceae / Nymphaea","bamboo":"Poaceae / Bambusoideae",
+  "banana":"Musaceae / Musa","palm":"Arecaceae",
+  "ivy":"Araliaceae / Hedera","clematis":"Ranunculaceae / Clematis",
+  "honeysuckle":"Caprifoliaceae / Lonicera",
+  "bleeding heart":"Papaveraceae / Lamprocapnos",
+  "impatiens":"Balsaminaceae / Impatiens","coleus":"Lamiaceae / Plectranthus"
+};
+function lookupGenus(name){
+  if(!name)return "";
+  var nl=name.trim().toLowerCase();
+  var keys=Object.keys(GENUS_DB);
+  // exact match first
+  for(var i=0;i<keys.length;i++){if(keys[i].toLowerCase()===nl)return GENUS_DB[keys[i]];}
+  // longest-key substring match (avoids "桃" matching inside "猕猴桃")
+  var sorted=keys.slice().sort(function(a,b){return b.length-a.length;});
+  for(var j=0;j<sorted.length;j++){
+    var k=sorted[j].toLowerCase();
+    if(nl.indexOf(k)>=0||k.indexOf(nl)>=0)return GENUS_DB[sorted[j]];
+  }
+  return "";
+}
+
+// ── Reference DB ──
+var REF_FERT={
+  "复合肥":{type:"化肥",npk:"15-15-15",usage:"土施或稀释浇根",dosage:"5-10g/株；稀释500-800倍",interval:14,suitable:"果树、蔬菜、花卉",caution:"避免直接接触根部；高温期减量"},
+  "尿素":{type:"氮肥",npk:"46-0-0",usage:"土施或叶面喷施",dosage:"土施3-5g/株；叶面0.5-1%",interval:21,suitable:"蔬菜、果树",caution:"用量过大易烧根；花期禁止过量"},
+  "磷酸二氢钾":{type:"磷钾肥",npk:"0-52-34",usage:"叶面喷施或浇根",dosage:"1-3g/L",interval:14,suitable:"果树、花卉、番茄",caution:"浓度过高易灼叶；高温强光下避免叶面喷施"},
+  "有机肥":{type:"有机肥",npk:"约2-1-1",usage:"基肥或穴施",dosage:"100-300g/株；盆栽20-50g",interval:90,suitable:"所有植物",caution:"务必充分腐熟，生粪会烧根"},
+  "缓释肥":{type:"缓释肥",npk:"14-14-14",usage:"混入基质或表面撒施",dosage:"5-10g/升基质",interval:120,suitable:"盆栽、观叶",caution:"高温时释放加快；勿与根系直接接触"},
+  "奥绿":{type:"缓释肥",npk:"14-14-14",usage:"混入基质或表面撒施",dosage:"5-10g/升基质",interval:120,suitable:"盆栽、观叶",caution:"高温时释放加快"},
+  "魔肥":{type:"缓释肥",npk:"14-14-14",usage:"混入基质或表面撒施",dosage:"5-10g/升基质",interval:90,suitable:"盆栽、花卉",caution:"按说明用量，勿过量"},
+  "花多多":{type:"水溶肥",npk:"30-10-10",usage:"浇根或叶面喷施",dosage:"稀释2000-3000倍",interval:10,suitable:"花卉、多肉、蔬菜",caution:"苗期减半；按号数选择"},
+  "水溶肥":{type:"水溶肥",npk:"均衡型",usage:"浇根或叶面喷施",dosage:"稀释1000-2000倍",interval:10,suitable:"各类植物",caution:"按说明稀释"},
+  "鱼腥水":{type:"有机液肥",npk:"约5-2-2",usage:"稀释浇根",dosage:"稀释50-100倍",interval:14,suitable:"叶菜、果蔬",caution:"需充分腐熟；室内慎用"},
+  "多肉专用肥":{type:"缓释肥",npk:"低氮高钾",usage:"土施少量",dosage:"按包装说明减半",interval:45,suitable:"多肉、仙人掌",caution:"休眠期禁施"},
+  "草木灰":{type:"钾肥",npk:"0-0-5",usage:"撒施或浸水浇根",dosage:"50-100g/株",interval:30,suitable:"果树、蔬菜",caution:"碱性，不可与氮肥混用"},
+  "腐殖酸":{type:"土壤改良",usage:"浇根",dosage:"稀释500-1000倍",interval:21,suitable:"所有植物",caution:"不可过量"}
+};
+var REF_MED={
+  "多菌灵":{type:"杀菌剂",chemical:"苯并咪唑类",target:"白粉病、灰霉病、炭疽病、枯萎病",dosage:"稀释800-1000倍",method:"喷雾或浇根",interval:10,safetyDays:15,caution:"连续使用易产生抗性，建议与百菌清轮换"},
+  "百菌清":{type:"杀菌剂",chemical:"有机氯",target:"霜霉病、早疫病、炭疽病、叶斑病",dosage:"稀释600-800倍",method:"喷雾",interval:10,safetyDays:7,caution:"不可与碱性农药混用"},
+  "吡虫啉":{type:"杀虫剂",chemical:"烟碱类",target:"蚜虫、粉虱、蓟马、叶蝉",dosage:"稀释1500-2000倍",method:"喷雾或灌根",interval:14,safetyDays:14,caution:"花期严禁使用（对蜜蜂高毒）"},
+  "阿维菌素":{type:"杀虫杀螨剂",chemical:"生物源",target:"红蜘蛛、叶螨、线虫、蚜虫",dosage:"稀释2000-3000倍",method:"叶面喷雾（正反面均喷）",interval:10,safetyDays:7,caution:"傍晚施用效果更好"},
+  "苦参碱":{type:"生物杀虫剂",chemical:"植物源",target:"蚜虫、红蜘蛛、菜青虫",dosage:"稀释800-1200倍",method:"喷雾",interval:7,safetyDays:3,caution:"见光分解快，傍晚或阴天使用"},
+  "波尔多液":{type:"杀菌剂",chemical:"无机铜制剂",target:"霜霉病、晚疫病、细菌性病害",dosage:"1:1:100（硫酸铜:石灰:水）",method:"喷雾",interval:14,safetyDays:14,caution:"现配现用；嫩叶期有药害"},
+  "石硫合剂":{type:"杀菌杀虫剂",chemical:"无机硫制剂",target:"白粉病、锈病、红蜘蛛、介壳虫",dosage:"生长期3-5波美度",method:"喷雾或涂干",interval:20,safetyDays:20,caution:"高温或花期禁用；不可与铜制剂混用"},
+  "甲基硫菌灵":{type:"杀菌剂",chemical:"苯并咪唑类",target:"白粉病、枯萎病、菌核病",dosage:"稀释800-1000倍",method:"喷雾",interval:10,safetyDays:14,caution:"与多菌灵有交叉抗性，轮换使用"},
+  "噻虫嗪":{type:"杀虫剂",chemical:"烟碱类",target:"粉虱、蚜虫、蓟马",dosage:"稀释3000-5000倍",method:"喷雾或灌根",interval:14,safetyDays:14,caution:"花期禁用"},
+  "螺螨酯":{type:"杀螨剂",chemical:"季酮酸类",target:"红蜘蛛、二斑叶螨",dosage:"稀释4000-5000倍",method:"叶面喷雾",interval:21,safetyDays:30,caution:"需在若螨期施用；每季最多用2次"},
+  "代森锰锌":{type:"杀菌剂",chemical:"有机硫",target:"霜霉病、早晚疫病、炭疽病",dosage:"稀释600-800倍",method:"喷雾",interval:7,safetyDays:15,caution:"避免高温用药"}
+};
+function autoFill(name,isF){
+  if(!name)return{};
+  var nl=name.toLowerCase();
+  var db=isF?REF_FERT:REF_MED;
+  var keys=Object.keys(db);
+  for(var i=0;i<keys.length;i++){
+    var k=keys[i].toLowerCase();
+    if(nl.indexOf(k)>=0||k.indexOf(nl)>=0)return JSON.parse(JSON.stringify(db[keys[i]]));
+  }
+  return{};
+}
+function suggest(name,isF){
+  var s=[];if(!name)return s;
+  var nl=name.toLowerCase();
+  if(isF){
+    if(nl.indexOf("氮")>=0)s.push("尿素","复合肥");
+    else if(nl.indexOf("磷")>=0||nl.indexOf("钾")>=0)s.push("磷酸二氢钾");
+    else if(nl.indexOf("有机")>=0)s.push("有机肥","鱼腥水");
+    else if(nl.indexOf("缓释")>=0)s.push("奥绿","魔肥");
+    else s.push("复合肥","有机肥","缓释肥");
+  } else {
+    if(nl.indexOf("菌")>=0||nl.indexOf("病")>=0)s.push("多菌灵","百菌清");
+    else if(nl.indexOf("虫")>=0||nl.indexOf("蚜")>=0)s.push("吡虫啉","苦参碱");
+    else if(nl.indexOf("螨")>=0)s.push("阿维菌素","螺螨酯");
+    else s.push("多菌灵","吡虫啉","阿维菌素");
+  }
+  return s.filter(function(x,i,a){return a.indexOf(x)===i;}).slice(0,3);
+}
+
+// ── Personal Library ──
+function loadLib(){
+  try{return{fert:JSON.parse(localStorage.getItem("lib_fert")||"[]"),med:JSON.parse(localStorage.getItem("lib_med")||"[]")};}
+  catch(e){return{fert:[],med:[]};}
+}
+function saveLib(){
+  try{localStorage.setItem("lib_fert",JSON.stringify(LIB.fert));localStorage.setItem("lib_med",JSON.stringify(LIB.med));}
+  catch(e){}
+}
+var LIB=loadLib();
+
+// ── Constants ──
+var SRCS=[{key:"seed",icon:"🌱",label:"种子自播"},{key:"sapling",icon:"🌿",label:"购入苗木"},{key:"mature",icon:"🪴",label:"购入成株"},{key:"bulb",icon:"🧅",label:"购入球根/种球"},{key:"cutting",icon:"✂️",label:"扦插繁殖"},{key:"graft",icon:"🔗",label:"嫁接"},{key:"division",icon:"🌾",label:"分株"},{key:"other",icon:"📦",label:"其他"}];
+var SMETHODS=["直播","穴盘育苗","营养钵","水培发芽","其他"];
+var SORTS=[{key:"entry",label:"录入时间"},{key:"name",label:"名称"},{key:"category",label:"类别"},{key:"planted",label:"定植时间"},{key:"location",label:"位置"}];
+var BLANK={name:"",variety:"",type:"",category:"",notes:"",source:"sapling",indoorStart:"",
+  buyDate:"",buyFrom:"",buySpec:"",sowDate:"",sowMethod:"",seedSource:"",
+  germDate:"",germNotes:"",opDate:"",opNotes:"",rootDate:"",
+  hardeningDate:"",hardeningDays:7,hardeningNotes:"",
+  prePlantDate:"",prePlantNotes:"",transplantDate:"",transplantNotes:"",
+  finalPlantDate:"",finalPlantNotes:"",finalPlantLocation:"",
+  wi:3,fi:14,mi:30,medMode:"symptom",waterLog:[],fertLog:[],medLog:[]};
+
+// ── Helpers ──
+function q(s){
+  var r=String(s==null?"":s);
+  r=r.replace(/&/g,"&amp;");r=r.replace(/</g,"&lt;");
+  r=r.replace(/>/g,"&gt;");r=r.replace(/"/g,"&quot;");
+  return r;
+}
+function td(){return new Date().toISOString().slice(0,10);}
+function ds(d){
+  if(!d)return null;
+  var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  var dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(d);
+  return Math.floor((Date.now()-dt)/86400000);
+}
+function fmt(d){
+  if(!d)return "—";
+  var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m?m[1]+"/"+m[2]+"/"+m[3]:d;
+}
+function ld(log){return log&&log.length?log[log.length-1].date:null;}
+var AI_R=[{k:["多肉","仙人掌"],w:10,f:30},{k:["玫瑰","月季"],w:2,f:10},{k:["薄荷","香草"],w:2,f:14},{k:["蝴蝶兰","兰花"],w:7,f:14},{k:["橡皮树","龟背竹"],w:5,f:21},{k:["绿萝","吊兰"],w:3,f:14},{k:["番茄","辣椒"],w:1,f:7}];
+function autoInt(n){for(var i=0;i<AI_R.length;i++){var r=AI_R[i];for(var j=0;j<r.k.length;j++){if(n.indexOf(r.k[j])>=0)return{wi:r.w,fi:r.f};}}return{wi:3,fi:14};}
+function getN(o,v){return o==null?999:o;}
+
+// ── Stage & Advice ──
+function getStage(p){
+  if(p.finalPlantDate)return "established";
+  if(p.transplantDate)return "transplanted";
+  if(p.hardeningDate&&p.indoorStart==="indoor")return "hardening";
+  if(p.source==="seed"){if(p.germDate)return "seedling";if(p.sowDate)return "germinating";}
+  if(p.source==="cutting"||p.source==="graft"){if(p.rootDate)return "rooted";if(p.opDate)return "rooting";}
+  if(p.source==="division"&&p.opDate&&!p.prePlantDate)return "recovering";
+  return "established";
+}
+function buildAdvice(p){
+  var temp=W.temp,hum=W.hum,pre=W.pre,rain=W.rain;
+  var wd=ds(ld(p.waterLog)),fd=ds(ld(p.fertLog));
+  var st=getStage(p);var L=[];
+  var SL={germinating:"📍 播种期",rooting:"📍 扦插/嫁接生根期",rooted:"📍 已生根待移栽",
+    seedling:"📍 幼苗期",recovering:"📍 分株恢复期",transplanted:"📍 移栽适应期",hardening:"📍 炼苗期"};
+  if(SL[st])L.push(SL[st]);
+  if(st==="germinating")L.push("💧 保持基质微湿，用喷壶轻喷");
+  else if(st==="rooting")L.push(hum>75?"💧 湿度偏高，基质微湿即可":"💧 保持基质湿润不积水，可叶面喷雾");
+  else if(st==="hardening"){var hd=p.hardeningDate?ds(p.hardeningDate):0;L.push("💧 炼苗期适度控水（第"+hd+"/"+(p.hardeningDays||7)+"天）");}
+  else if(st==="seedling"||st==="recovering"||st==="transplanted")L.push(getN(wd)>=p.wi?"💧 适量浇水，表土略干再浇":"💧 距下次浇水约"+(p.wi-wd)+"天");
+  else if(getN(wd)>=p.wi)L.push(rain||pre>3?"💧 今日有雨，可少量补水":hum>80?"💧 湿度"+hum+"%，建议减少浇水":temp>28?"💧 气温"+temp+"°C偏高，避开正午浇水":"💧 该浇水了"+(wd!=null?"（已"+wd+"天）":"")+"，今天合适");
+  else L.push("💧 距下次浇水约"+(p.wi-wd)+"天");
+  if(st==="germinating")L.push("🌿 发芽前禁止施肥");
+  else if(st==="rooting")L.push("🌿 生根前禁止施肥，会灼伤切口");
+  else if(st==="rooted")L.push(getN(fd)>=p.fi?"🌿 已生根，可施1/2浓度稀薄液肥":"🌿 距下次施肥约"+(p.fi-fd)+"天");
+  else if(st==="seedling"){var sd=p.germDate?ds(p.germDate):null;L.push(sd!==null&&sd<14?"🌿 出芽"+sd+"天，待2片真叶后施1/4浓度液肥":getN(fd)>=p.fi?"🌿 可施1/4浓度极稀薄液肥":"🌿 距下次施肥约"+(p.fi-fd)+"天");}
+  else if(st==="recovering"||st==="transplanted")L.push(st==="recovering"?"🌿 分株恢复期暂缓施肥":"🌿 移栽适应期暂缓施肥，约2周后再施");
+  else if(st==="hardening")L.push("🌿 炼苗期停止施肥");
+  else if(getN(fd)>=p.fi)L.push(temp<10?"🌿 气温偏低，可暂缓施肥":rain||pre>8?"🌿 雨天施肥易流失，雨后再施":"🌿 可以施肥了"+(fd!=null?"（已"+fd+"天）":"")+"，晴天效果好");
+  else L.push("🌿 距下次施肥约"+(p.fi-fd)+"天");
+  var lm=ld(p.medLog);
+  if(p.medMode==="symptom"){if(lm)L.push("💊 上次给药："+ds(lm)+"天前（点击记录新症状）");else L.push("💊 出现病虫害时点击记录给药");}
+  if(st==="hardening"){var hd2=p.hardeningDate?ds(p.hardeningDate):0;var left=Math.max(0,(p.hardeningDays||7)-hd2);L.push(left>0?"🌤️ 炼苗进度："+hd2+"/"+(p.hardeningDays||7)+"天，还需约"+left+"天":"✅ 炼苗完成，可移栽或定植！");}
+  if(hum<30)L.push("💦 空气干燥，可向叶面喷水");
+  if(temp>32)L.push("🌡️ 高温，注意遮阴");
+  if(temp<5)L.push("🧣 低温，移入室内防冻");
+  return L.join("\n");
+}
+
+// ── Storage ──
+function loadPlants(){try{return JSON.parse(localStorage.getItem(SK))||[];}catch(e){return[];}}
+function storePlants(){try{localStorage.setItem(SK,JSON.stringify(S.plants));}catch(e){}}
+
+// ── State ──
+var S={
+  plants:loadPlants(),editId:null,showAdd:false,
+  search:"",filterCat:"all",sortBy:"entry",
+  showLib:false,libTab:"fert",libSearch:"",libExpanded:null,libAdding:false,
+  logPlantId:null,logType:null,
+  calPlantId:null,calYr:new Date().getFullYear(),calMo:new Date().getMonth(),calSel:null,
+  formData:null,formTab:"basic",
+  confirmCb:null,confirmMsg:null
+};
+var libForm={name:"",note:"",interval:0,filled:{},manualFields:{}};
+
+// ── Style helpers ──
+var FS="background:rgba(255,255,255,0.7);border:1px solid rgba(150,185,130,0.5);border-radius:8px;padding:8px 12px;color:#2e4a22;font-size:13px;font-family:inherit;width:100%;outline:none;box-sizing:border-box;";
+function gbtn(active){return "padding:4px 12px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:11px;white-space:nowrap;background:"+(active?"rgba(155,195,125,0.45)":"rgba(180,210,160,0.15)")+";border:1px solid "+(active?"rgba(130,175,100,0.6)":"rgba(150,185,130,0.3)")+";color:"+(active?"#2e4a22":"#6a8858")+";";}
+function LB(){return "font-size:10px;color:#6a8858;margin-bottom:3px;display:block;";}
+function secBox(color){return "background:"+(color||"rgba(180,210,155,0.25)")+";border-radius:10px;padding:11px 13px;margin-bottom:8px;";}
+
+// ── Confirm ──
+function confirm2(msg,cb){S.confirmMsg=msg;S.confirmCb=cb;render();}
+function confirmOk(){var cb=S.confirmCb;S.confirmCb=null;S.confirmMsg=null;if(cb)cb();render();}
+function confirmCancel(){S.confirmCb=null;S.confirmMsg=null;render();}
+function buildConfirmModal(){
+  return '<div style="position:fixed;inset:0;background:rgba(50,80,30,0.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div style="background:#f0f5ec;border-radius:16px;padding:24px;max-width:320px;width:100%;text-align:center">'+
+    '<div style="font-size:28px;margin-bottom:12px">⚠️</div>'+
+    '<div style="font-size:14px;color:#2e4a22;margin-bottom:20px;line-height:1.6">'+q(S.confirmMsg)+'</div>'+
+    '<div style="display:flex;gap:10px">'+
+    '<button onclick="confirmCancel()" style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:14px;background:rgba(200,215,195,0.6);border:1px solid rgba(160,185,145,0.5);color:#6a7e58">取消</button>'+
+    '<button onclick="confirmOk()" style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:rgba(200,80,60,0.15);border:1px solid rgba(180,60,40,0.4);color:#8a2010">确认删除</button>'+
+    '</div></div></div>';
+}
+
+// ── Render ──
+function render(){
+  var el=document.getElementById("root");
+  if(!el)return;
+  var html=buildApp();
+  if(S.showLib)html+=buildLibModal();
+  if(S.logPlantId)html+=buildLogModal();
+  if(S.calPlantId)html+=buildCalModal();
+  if(S.confirmCb)html+=buildConfirmModal();
+  el.innerHTML=html;
+}
+
+// ── Plant Form ──
+function startAdd(){S.formData=JSON.parse(JSON.stringify(BLANK));S.formTab="basic";S.showAdd=true;S.editId=null;render();}
+function startEdit(id){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===id){p=S.plants[i];break;}}
+  if(!p)return;
+  S.formData=JSON.parse(JSON.stringify(p));S.formTab="basic";S.editId=id;S.showAdd=false;render();
+}
+function setFormTab(t){S.formTab=t;render();}
+function setFormField(k,v){
+  if(!S.formData)return;
+  S.formData[k]=v;
+  if(k==="name"){
+    var ai=autoInt(v);S.formData.wi=ai.wi;S.formData.fi=ai.fi;
+  }
+  render();
+}
+function saveForm(){
+  if(!S.formData||!S.formData.name.trim())return;
+  if(S.editId){
+    for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.editId){S.plants[i]=S.formData;break;}}
+    S.editId=null;
+  } else {
+    S.formData.id=Date.now().toString();
+    S.formData.waterLog=S.formData.waterLog||[];
+    S.formData.fertLog=S.formData.fertLog||[];
+    S.formData.medLog=S.formData.medLog||[];
+    S.plants.push(S.formData);
+  }
+  S.formData=null;S.showAdd=false;storePlants();render();
+}
+function cancelForm(){S.formData=null;S.showAdd=false;S.editId=null;render();}
+
+function dRow(label,key,val){return '<div><span style="'+LB()+'">'+label+'</span><input type="number" min="1" value="'+q(val)+'" onchange="setFormField(\''+key+'\',+this.value)" style="'+FS+'width:100px;text-align:center;"/></div>';}
+function dateRow(label,key,val){return '<div><span style="'+LB()+'">'+label+'</span><div style="display:flex;gap:6px;align-items:center"><input type="date" value="'+q(val||"")+'" onchange="if(S.formData)S.formData[\''+key+'\']=this.value" onblur="render()" style="'+FS+'flex:1;color-scheme:light;"/>'+(val?'<button onclick="setFormField(\''+key+'\',\'\')" style="background:none;border:none;cursor:pointer;color:#9a8878;font-size:16px;padding:0 4px">✕</button>':"")+'</div></div>';}
+function textRow(label,key,val,ph){return '<div><span style="'+LB()+'">'+label+'</span><input value="'+q(val||"")+'" onchange="setFormField(\''+key+'\',this.value)" placeholder="'+(ph||"")+'" style="'+FS+'"/></div>';}
+function taRow(label,key,val,ph){return '<div><span style="'+LB()+'">'+label+'</span><textarea onchange="setFormField(\''+key+'\',this.value)" placeholder="'+(ph||"")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(val||"")+'</textarea></div>';}
+function envBtns(v){return '<div><span style="'+LB()+'">种植环境</span><div style="display:flex;gap:7px">'+['indoor','outdoor'].map(function(ev){var el=ev==="indoor"?"🏠 室内":"🌿 室外";return '<button onclick="setFormField(\'indoorStart\',\''+ev+'\')" style="flex:1;padding:7px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:12px;background:'+(v===ev?"rgba(155,195,125,0.45)":"rgba(180,210,160,0.12)")+';border:1px solid '+(v===ev?"rgba(130,175,100,0.6)":"rgba(150,185,130,0.3)")+';color:'+(v===ev?"#2e4a22":"#6a8858")+'">'+el+'</button>';}).join('')+'</div></div>';}
+
+function buildGrowthTab(v){
+  var src=v.source,html='<div style="display:flex;flex-direction:column;gap:10px">';
+  if(src==="seed"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">🌱 播种</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("播种日期","sowDate",v.sowDate)+textRow("种子来源","seedSource",v.seedSource,"自留种/购自…")+'<div><span style="'+LB()+'">播种方式</span><div style="display:flex;flex-wrap:wrap;gap:5px">'+SMETHODS.map(function(m){return '<button onclick="setFormField(\'sowMethod\',\''+m+'\')" style="'+gbtn(v.sowMethod===m)+'padding:4px 10px;border-radius:16px;">'+m+'</button>';}).join('')+'</div></div>'+envBtns(v.indoorStart)+'</div></div>';html+='<div style="'+secBox("rgba(200,225,170,0.3)")+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">🌿 发芽</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("发芽日期","germDate",v.germDate)+taRow("发芽备注","germNotes",v.germNotes,"发芽率、情况…")+'</div></div>';}
+  if(src==="sapling"||src==="mature"||src==="bulb"||src==="other"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">'+(src==="sapling"?"🛒 购入苗木":src==="mature"?"🛒 购入成株":src==="bulb"?"🧅 购入球根/种球":"🛒 来源信息")+'</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("购入日期","buyDate",v.buyDate)+textRow("购入来源","buyFrom",v.buyFrom,"苗圃、平台…")+textRow("规格描述","buySpec",v.buySpec,"苗高、地径…")+'</div></div>';}
+  if(src==="cutting"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">✂️ 扦插信息</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("扦插日期","opDate",v.opDate)+textRow("插穗来源","buyFrom",v.buyFrom,"母株来源…")+taRow("扦插备注","opNotes",v.opNotes,"基质、处理方式…")+dateRow("生根/成活日期","rootDate",v.rootDate)+envBtns(v.indoorStart)+'</div></div>';}
+  if(src==="graft"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">🔗 嫁接信息</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("嫁接日期","opDate",v.opDate)+textRow("砧木来源","buyFrom",v.buyFrom,"砧木品种…")+taRow("嫁接备注","opNotes",v.opNotes,"接穗品种、方法…")+dateRow("成活确认日期","rootDate",v.rootDate)+envBtns(v.indoorStart)+'</div></div>';}
+  if(src==="division"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">🌾 分株信息</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("分株日期","opDate",v.opDate)+textRow("母株来源","buyFrom",v.buyFrom,"母株品种…")+taRow("分株备注","opNotes",v.opNotes,"数量、处理…")+'</div></div>';}
+  if((src==="seed"||src==="cutting"||src==="graft")&&v.indoorStart==="indoor"){html+='<div style="'+secBox("rgba(255,235,150,0.25)")+'"><div style="font-size:11px;font-weight:700;color:#8a7a30;margin-bottom:8px">🌤️ 炼苗（室内→室外过渡）</div><div style="font-size:11px;color:#9a8a40;margin-bottom:8px;line-height:1.6">室内苗直接移到室外会萎蔫，需逐步延长室外暴露时间（5-14天）。</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("开始炼苗日期","hardeningDate",v.hardeningDate)+'<div><span style="'+LB()+'">计划炼苗天数</span><div style="display:flex;align-items:center;gap:10px"><input type="range" min="5" max="21" value="'+(v.hardeningDays||7)+'" oninput="setFormField(\'hardeningDays\',+this.value)" style="flex:1;accent-color:#7aaa54"/><span style="font-size:13px;color:#4a6a38;min-width:40px">'+(v.hardeningDays||7)+'天</span></div></div>'+taRow("炼苗备注","hardeningNotes",v.hardeningNotes,"每日室外时长…")+'</div></div>';}
+  if(src==="seed"||src==="sapling"||src==="cutting"||src==="division"||src==="graft"){html+='<div style="'+secBox("rgba(175,215,185,0.3)")+'"><div style="font-size:11px;font-weight:700;color:#5a9068;margin-bottom:8px">🪴 假植（临时上盆）</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("假植日期","prePlantDate",v.prePlantDate)+taRow("假植备注","prePlantNotes",v.prePlantNotes,"容器、基质…")+'</div></div>';}
+  html+='<div style="'+secBox("rgba(165,210,200,0.3)")+'"><div style="font-size:11px;font-weight:700;color:#5a9888;margin-bottom:8px">🔄 移栽</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("移栽日期","transplantDate",v.transplantDate)+taRow("移栽备注","transplantNotes",v.transplantNotes,"换盆、换土…")+'</div></div>';
+  html+='<div style="'+secBox("rgba(165,195,220,0.25)")+'"><div style="font-size:11px;font-weight:700;color:#5a7898;margin-bottom:8px">📍 定植（最终位置）</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("定植日期","finalPlantDate",v.finalPlantDate)+textRow("定植位置","finalPlantLocation",v.finalPlantLocation,"后院东侧、阳台南面…")+taRow("定植备注","finalPlantNotes",v.finalPlantNotes,"盆号、土壤配方…")+'</div></div>';
+  return html+'</div>';
+}
+
+function buildPlantForm(){
+  var v=S.formData||BLANK;
+  var genusHint=lookupGenus(v.name);
+  var tabs=[["basic","基本信息"],["growth","生长档案"],["care","护理周期"]];
+  var tabHtml=tabs.map(function(t){var act=S.formTab===t[0];return '<button onclick="setFormTab(\''+t[0]+'\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(act?"rgba(160,200,130,0.4)":"rgba(180,210,160,0.15)")+';border:1px solid '+(act?"rgba(130,175,100,0.6)":"rgba(150,185,130,0.3)")+';color:'+(act?"#2e4a22":"#7a9868")+'">'+t[1]+'</button>';}).join("");
+  var body="";
+  if(S.formTab==="basic"){
+    body='<div style="display:flex;flex-direction:column;gap:10px">'+
+    '<div><span style="'+LB()+'">植物名称 *</span><input value="'+q(v.name)+'" onchange="setFormField(\'name\',this.value)" placeholder="填写后自动推荐护理周期和科属" style="'+FS+'"/></div>'+
+    (genusHint?'<div style="font-size:11px;color:#5a8040;padding:4px 8px;background:rgba(150,200,100,0.15);border-radius:6px">🌿 科属参考：'+q(genusHint)+'</div>':'')+
+    '<div><span style="'+LB()+'">品种</span><input value="'+q(v.variety)+'" onchange="setFormField(\'variety\',this.value)" placeholder="金满堂、早熟5号…" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">植物类别</span><input value="'+q(v.category)+'" onchange="setFormField(\'category\',this.value)" placeholder="果树、蔬菜、多肉、室内观叶…（自定义）" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">植物种类/科属</span><input value="'+q(v.type)+'" onchange="setFormField(\'type\',this.value)" placeholder="木犀科、蔷薇科…（可自动填入）" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">植物来源</span><div style="display:flex;flex-direction:column;gap:5px">'+SRCS.map(function(s){return '<button onclick="setFormField(\'source\',\''+s.key+'\')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;cursor:pointer;font-family:inherit;text-align:left;background:'+(v.source===s.key?"rgba(155,195,125,0.35)":"rgba(180,210,160,0.1)")+';border:1px solid '+(v.source===s.key?"rgba(130,175,100,0.6)":"rgba(150,185,130,0.25)")+'"><span style="font-size:17px">'+s.icon+'</span><span style="font-size:13px;color:#2e4a22;font-weight:'+(v.source===s.key?700:400)+'">'+s.label+'</span>'+(v.source===s.key?'<span style="margin-left:auto;color:#5a8040">✓</span>':'')+'</button>';}).join('')+'</div></div>'+
+    '<div><span style="'+LB()+'">备注</span><textarea onchange="setFormField(\'notes\',this.value)" placeholder="特殊说明…" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(v.notes)+'</textarea></div>'+
+    '</div>';
+  } else if(S.formTab==="growth"){
+    body=buildGrowthTab(v);
+  } else {
+    body='<div style="display:flex;flex-direction:column;gap:10px">'+
+    '<div style="font-size:11px;color:#7a9868">根据植物名自动填入，可手动调整</div>'+
+    dRow("💧 浇水间隔（天）","wi",v.wi)+dRow("🌿 施肥间隔（天）","fi",v.fi)+
+    '<div><span style="'+LB()+'">💊 给药模式</span><div style="display:flex;gap:7px">'+
+    '<button onclick="setFormField(\'medMode\',\'symptom\')" style="flex:1;padding:7px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(v.medMode==="symptom"?"rgba(155,195,125,0.45)":"rgba(180,210,160,0.12)")+';border:1px solid '+(v.medMode==="symptom"?"rgba(130,175,100,0.6)":"rgba(150,185,130,0.3)")+';color:'+(v.medMode==="symptom"?"#2e4a22":"#6a8858")+'">🩺 按需</button>'+
+    '<button onclick="setFormField(\'medMode\',\'scheduled\')" style="flex:1;padding:7px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(v.medMode==="scheduled"?"rgba(155,195,125,0.45)":"rgba(180,210,160,0.12)")+';border:1px solid '+(v.medMode==="scheduled"?"rgba(130,175,100,0.6)":"rgba(150,185,130,0.3)")+';color:'+(v.medMode==="scheduled"?"#2e4a22":"#6a8858")+'">📅 定期</button>'+
+    '</div>'+(v.medMode==="scheduled"?'<div style="margin-top:7px">'+dRow("给药间隔（天）","mi",v.mi||30)+'</div>':'')+'</div></div>';
+  }
+  return '<div style="background:rgba(255,255,255,0.5);border:1px solid rgba(150,185,130,0.4);border-radius:15px;padding:15px 17px;margin-bottom:13px">'+
+    '<div style="font-size:12px;color:#4a6a38;margin-bottom:12px;font-weight:700">'+(S.editId?"编辑："+q(v.name):"添加新植物")+'</div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:14px">'+tabHtml+'</div>'+body+
+    '<div style="display:flex;gap:8px;margin-top:14px">'+
+    '<button onclick="saveForm()" style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.6);color:#2e4a22">✓ 保存</button>'+
+    '<button onclick="cancelForm()" style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:14px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button>'+
+    '</div></div>';
+}
+
+// ── Plant Card ──
+function delPlant(id){S.plants=S.plants.filter(function(p){return p.id!==id;});storePlants();render();}
+function toggleInfo(id){S["info_"+id]=!S["info_"+id];render();}
+
+function buildPlantCard(p){
+  var wd=ds(ld(p.waterLog)),fd=ds(ld(p.fertLog)),md=ds(ld(p.medLog));
+  var wu=getN(wd)>=p.wi,fu=getN(fd)>=p.fi;
+  var src=null;for(var i=0;i<SRCS.length;i++){if(SRCS[i].key===p.source){src=SRCS[i];break;}}
+  var startDate=p.sowDate||p.buyDate||p.opDate;
+  var showInfo=S["info_"+p.id]===true;
+  var adv=buildAdvice(p);
+  var items=[];
+  function pT(icon,label,date,note,color){if(date)items.push({icon:icon,label:label,date:date,note:note,color:color});}
+  if(p.source==="seed"){pT("🌱","播种",p.sowDate,[p.indoorStart?"环境："+(p.indoorStart==="indoor"?"室内":"室外"):"",p.sowMethod?"方式："+p.sowMethod:"",p.seedSource?"种子来源："+p.seedSource:""].filter(Boolean).join("\n"),"#5a8040");pT("🌿","发芽",p.germDate,p.germNotes||"","#6a9040");}
+  if(p.source==="sapling"||p.source==="mature"||p.source==="bulb"||p.source==="other")pT(src?src.icon:"🛒","购入",p.buyDate,[p.buyFrom?"来源："+p.buyFrom:"",p.buySpec?"规格："+p.buySpec:""].filter(Boolean).join("\n"),"#5a7898");
+  if(p.source==="cutting"){pT("✂️","扦插",p.opDate,[p.indoorStart?"环境："+(p.indoorStart==="indoor"?"室内":"室外"):"",p.buyFrom?"插穗来源："+p.buyFrom:"",p.opNotes?"备注："+p.opNotes:""].filter(Boolean).join("\n"),"#7a6848");pT("🌱","生根/成活",p.rootDate,"","#5a8040");}
+  if(p.source==="graft"){pT("🔗","嫁接",p.opDate,[p.indoorStart?"环境："+(p.indoorStart==="indoor"?"室内":"室外"):"",p.buyFrom?"砧木来源："+p.buyFrom:"",p.opNotes?"备注："+p.opNotes:""].filter(Boolean).join("\n"),"#7a6848");pT("✅","成活确认",p.rootDate,"","#5a8040");}
+  if(p.source==="division")pT("🌾","分株",p.opDate,[p.buyFrom?"母株："+p.buyFrom:"",p.opNotes?"备注："+p.opNotes:""].filter(Boolean).join("\n"),"#7a6848");
+  if(p.hardeningDate&&p.indoorStart==="indoor"){var hd3=ds(p.hardeningDate),tgt=p.hardeningDays||7,done=hd3>=tgt;pT("🌤️","炼苗"+(done?"（完成）":"（进行中）"),p.hardeningDate,["计划"+tgt+"天"+(done?"":"，已"+hd3+"天"),p.hardeningNotes?"备注："+p.hardeningNotes:""].filter(Boolean).join("\n"),"#8a7a30");}
+  pT("🪴","假植",p.prePlantDate,p.prePlantNotes||"","#5a9068");
+  pT("🔄","移栽",p.transplantDate,p.transplantNotes?"备注："+p.transplantNotes:"","#5a9888");
+  pT("📍","定植",p.finalPlantDate,[p.finalPlantLocation?"位置："+p.finalPlantLocation:"",p.finalPlantNotes?"备注："+p.finalPlantNotes:""].filter(Boolean).join("\n"),"#5a7898");
+  var timelineHtml=items.map(function(item,idx){return '<div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:'+(idx<items.length-1?"1px solid rgba(150,185,130,0.15)":"none")+'">'+'<span style="font-size:16px">'+item.icon+'</span><div style="flex:1"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-size:11px;color:'+item.color+';font-weight:700">'+q(item.label)+'</span><span style="font-size:11px;color:#7a9868">'+fmt(item.date)+'</span></div>'+(item.note?'<div style="font-size:11px;color:#7a9060;margin-top:3px;line-height:1.7;white-space:pre-line">'+q(item.note)+'</div>':"")+'</div></div>';}).join("");
+  var pid=p.id;
+  return '<div style="background:rgba(255,255,255,0.6);border:1px solid '+(wu||fu?"rgba(200,140,50,0.5)":"rgba(150,185,130,0.45)")+';border-radius:16px;padding:17px 19px;display:flex;flex-direction:column;gap:11px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span style="font-size:18px;font-weight:700;color:#2e4a22">'+q(p.name)+'</span>'+(p.variety?'<span style="font-size:13px;color:#5a7848">'+q(p.variety)+'</span>':'')+'</div>'+
+    '<div style="display:flex;gap:7px;margin-top:3px;flex-wrap:wrap">'+(p.category?'<span style="font-size:11px;color:#7a9868">'+q(p.category)+'</span>':'')+(p.type?'<span style="font-size:11px;color:#7a9868">'+(p.category?"· ":"")+q(p.type)+'</span>':'')+(src?'<span style="font-size:11px;color:#7a9868">· '+src.icon+' '+src.label+'</span>':'')+(p.finalPlantLocation?'<span style="font-size:11px;color:#7a9868">· 📍'+q(p.finalPlantLocation)+'</span>':'')+'</div>'+
+    (p.notes?'<div style="font-size:11px;color:#7a8e68;margin-top:3px;line-height:1.5">'+q(p.notes)+'</div>':'')+'</div>'+
+    '<div style="display:flex;gap:5px;margin-left:8px">'+
+    '<button onclick="startEdit(\''+pid+'\')" style="background:none;border:none;color:#6a8858;cursor:pointer;font-size:14px">✏️</button>'+
+    '<button onclick="confirm2(\'确认删除「'+q(p.name)+'」吗？此操作不可撤销。\',function(){delPlant(\''+pid+'\');})" style="background:none;border:none;color:#9a7060;cursor:pointer;font-size:14px">✕</button>'+
+    '</div></div>'+
+    '<div style="background:rgba(180,210,160,0.35);border:1px solid rgba(150,190,130,0.4);border-radius:9px;padding:10px 13px;font-size:12.5px;color:#3a5228;line-height:1.8;white-space:pre-wrap">'+q(adv)+'</div>'+
+    '<div style="display:flex;gap:6px">'+
+    '<button onclick="openLog(\''+pid+'\',\'water\')" style="flex:1;padding:8px 4px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;text-align:center;border:'+(wu?"1px solid rgba(200,140,50,0.5)":"1px solid rgba(150,185,130,0.45)")+';background:'+(wu?"rgba(240,190,100,0.25)":"rgba(180,215,160,0.2)")+';color:'+(wu?"#7a5010":"#4a7040")+'"><div style="font-size:15px;margin-bottom:1px">💧</div><div>'+(wu?"⚠️ ":"")+(wd!=null?wd+"天前浇水":"记录浇水")+'</div><div style="font-size:10px;color:#8aaa78">'+(p.waterLog?p.waterLog.length:0)+'条记录</div></button>'+
+    '<button onclick="openLog(\''+pid+'\',\'fert\')" style="flex:1;padding:8px 4px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;text-align:center;border:'+(fu?"1px solid rgba(200,140,50,0.5)":"1px solid rgba(150,185,130,0.45)")+';background:'+(fu?"rgba(240,190,100,0.25)":"rgba(180,215,160,0.2)")+';color:'+(fu?"#7a5010":"#4a7040")+'"><div style="font-size:15px;margin-bottom:1px">🌿</div><div>'+(fu?"⚠️ ":"")+(fd!=null?fd+"天前施肥":"记录施肥")+'</div><div style="font-size:10px;color:#8aaa78">'+(p.fertLog?p.fertLog.length:0)+'条记录</div></button>'+
+    '<button onclick="openLog(\''+pid+'\',\'med\')" style="flex:1;padding:8px 4px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;text-align:center;border:1px solid rgba(150,185,130,0.45);background:rgba(180,215,160,0.2);color:#4a7040"><div style="font-size:15px;margin-bottom:1px">💊</div><div>'+(md!=null?md+"天前给药":"记录给药")+'</div><div style="font-size:10px;color:#8aaa78">'+(p.medLog?p.medLog.length:0)+'条记录</div></button>'+
+    '</div>'+
+    '<div style="display:flex;gap:6px">'+
+    '<button onclick="openCal(\''+pid+'\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(165,195,220,0.25);border:1px solid rgba(140,175,210,0.4);color:#4a6888">📅 操作日历</button>'+
+    (items.length>0?'<button onclick="toggleInfo(\''+pid+'\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(180,215,160,0.2);border:1px solid rgba(150,185,130,0.4);color:#5a7848">'+(showInfo?"▲ 收起档案":"▼ 生长档案")+(startDate?'<span style="margin-left:6px;color:#8aaa68">'+ds(startDate)+'天</span>':"")+'</button>':"")+'</div>'+
+    (showInfo&&items.length>0?'<div style="background:rgba(180,210,160,0.2);border-radius:10px;padding:10px 13px"><div style="font-size:11px;color:#6a8858;margin-bottom:8px">📋 生长档案</div>'+timelineHtml+(p.sowDate&&p.germDate?'<div style="margin-top:8px;font-size:11px;color:#7a9060">🌿 播种→发芽：'+(ds(p.sowDate)-ds(p.germDate))+'天</div>':"")+'</div>':"")+'</div>';
+}
+
+// ── Log Modal ──
+var logEditIdx=null;
+var logForm={date:"",note:"",name:"",reason:"",amount:""};
+function openLog(pid,type){S.logPlantId=pid;S.logType=type;logEditIdx=null;logForm={date:td(),note:"",name:"",reason:"",amount:""};render();}
+function closeLog(){S.logPlantId=null;S.logType=null;logEditIdx=null;render();}
+function startLogEdit(idx){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.logPlantId){p=S.plants[i];break;}}
+  if(!p)return;
+  var log=S.logType==="water"?(p.waterLog||[]):S.logType==="fert"?(p.fertLog||[]):(p.medLog||[]);
+  if(idx<0||idx>=log.length)return;
+  var r=log[idx];logEditIdx=idx;logForm={date:r.date,note:r.note||"",name:r.name||"",reason:r.reason||"",amount:r.amount||""};render();
+}
+function saveLog(){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.logPlantId){p=S.plants[i];break;}}
+  if(!p)return;
+  var rec={date:logForm.date};
+  if(S.logType==="fert"){rec.name=logForm.name;rec.amount=logForm.amount;rec.note=logForm.note;}
+  else if(S.logType==="med"){rec.name=logForm.name;rec.reason=logForm.reason;rec.amount=logForm.amount;rec.note=logForm.note;}
+  else{rec.note=logForm.note;}
+  var log=S.logType==="water"?(p.waterLog||(p.waterLog=[])):S.logType==="fert"?(p.fertLog||(p.fertLog=[])):(p.medLog||(p.medLog=[]));
+  if(logEditIdx!==null)log[logEditIdx]=rec;
+  else{log.push(rec);log.sort(function(a,b){return a.date.localeCompare(b.date);});}
+  logEditIdx=null;logForm={date:td(),note:"",name:"",reason:"",amount:""};storePlants();render();
+}
+function delLog(idx){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.logPlantId){p=S.plants[i];break;}}
+  if(!p)return;
+  var log=S.logType==="water"?(p.waterLog||[]):S.logType==="fert"?(p.fertLog||[]):(p.medLog||[]);
+  log.splice(idx,1);storePlants();render();
+}
+function buildLogModal(){
+  var icons={water:"💧",fert:"🌿",med:"💊"};
+  var labels={water:"浇水",fert:"施肥",med:"给药"};
+  var type=S.logType,icon=icons[type],label=labels[type];
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.logPlantId){p=S.plants[i];break;}}
+  if(!p)return "";
+  var log=type==="water"?(p.waterLog||[]):type==="fert"?(p.fertLog||[]):(p.medLog||[]);
+  var isEdit=logEditIdx!==null;
+  var fertPicker="";
+  if(type==="fert"&&LIB.fert.length>0){
+    fertPicker='<div><span style="'+LB()+'">从库存选择（可选）</span><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px">'+LIB.fert.map(function(f){return '<button onclick="logForm.name=\''+q(f.name)+'\';if(f.dosage)logForm.amount=\''+q(f.dosage||"")+'\';render()" style="padding:3px 10px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(logForm.name===f.name?"rgba(140,185,110,0.4)":"rgba(180,210,160,0.2)")+';border:1px solid '+(logForm.name===f.name?"rgba(120,165,90,0.6)":"rgba(150,185,130,0.4)")+';color:#3a5a28">'+q(f.name)+'</button>';}).join("")+'</div></div>';
+  }
+  var medPicker="";
+  if(type==="med"&&LIB.med.length>0){
+    medPicker='<div><span style="'+LB()+'">从库存选择（可选）</span><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px">'+LIB.med.map(function(m){return '<button onclick="logForm.name=\''+q(m.name)+'\';if(m.dosage)logForm.amount=\''+q(m.dosage||"")+'\';render()" style="padding:3px 10px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(logForm.name===m.name?"rgba(140,185,110,0.4)":"rgba(180,210,160,0.2)")+';border:1px solid '+(logForm.name===m.name?"rgba(120,165,90,0.6)":"rgba(150,185,130,0.4)")+';color:#3a5a28">'+q(m.name)+'</button>';}).join("")+'</div></div>';
+  }
+  if(type==="fert")extra=fertPicker+'<div><span style="'+LB()+'">肥料名称</span><input value="'+q(logForm.name)+'" onchange="logForm.name=this.value" placeholder="复合肥、磷酸二氢钾…" style="'+FS+'"/></div><div><span style="'+LB()+'">用量/浓度</span><input value="'+q(logForm.amount)+'" onchange="logForm.amount=this.value" placeholder="5g/L…" style="'+FS+'"/></div>';
+  else if(type==="med")extra=medPicker+'<div><span style="'+LB()+'">药品名称</span><input value="'+q(logForm.name)+'" onchange="logForm.name=this.value" placeholder="多菌灵、吡虫啉…" style="'+FS+'"/></div><div><span style="'+LB()+'">病症/原因</span><input value="'+q(logForm.reason)+'" onchange="logForm.reason=this.value" placeholder="白粉病、蚜虫…" style="'+FS+'"/></div><div><span style="'+LB()+'">用量/浓度</span><input value="'+q(logForm.amount)+'" onchange="logForm.amount=this.value" placeholder="稀释800倍…" style="'+FS+'"/></div>';
+  var histHtml=[].concat(log).reverse().map(function(r,ri){var oi=log.length-1-ri;return '<div style="background:rgba(255,255,255,0.6);border-radius:10px;padding:10px 12px;margin-bottom:7px;border:1px solid rgba(150,185,130,0.3)"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><span style="font-size:12px;font-weight:700;color:#3a5228">'+fmt(r.date)+'</span>'+(r.name?'<span style="font-size:11px;color:#5a7848;margin-left:8px">'+q(r.name)+'</span>':'')+(r.amount?'<span style="font-size:11px;color:#7a9060;margin-left:6px">· '+q(r.amount)+'</span>':'')+(r.reason?'<div style="font-size:11px;color:#9a7040;margin-top:2px">病症：'+q(r.reason)+'</div>':'')+(r.note?'<div style="font-size:11px;color:#7a9060;margin-top:2px">'+q(r.note)+'</div>':'')+'</div><div style="display:flex;gap:5px"><button onclick="startLogEdit('+oi+')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#7a9868">✏️</button><button onclick="confirm2(\'确认删除这条记录吗？\',function(){delLog('+oi+');})" style="background:none;border:none;cursor:pointer;font-size:13px;color:#b07060">🗑</button></div></div></div>';}).join("");
+  return '<div style="position:fixed;inset:0;background:rgba(50,80,30,0.45);z-index:200;display:flex;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeLog()">'+
+    '<div style="background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:82vh;display:flex;flex-direction:column;overflow:hidden">'+
+    '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:700;color:#2e4a22">'+icon+' '+label+'记录</span><button onclick="closeLog()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
+    '<div style="padding:12px 18px;border-bottom:1px solid rgba(150,185,130,0.2);background:rgba(200,225,185,0.2)"><div style="font-size:11px;color:#6a8858;margin-bottom:8px;font-weight:700">'+(isEdit?"修改记录":"新增记录")+'</div><div style="display:flex;flex-direction:column;gap:7px">'+
+    '<div><span style="'+LB()+'">日期</span><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="logForm.date=this.value" style="'+FS+'color-scheme:light;"/></div>'+
+    extra+
+    '<div><span style="'+LB()+'">'+(type==="water"?"备注（可选）":"备注")+'</span><textarea onchange="logForm.note=this.value" placeholder="'+(type==="water"?"浇水量、方式…":type==="fert"?"施肥观察…":"用药后观察…")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(logForm.note)+'</textarea></div>'+
+    '<div style="display:flex;gap:7px"><button onclick="saveLog()" style="flex:1;padding:8px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.6);color:#2e4a22">✓ '+(isEdit?"保存修改":"添加")+'</button>'+(isEdit?'<button onclick="logEditIdx=null;render()" style="flex:1;padding:8px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button>':"")+'</div>'+
+    '</div></div>'+
+    '<div style="flex:1;overflow-y:auto;padding:10px 18px"><div style="font-size:11px;color:#6a8858;margin-bottom:8px;font-weight:700">历史记录（'+log.length+'条）</div>'+(log.length===0?'<div style="font-size:12px;color:#9aaa88;text-align:center;padding:20px 0">暂无记录</div>':histHtml)+'</div>'+
+    '</div></div>';
+}
+
+// ── Calendar Modal ──
+function openCal(pid){S.calPlantId=pid;S.calYr=new Date().getFullYear();S.calMo=new Date().getMonth();S.calSel=null;render();}
+function closeCal(){S.calPlantId=null;render();}
+function calPrev(){if(S.calMo===0){S.calYr--;S.calMo=11;}else S.calMo--;S.calSel=null;render();}
+function calNext(){if(S.calMo===11){S.calYr++;S.calMo=0;}else S.calMo++;S.calSel=null;render();}
+function calClick(d){S.calSel=S.calSel===d?null:d;render();}
+function buildCalModal(){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.calPlantId){p=S.plants[i];break;}}
+  if(!p)return "";
+  var TC={water:"#5090d0",fert:"#5a9848",med:"#d07050",milestone:"#8060a0"};
+  var TL={water:"💧浇水",fert:"🌿施肥",med:"💊给药",milestone:"📌里程碑"};
+  var evMap={};
+  function addEv(type,log){(log||[]).forEach(function(r){if(!evMap[r.date])evMap[r.date]=[];evMap[r.date].push(Object.assign({type:type},r));});}
+  addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);
+  [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,"🌱生根"],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
+  var fd=new Date(S.calYr,S.calMo,1).getDay();
+  var dm=new Date(S.calYr,S.calMo+1,0).getDate();
+  var tod=td();
+  var MN=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+  var cells="";
+  for(var i=0;i<fd;i++)cells+="<div></div>";
+  for(var d=1;d<=dm;d++){
+    var mo2=S.calMo+1;var dStr=S.calYr+"-"+(mo2<10?"0"+mo2:mo2)+"-"+(d<10?"0"+d:d);
+    var evts=evMap[dStr]||[];var isT=dStr===tod,isS=S.calSel===dStr;
+    var dots=evts.map(function(e){return e.type;}).filter(function(v,i2,a){return a.indexOf(v)===i2;}).map(function(t){return '<div style="width:6px;height:6px;border-radius:50%;background:'+(TC[t]||"#888")+'"></div>';}).join("");
+    cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(evts.length>0?"pointer":"default")+';background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:40px"><div style="font-size:12px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:2px;flex-wrap:wrap">'+dots+'</div></div>';
+  }
+  var selEvts=S.calSel?(evMap[S.calSel]||[]):[];
+  return '<div style="position:fixed;inset:0;background:rgba(50,80,30,0.45);z-index:200;display:flex;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeCal()">'+
+    '<div style="background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">'+
+    '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700;color:#2e4a22">📅 '+q(p.name)+' · 操作日历</span><button onclick="closeCal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
+    '<div style="flex:1;overflow-y:auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px"><button onclick="calPrev()" style="background:none;border:none;cursor:pointer;font-size:24px;color:#5a8040;padding:0 8px">‹</button><span style="font-size:14px;font-weight:700;color:#2e4a22">'+S.calYr+'年 '+MN[S.calMo]+'</span><button onclick="calNext()" style="background:none;border:none;cursor:pointer;font-size:24px;color:#5a8040;padding:0 8px">›</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);padding:0 12px;margin-bottom:4px">'+["日","一","二","三","四","五","六"].map(function(d2){return '<div style="text-align:center;font-size:10px;color:#8aaa78;padding:2px 0">'+d2+'</div>';}).join("")+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:0 12px 12px">'+cells+'</div>'+
+    '<div style="display:flex;gap:10px;padding:0 16px 10px;flex-wrap:wrap">'+Object.keys(TL).map(function(t){return '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:#6a8858"><div style="width:7px;height:7px;border-radius:50%;background:'+TC[t]+'"></div><span>'+TL[t]+'</span></div>';}).join("")+'</div>'+
+    (S.calSel?'<div style="margin:0 12px 16px;background:rgba(255,255,255,0.65);border-radius:12px;padding:12px 14px;border:1px solid rgba(150,185,130,0.4)"><div style="font-size:12px;font-weight:700;color:#2e4a22;margin-bottom:8px">'+fmt(S.calSel)+' 的操作</div>'+(selEvts.length===0?'<div style="font-size:12px;color:#9aaa88">无记录</div>':selEvts.map(function(e,i2){return '<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:'+(i2<selEvts.length-1?"1px solid rgba(150,185,130,0.2)":"none")+'"><div style="font-size:12px;font-weight:700;color:'+(TC[e.type]||"#5a7848")+'">'+(TL[e.type]||e.label||"")+'</div>'+(e.type==="milestone"&&e.label?'<div style="font-size:11px;color:#7a9060;margin-top:2px">'+q(e.label)+'</div>':'')+(e.name?'<div style="font-size:11px;color:#4a6a38;margin-top:2px">名称：'+q(e.name)+'</div>':'')+(e.amount?'<div style="font-size:11px;color:#6a8858;margin-top:1px">用量：'+q(e.amount)+'</div>':'')+(e.reason?'<div style="font-size:11px;color:#9a7040;margin-top:1px">病症：'+q(e.reason)+'</div>':'')+(e.note?'<div style="font-size:11px;color:#7a9060;margin-top:1px">备注：'+q(e.note)+'</div>':'')+'</div>';}).join(""))+'</div>':"")+'</div></div></div>';
+}
+
+// ── Library Modal ──
+function openLib(tab){S.showLib=true;S.libTab=tab||"fert";S.libSearch="";S.libExpanded=null;S.libAdding=false;libForm={name:"",note:"",interval:0,filled:{},manualFields:{}};render();}
+function closeLib(){S.showLib=false;libEditId=null;render();}
+function setLibTab(t){S.libTab=t;S.libSearch="";S.libExpanded=null;S.libAdding=false;libEditId=null;libForm={name:"",note:"",interval:0,filled:{},manualFields:{}};render();}
+function toggleLibItem(id){S.libExpanded=S.libExpanded===id?null:id;render();}
+function setLibAdding(v,initName){
+  S.libAdding=v;
+  if(!v){libForm={name:"",note:"",interval:0,filled:{},manualFields:{}};}
+  else{
+    libForm={name:initName||"",note:"",interval:0,filled:{},manualFields:{}};
+    if(libForm.name){
+      var isFert=S.libTab==="fert";
+      libForm.filled=autoFill(libForm.name,isFert);
+      if(libForm.filled.interval)libForm.interval=libForm.filled.interval;
+    }
+  }
+  render();
+}
+function doLibMatch(){
+  var el=document.getElementById("lib_name_inp");
+  if(el)libForm.name=el.value;
+  if(!libForm.name)return;
+  var isFert=S.libTab==="fert";
+  libForm.filled=autoFill(libForm.name,isFert);
+  if(libForm.filled.interval)libForm.interval=libForm.filled.interval;
+  render();
+}
+var libEditId=null;
+function startLibEdit(id){
+  var isFert=S.libTab==="fert";
+  var arr=isFert?LIB.fert:LIB.med;
+  var item=null;for(var i=0;i<arr.length;i++){if(arr[i].id===id){item=arr[i];break;}}
+  if(!item)return;
+  libEditId=id;
+  var allKeys=["type","npk","brand","chemical","target","suitable","dosage","usage","method","caution","safetyDays"];
+  var mf={};allKeys.forEach(function(k){if(item[k]!==undefined&&item[k]!=="")mf[k]=item[k];});
+  libForm={name:item.name,note:item.note||"",interval:item.interval||0,filled:{},manualFields:mf};
+  S.libAdding=true;render();
+}
+function saveLibItem(){
+  var isFert=S.libTab==="fert";
+  var el=document.getElementById("lib_name_inp");
+  if(el)libForm.name=el.value;
+  if(!libForm.name.trim())return;
+  var base={name:libForm.name.trim(),note:libForm.note||"",lastUsed:null,interval:+libForm.interval||0};
+  var f=libForm.filled||{};Object.keys(f).forEach(function(k){base[k]=f[k];});
+  var mf=libForm.manualFields||{};Object.keys(mf).forEach(function(k){if(mf[k])base[k]=mf[k];});
+  var arr=isFert?LIB.fert:LIB.med;
+  if(libEditId){
+    for(var i=0;i<arr.length;i++){if(arr[i].id===libEditId){base.id=libEditId;base.lastUsed=arr[i].lastUsed;arr[i]=base;break;}}
+    libEditId=null;
+  } else {
+    base.id=Date.now().toString();
+    arr.push(base);
+  }
+  saveLib();setLibAdding(false);
+}
+function delLibItem(type,id){
+  if(type==="fert")LIB.fert=LIB.fert.filter(function(x){return x.id!==id;});
+  else LIB.med=LIB.med.filter(function(x){return x.id!==id;});
+  saveLib();render();
+}
+function recordLibUsed(type,id){
+  var arr=type==="fert"?LIB.fert:LIB.med;
+  for(var i=0;i<arr.length;i++){if(arr[i].id===id){arr[i].lastUsed=td();break;}}
+  saveLib();render();
+}
+function setManualField(k,v){if(!libForm.manualFields)libForm.manualFields={};libForm.manualFields[k]=v;}
+
+function buildLibModal(){
+  var isFert=S.libTab==="fert";
+  var arr=isFert?LIB.fert:LIB.med;
+  var ls=S.libSearch?S.libSearch.toLowerCase():"";
+  var filtered=ls?arr.filter(function(x){return[x.name,x.type||"",x.target||"",x.note||""].some(function(s){return s.toLowerCase().indexOf(ls)>=0;});}):arr;
+  var mf=libForm.manualFields||{};
+  var fl=libForm.filled||{};
+  function fv(k){return mf[k]!==undefined?mf[k]:(fl[k]!==undefined?fl[k]:"");}
+  var addForm=S.libAdding?
+    '<div style="background:rgba(200,225,185,0.25);padding:12px 14px;border-bottom:1px solid rgba(150,185,130,0.25);overflow-y:auto;max-height:60vh">'+
+    '<div style="font-size:11px;font-weight:700;color:#4a6a38;margin-bottom:10px">'+(libEditId?"✏️ 修改":"＋ 添加新")+(isFert?"肥料":"药品")+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
+    '<div><span style="'+LB()+'">'+(isFert?"肥料":"药品")+'名称 *</span><input id="lib_name_inp" value="'+q(libForm.name||"")+'" placeholder="'+(isFert?"复合肥、磷酸二氢钾…":"多菌灵、阿维菌素…")+'" onchange="libForm.name=this.value" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">品牌 / 商品名</span><input value="'+q(fv("brand"))+'" placeholder="奥绿、花多多、拜耳…" onchange="setManualField(\'brand\',this.value)" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">类型</span><input value="'+q(fv("type"))+'" placeholder="'+(isFert?"复合肥、有机肥、缓释肥…":"杀菌剂、杀虫剂、杀螨剂…")+'" onchange="setManualField(\'type\',this.value)" style="'+FS+'"/></div>'+
+    (isFert?'<div><span style="'+LB()+'">NPK 含量</span><input value="'+q(fv("npk"))+'" placeholder="15-15-15、0-52-34…" onchange="setManualField(\'npk\',this.value)" style="'+FS+'"/></div>':
+            '<div><span style="'+LB()+'">有效成分 / 化学类别</span><input value="'+q(fv("chemical"))+'" placeholder="苯并咪唑类、烟碱类…" onchange="setManualField(\'chemical\',this.value)" style="'+FS+'"/></div>'+
+            '<div><span style="'+LB()+'">防治对象</span><input value="'+q(fv("target"))+'" placeholder="白粉病、蚜虫、红蜘蛛…" onchange="setManualField(\'target\',this.value)" style="'+FS+'"/></div>')+
+    '<div><span style="'+LB()+'">稀释比例 / 用量</span><input value="'+q(fv("dosage"))+'" placeholder="稀释1000倍、5g/L…" onchange="setManualField(\'dosage\',this.value)" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">使用方法</span><input value="'+q(fv("usage"))+'" placeholder="叶面喷雾、浇根、土施…" onchange="setManualField(\'usage\',this.value)" style="'+FS+'"/></div>'+
+    (isFert?'<div><span style="'+LB()+'">适用场景</span><input value="'+q(fv("suitable"))+'" placeholder="果树、蔬菜、盆栽观叶…" onchange="setManualField(\'suitable\',this.value)" style="'+FS+'"/></div>':'')+ 
+    '<div><span style="'+LB()+'">使用间隔（天）</span><input type="number" min="1" value="'+(libForm.interval||"")+'" placeholder="14" onchange="libForm.interval=+this.value" style="'+FS+'width:110px;text-align:center;"/></div>'+
+    (!isFert?'<div><span style="'+LB()+'">安全间隔期（天）</span><input type="number" min="0" value="'+q(fv("safetyDays"))+'" placeholder="7" onchange="setManualField(\'safetyDays\',+this.value)" style="'+FS+'width:110px;text-align:center;"/></div>':'')+
+    '<div><span style="'+LB()+'">注意事项</span><input value="'+q(fv("caution"))+'" placeholder="花期禁用、高温期减量…" onchange="setManualField(\'caution\',this.value)" style="'+FS+'"/></div>'+
+    '<div><span style="'+LB()+'">备注（购买日期、存放位置…）</span><input value="'+q(libForm.note||"")+'" placeholder="2025年购入，放工具房…" onchange="libForm.note=this.value" style="'+FS+'"/></div>'+
+    '<div style="display:flex;gap:7px;margin-top:4px"><button onclick="saveLibItem()" style="flex:1;padding:9px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.6);color:#2e4a22">✓ '+(libEditId?"保存修改":"添加到库存")+'</button><button onclick="libEditId=null;setLibAdding(false)" style="flex:1;padding:9px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button></div>'+
+    '</div></div>':"";
+  var tabs=[["fert","🌿 肥料库"],["med","💊 药品库"]].map(function(x){return '<button onclick="setLibTab(\''+x[0]+'\')" style="flex:1;padding:10px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:'+(S.libTab===x[0]?700:400)+';background:'+(S.libTab===x[0]?"rgba(180,210,160,0.35)":"transparent")+';border:none;border-bottom:'+(S.libTab===x[0]?"2px solid #5a8040":"2px solid transparent")+';color:'+(S.libTab===x[0]?"#2e4a22":"#7a9868")+'">'+x[1]+'</button>';}).join("");
+  var items=filtered.map(function(item){
+    var exp=S.libExpanded===item.id;
+    var daysSince=item.lastUsed?ds(item.lastUsed):null;
+    var due=item.interval&&daysSince!==null&&daysSince>=item.interval;
+    var det="";
+    if(exp){det='<div style="padding:0 14px 14px;border-top:1px solid rgba(150,185,130,0.2)">'+
+      (item.target||item.suitable?'<div style="margin-top:8px;background:rgba(255,220,180,0.25);border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:#7a5020;font-weight:700;margin-bottom:2px">'+(isFert?"🌱 适用场景":"🎯 防治对象")+'</div><div style="font-size:11px;color:#6a4028;line-height:1.6">'+q(item.target||item.suitable||"")+'</div></div>':"")+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">'+
+      [["💊 用量/稀释",item.dosage],["📋 使用方法",item.usage||item.method],["📅 建议间隔",(item.interval||"—")+"天"],[isFert?"🌿 类型":"⚗️ 成分",item.type||item.chemical]].filter(function(x){return x[1];}).map(function(x){return '<div style="background:rgba(180,210,160,0.2);border-radius:8px;padding:6px 9px"><div style="font-size:10px;color:#6a8858;margin-bottom:2px">'+x[0]+'</div><div style="font-size:11px;color:#2e4a22;line-height:1.5">'+q(x[1])+'</div></div>';}).join("")+'</div>'+
+      (item.caution?'<div style="margin-top:7px;background:rgba(220,180,140,0.2);border-radius:8px;padding:7px 9px"><span style="font-size:11px;font-weight:700;color:#7a5020">⚠️ </span><span style="font-size:11px;color:#6a4828">'+q(item.caution)+'</span></div>':"")+
+      (item.note?'<div style="margin-top:6px;font-size:11px;color:#7a9060">📝 '+q(item.note)+'</div>':"")+
+      '<div style="display:flex;gap:6px;margin-top:10px">'+
+      '<button onclick="startLibEdit(\''+item.id+'\')" style="flex:1;padding:7px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(165,195,220,0.25);border:1px solid rgba(140,175,210,0.4);color:#384a68">✏️ 修改</button>'+
+      '<button onclick="confirm2(\'确认从库存中删除「'+q(item.name)+'」吗？\',function(){delLibItem(\''+(isFert?"fert":"med")+'\',\''+item.id+'\');})" style="padding:7px 12px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,160,140,0.2);border:1px solid rgba(190,120,100,0.4);color:#8a3020">删除</button>'+
+      '</div></div>';}
+    return '<div style="background:rgba(255,255,255,0.6);border:1px solid '+(due?"rgba(200,140,50,0.5)":"rgba(150,185,130,0.35)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
+      '<button onclick="toggleLibItem(\''+item.id+'\')" style="width:100%;background:none;border:none;cursor:pointer;font-family:inherit;padding:11px 14px;display:flex;align-items:center;gap:10px;text-align:left">'+
+      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><span style="font-size:13px;font-weight:700;color:#2e4a22">'+q(item.name)+'</span>'+(item.type||item.chemical?'<span style="font-size:10px;background:rgba(150,190,120,0.25);border-radius:10px;padding:1px 7px;color:#5a7840">'+q(item.type||item.chemical||"")+'</span>':"")+( due?'<span style="font-size:10px;color:#8a5010;background:rgba(240,190,100,0.25);border-radius:10px;padding:1px 7px">⚠️ 该用了</span>':"")+'</div>'+
+      '<div style="font-size:11px;color:#7a9060;margin-top:2px">'+(daysSince!==null?"上次使用："+daysSince+"天前":"尚未记录使用")+(item.interval?"　间隔："+item.interval+"天":"")+'</div></div>'+
+      '<span style="font-size:11px;color:#8aaa78;flex-shrink:0">'+(exp?"▲":"▼")+'</span></button>'+det+'</div>';
+  }).join("");
+  return '<div style="position:fixed;inset:0;background:rgba(50,80,30,0.45);z-index:200;display:flex;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeLib()">'+
+    '<div style="background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">'+
+    '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:700;color:#2e4a22">📦 我的库存</span><button onclick="closeLib()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
+    '<div style="display:flex;border-bottom:1px solid rgba(150,185,130,0.3)">'+tabs+'</div>'+
+    addForm+
+    (!S.libAdding?'<div style="padding:8px 14px;border-bottom:1px solid rgba(150,185,130,0.2);display:flex;gap:7px">'+
+      '<div style="flex:1;position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#8aaa78">🔍</span>'+
+      '<input id="lib_search_inp" type="search" autocomplete="off" placeholder="搜索库存…" style="'+FS+'padding-left:30px;" onkeydown="if(event.key===\'Enter\'){S.libSearch=this.value;render();}"/></div>'+
+      '<button onclick="var el=document.getElementById(\'lib_search_inp\');setLibAdding(true,el?el.value:\'\')" style="padding:7px 14px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;background:rgba(140,185,110,0.35);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap">+ 添加</button></div>'
+    :"")+
+    '<div style="flex:1;overflow-y:auto;padding:10px 14px">'+
+    (arr.length===0&&!S.libAdding?'<div style="text-align:center;padding:30px 0;color:#9aaa88;font-size:12px">库存为空<br/>点击「+ 添加」录入你的'+(isFert?"肥料":"药品")+'</div>':"")+
+    (filtered.length===0&&arr.length>0?'<div style="text-align:center;padding:20px 0;color:#9aaa88;font-size:12px">未找到匹配项</div>':items)+
+    '</div></div></div>';
+}
+
+// ── Export / Import ──
+function exportData(){
+  var data={plants:S.plants,fert:LIB.fert,med:LIB.med,exportTime:new Date().toISOString()};
+  var json=JSON.stringify(data,null,2);
+  var blob=new Blob([json],{type:"application/json;charset=utf-8"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  var now=new Date();
+  a.href=url;
+  a.download="植物志备份_"+now.getFullYear()+(now.getMonth()+1)+now.getDate()+".json";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importData(){
+  var input=document.createElement("input");
+  input.type="file";input.accept=".json,application/json";
+  input.onchange=function(e){
+    var file=e.target.files[0];if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(evt){
+      try{
+        var data=JSON.parse(evt.target.result);
+        var pc=0,fc=0,mc=0;
+        if(Array.isArray(data.plants)){S.plants=data.plants;pc=data.plants.length;}
+        if(Array.isArray(data.fert)){LIB.fert=data.fert;fc=data.fert.length;}
+        if(Array.isArray(data.med)){LIB.med=data.med;mc=data.med.length;}
+        storePlants();saveLib();render();
+        alert("✅ 导入成功！\n植物："+pc+"株\n肥料库："+fc+"种\n药品库："+mc+"种");
+      }catch(err){alert("❌ 导入失败，请确认文件是由「植物志」导出的备份。");}
+    };
+    reader.readAsText(file);
+  };
+  document.body.appendChild(input);input.click();document.body.removeChild(input);
+}
+
+
+function buildApp(){
+  var urgent=0;for(var i=0;i<S.plants.length;i++){var p=S.plants[i];var w=ds(ld(p.waterLog)),f=ds(ld(p.fertLog));if(getN(w)>=p.wi||getN(f)>=p.fi)urgent++;}
+  var usedCats=[];for(var j=0;j<S.plants.length;j++){var c=S.plants[j].category;if(c&&usedCats.indexOf(c)<0)usedCats.push(c);}
+  var list=S.plants.slice();
+  if(S.filterCat!=="all")list=list.filter(function(p){return p.category===S.filterCat;});
+  if(S.search.trim()){var sq=S.search.toLowerCase();list=list.filter(function(p){return[p.name,p.variety,p.type,p.notes,p.finalPlantLocation].some(function(s){return s&&s.toLowerCase().indexOf(sq)>=0;});});}
+  list.sort(function(a,b){if(S.sortBy==="name")return a.name.localeCompare(b.name,"zh");if(S.sortBy==="category")return(a.category||"").localeCompare(b.category||"");if(S.sortBy==="planted")return(b.finalPlantDate||"").localeCompare(a.finalPlantDate||"");if(S.sortBy==="location")return(a.finalPlantLocation||"").localeCompare(b.finalPlantLocation||"","zh");return a.id.localeCompare(b.id);});
+  var catFilter=usedCats.length>0?('<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px"><button onclick="S.filterCat=\'all\';render()" style="'+gbtn(S.filterCat==="all")+'">全部</button>'+usedCats.slice().sort(function(a,b){return a.localeCompare(b,"zh");}).map(function(c){return '<button onclick="S.filterCat=\''+q(c)+'\';render()" style="'+gbtn(S.filterCat===c)+'">'+q(c)+'</button>';}).join("")+'</div>'):"";
+  var sortBtns=SORTS.map(function(s){return '<button onclick="S.sortBy=\''+s.key+'\';render()" style="'+gbtn(S.sortBy===s.key)+'padding:3px 10px;border-radius:14px;">'+s.label+'</button>';}).join("");
+  var plantRows=(S.showAdd?buildPlantForm():"")+list.map(function(p){return S.editId===p.id?buildPlantForm():buildPlantCard(p);}).join("");
+  return '<div style="min-height:100vh;padding-bottom:52px">'+
+    '<div style="padding:28px 20px 16px;text-align:center;border-bottom:1px solid rgba(90,120,70,0.2)">'+
+    '<div style="font-size:10px;letter-spacing:4px;color:#7a9870;text-transform:uppercase;margin-bottom:5px">智能植物养护</div>'+
+    '<h1 style="font-size:29px;color:#3d5c30;margin:0;font-weight:700">'+APPNAME+'</h1>'+
+    '<div style="margin-top:10px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">'+
+    (urgent>0?'<div style="background:rgba(210,150,60,0.18);border:1px solid rgba(180,130,50,0.4);border-radius:20px;padding:3px 14px;font-size:12px;color:#7a5010">⚠️ '+urgent+'株植物待处理</div>':"")+
+    '<button onclick="openLib(\'fert\')" style="background:rgba(150,195,130,0.2);border:1px solid rgba(130,175,110,0.4);border-radius:20px;padding:3px 14px;font-size:12px;color:#3a5a28;cursor:pointer;font-family:inherit">🌿 肥料库</button>'+
+    '<button onclick="openLib(\'med\')" style="background:rgba(210,160,130,0.2);border:1px solid rgba(190,140,110,0.4);border-radius:20px;padding:3px 14px;font-size:12px;color:#5a3a28;cursor:pointer;font-family:inherit">💊 药品库</button>'+
+    '</div>'+
+    '<div style="margin-top:8px;display:flex;justify-content:center;gap:6px">'+
+    '<button onclick="exportData()" style="background:rgba(140,185,110,0.2);border:1px solid rgba(120,165,90,0.4);border-radius:16px;padding:3px 12px;font-size:11px;color:#3a5a28;cursor:pointer;font-family:inherit" title="导出备份（解决桌面图标数据丢失）">💾 备份数据</button>'+
+    '<button onclick="importData()" style="background:rgba(165,195,220,0.2);border:1px solid rgba(140,175,210,0.4);border-radius:16px;padding:3px 12px;font-size:11px;color:#384a68;cursor:pointer;font-family:inherit" title="从备份文件恢复数据">📂 恢复数据</button>'+
+    '</div></div>'+
+    '<div style="max-width:460px;margin:0 auto;padding:0 16px">'+
+    '<div style="background:rgba(255,255,255,0.55);border:1px solid rgba(150,185,130,0.5);border-radius:18px;padding:17px 19px;margin-top:18px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+    '<div><div style="font-size:11px;color:#6a8a5a;margin-bottom:4px">📍 '+q(W.loc)+'</div><div style="font-size:31px;color:#2e4a22">'+W.emo+' '+W.temp+'°C</div><div style="font-size:12px;color:#7a9868;margin-top:2px">'+W.cond+'</div></div>'+
+    '<div style="text-align:right;font-size:12px;color:#6a8858;line-height:2.2"><div>💧 湿度 '+W.hum+'%</div><div>'+(W.rain?"🌧 有降水":"☀️ 无降水")+'</div><div style="font-size:10px;color:#8a9a7a;margin-top:4px">更新：'+q(W.upd)+'</div></div></div>'+
+    '<div style="display:flex;gap:6px;margin-top:12px">'+W.fc.map(function(f){return '<div style="flex:1;background:rgba(180,210,155,0.3);border-radius:8px;padding:7px 4px;text-align:center;font-size:11px;color:#4a6a3a"><div style="font-size:17px">'+f.e+'</div><div style="font-weight:600">'+f.d+'</div><div style="font-size:10px;color:#6a8858;margin-top:1px">'+f.t+'</div>'+(f.hi!==null&&f.lo!==null?'<div style="font-size:11px;color:#3a5a28;margin-top:2px;font-weight:600">'+f.lo+'°–'+f.hi+'°</div>':"")+'</div>';}).join("")+'</div>'+
+    '<div style="margin-top:10px;background:rgba(175,210,155,0.3);border-radius:8px;padding:7px 12px;font-size:12px;color:#4a6838">💡 '+q(W.tip)+'</div>'+
+    '<div style="margin-top:7px;font-size:10px;color:#8a9a7a;text-align:center">每次打开自动更新天气</div></div>'+
+    '<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">'+
+    '<div style="display:flex;gap:7px;align-items:center">'+
+    '<div style="flex:1;position:relative"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;color:#8aaa78">🔍</span>'+
+    '<input id="search_inp" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="名称、品种、位置（回车搜索）" style="'+FS+'padding-left:32px;padding-right:'+(S.search?"36px":"12px")+';" onkeydown="if(event.key===\'Enter\'){S.search=this.value;this.blur();render();}"/>'+
+    (S.search?'<button onclick="S.search=\'\';render()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:#8aaa78">✕</button>':"")+
+    '</div>'+
+    '<button onclick="S.search=document.getElementById(\'search_inp\').value;render()" style="padding:8px 14px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(140,185,110,0.35);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap;flex-shrink:0">搜索</button>'+
+    '</div>'+
+    catFilter+
+    '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#8aaa78;white-space:nowrap">排序：</span><div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:2px">'+sortBtns+'</div></div></div>'+
+    '<div style="margin-top:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px">'+
+    '<div style="font-size:11px;color:#6a8858">我的植物 '+(list.length<S.plants.length?"("+list.length+"/"+S.plants.length+")":"("+S.plants.length+")")+'</div>'+
+    '<button onclick="'+(S.showAdd?"S.showAdd=false;S.editId=null;render()":"startAdd()")+'" style="padding:6px 15px;border-radius:20px;cursor:pointer;font-family:inherit;font-size:12px;background:'+(S.showAdd?"rgba(220,160,155,0.25)":"rgba(160,200,135,0.3)")+';border:1px solid '+(S.showAdd?"rgba(200,120,115,0.4)":"rgba(130,175,105,0.5)")+';color:'+(S.showAdd?"#7a2020":"#2e4a22")+'">'+(S.showAdd?"✕ 取消":"+ 添加植物")+'</button></div>'+
+    (S.plants.length===0&&!S.showAdd?'<div style="text-align:center;padding:44px 0"><div style="font-size:40px;margin-bottom:10px">🪴</div><div style="font-size:12px;color:#8a9e78;line-height:2.4">还没有植物<br/>点击「+ 添加植物」开始</div></div>':"")+
+    (S.plants.length>0&&list.length===0?'<div style="text-align:center;padding:30px 0;color:#8aaa78;font-size:12px">没有符合条件的植物</div>':"")+
+    '<div style="display:flex;flex-direction:column;gap:11px">'+plantRows+'</div></div>'+
+    '<div style="text-align:center;margin-top:30px;font-size:10px;color:#8a9a7a;line-height:2">植物数据本地保存 · 天气自动更新<br/>📌 添加到桌面前请先「备份数据」，再在桌面图标中「恢复数据」</div></div></div>';
+}
+
+// ── Weather ──
+function fetchWeather(){
+  fetch("https://api.open-meteo.com/v1/forecast?latitude=49.1042&longitude=-122.8231&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America/Vancouver&forecast_days=3")
+  .then(function(r){return r.json();})
+  .then(function(d){
+    var c=d.current;
+    var codes=d.daily&&d.daily.weather_code?d.daily.weather_code:[];
+    var tMax=d.daily&&d.daily.temperature_2m_max?d.daily.temperature_2m_max:[];
+    var tMin=d.daily&&d.daily.temperature_2m_min?d.daily.temperature_2m_min:[];
+    function wD(code){if(code<=1)return{cond:"晴天",emo:"☀️",rain:false};if(code<=3)return{cond:"多云",emo:"⛅",rain:false};if(code<=49)return{cond:"有雾",emo:"🌫️",rain:false};if(code<=67)return{cond:"降雨",emo:"🌧️",rain:true};if(code<=77)return{cond:"降雪",emo:"❄️",rain:false};if(code<=82)return{cond:"阵雨",emo:"🌦️",rain:true};return{cond:"雷雨",emo:"⛈️",rain:true};}
+    var wi=wD(c.weather_code);
+    W.temp=Math.round(c.temperature_2m);W.hum=c.relative_humidity_2m;W.pre=c.precipitation||0;
+    W.cond=wi.cond;W.emo=wi.emo;W.rain=wi.rain;
+    W.fc=codes.slice(0,3).map(function(code,i){var fi=wD(code);return{d:["今天","明天","后天"][i],e:fi.emo,t:fi.cond,hi:tMax[i]!==undefined?Math.round(tMax[i]):null,lo:tMin[i]!==undefined?Math.round(tMin[i]):null};});
+    var tip="";if(wi.rain||W.pre>3)tip="今日有降水，注意减少浇水";else if(W.hum>80)tip="湿度偏高（"+W.hum+"%），浇水适量即可";else if(W.temp>30)tip="气温偏高（"+W.temp+"°C），注意防晒遮阴";else if(W.temp<5)tip="气温偏低，注意防寒保温";else tip="天气适宜，可按常规养护计划进行";
+    W.tip=tip;
+    var now=new Date();W.upd=now.getFullYear()+"年"+(now.getMonth()+1)+"月"+now.getDate()+"日 "+now.getHours()+":"+(now.getMinutes()<10?"0":"")+now.getMinutes();
+    render();
+  }).catch(function(){W.upd="天气获取失败，请检查网络";render();});
+}
+
+// ── Init ──
+render();
+fetchWeather();
+</script>
+</body>
+</html>
