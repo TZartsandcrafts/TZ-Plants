@@ -1144,7 +1144,7 @@ function buildPropAddForm(){
     (propForm.parentId===''?'<input value="'+q(propForm.parentName)+'" placeholder="或手填母株名称…" onchange="propForm.parentName=this.value" style="width:100%;margin-top:5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030"/>':'')+'</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
     '<div style="min-width:0"><div style="font-size:11px;color:#6a8858;margin-bottom:4px">操作日期 *</div><input type="date" value="'+propForm.date+'" onchange="setPropField(\'date\',this.value)" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/></div>'+
-    '<div style="min-width:0"><div style="font-size:11px;color:#6a8858;margin-bottom:4px">数量 *</div><input type="number" min="1" max="999" value="'+propForm.total+'" onchange="setPropField(\'total\',+this.value)" oninput="setPropField(\'total\',+this.value)" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;text-align:center"/></div>'+
+    '<div style="min-width:0"><div style="font-size:11px;color:#6a8858;margin-bottom:4px">数量 *</div><input type="number" min="1" max="999" value="'+propForm.total+'" onchange="setPropField(\'total\',+this.value)" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;text-align:center;box-sizing:border-box"/></div>'+
     '</div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">基质 / 环境</div><input value="'+q(propForm.medium)+'" placeholder="珍珠岩+椰糠、温室…" onchange="propForm.medium=this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030"/></div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">备注</div><input value="'+q(propForm.note)+'" placeholder="其他信息…" onchange="propForm.note=this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030"/></div>'+
@@ -1228,7 +1228,7 @@ function buildPropBatchDetail(b){
       '<span style="font-size:12px;font-weight:600;color:'+st.color+'">'+st.icon+' '+st.label+'</span>'+
       (sl.status==="success"&&sl.successDate?'<span style="font-size:11px;color:#8aaa78">'+labelKey+' '+q(sl.successDate)+(sdDays!==null?" (+"+sdDays+"天)":"")+'</span>':"")+
       (sl.graduated?'<span style="font-size:11px;background:rgba(140,185,110,0.3);color:#2a6a35;border-radius:7px;padding:1px 7px">🎓 已建卡</span> <button onclick="undoGraduate(\''+b.id+'\','+idx+')" style="font-size:10px;padding:2px 8px;border-radius:7px;cursor:pointer;font-family:inherit;background:rgba(220,190,150,0.3);border:1px solid rgba(190,150,100,0.4);color:#7a5020">↩ 撤销</button>':"")+
-      '</div>div>'+
+      '</div>'+
       '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">'+
       ['waiting','success','fail'].map(function(sk){
         var ss=PROP_STATUS[sk];var sel=sl.status===sk;
