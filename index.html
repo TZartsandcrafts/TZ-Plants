@@ -518,7 +518,7 @@ function buildGrowthTab(v){
   if(src==="cutting"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">✂️ 扦插信息</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("扦插日期","opDate",v.opDate)+textRow("插穗来源","buyFrom",v.buyFrom,"母株来源…")+taRow("扦插备注","opNotes",v.opNotes,"基质、处理方式…")+dateRow("生根/成活日期","rootDate",v.rootDate)+envBtns(v.indoorStart)+'</div></div>';}
   if(src==="graft"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">🔗 嫁接信息</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("嫁接日期","opDate",v.opDate)+textRow("砧木来源","buyFrom",v.buyFrom,"砧木品种…")+taRow("嫁接备注","opNotes",v.opNotes,"接穗品种、方法…")+dateRow("成活确认日期","rootDate",v.rootDate)+envBtns(v.indoorStart)+'</div></div>';}
   if(src==="division"){html+='<div style="'+secBox()+'"><div style="font-size:11px;font-weight:700;color:#5a7848;margin-bottom:8px">🌾 分株信息</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("分株日期","opDate",v.opDate)+textRow("母株来源","buyFrom",v.buyFrom,"母株品种…")+taRow("分株备注","opNotes",v.opNotes,"数量、处理…")+'</div></div>';}
-  if((src==="seed"||src==="cutting"||src==="graft")&&v.indoorStart==="indoor"){html+='<div style="'+secBox("rgba(255,235,150,0.25)")+'"><div style="font-size:11px;font-weight:700;color:#8a7a30;margin-bottom:8px">🌤️ 炼苗（室内→室外过渡）</div><div style="font-size:11px;color:#9a8a40;margin-bottom:8px;line-height:1.6">室内苗直接移到室外会萎蔫，需逐步延长室外暴露时间（5-14天）。</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("开始炼苗日期","hardeningDate",v.hardeningDate)+'<div><span style="'+LB()+'">计划炼苗天数</span><div style="display:flex;align-items:center;gap:10px"><input type="range" min="5" max="21" value="'+(v.hardeningDays||7)+'" oninput="setFormField(\'hardeningDays\',+this.value)" style="flex:1;accent-color:#7aaa54"/><span style="font-size:13px;color:#4a6a38;min-width:40px">'+(v.hardeningDays||7)+'天</span></div></div>'+taRow("炼苗备注","hardeningNotes",v.hardeningNotes,"每日室外时长…")+'</div></div>';}
+  if((src==="seed"||src==="cutting"||src==="graft")&&v.indoorStart==="indoor"){html+='<div style="'+secBox("rgba(255,235,150,0.25)")+'"><div style="font-size:11px;font-weight:700;color:#8a7a30;margin-bottom:8px">🌤️ 炼苗（室内→室外过渡）</div><div style="font-size:11px;color:#9a8a40;margin-bottom:8px;line-height:1.6">室内苗直接移到室外会萎蔫，需逐步延长室外暴露时间（5-14天）。</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("开始炼苗日期","hardeningDate",v.hardeningDate)+'<div><span style="'+LB()+'">计划炼苗天数</span><div style="display:flex;align-items:center;gap:10px"><input type="range" min="5" max="21" value="'+(v.hardeningDays||7)+'" onchange="setFormField(\'hardeningDays\',+this.value)" style="flex:1;accent-color:#7aaa54"/><span style="font-size:13px;color:#4a6a38;min-width:40px">'+(v.hardeningDays||7)+'天</span></div></div>'+taRow("炼苗备注","hardeningNotes",v.hardeningNotes,"每日室外时长…")+'</div></div>';}
   if(src==="seed"||src==="sapling"||src==="cutting"||src==="division"||src==="graft"){html+='<div style="'+secBox("rgba(175,215,185,0.3)")+'"><div style="font-size:11px;font-weight:700;color:#5a9068;margin-bottom:8px">🪴 假植（临时上盆）</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("假植日期","prePlantDate",v.prePlantDate)+taRow("假植备注","prePlantNotes",v.prePlantNotes,"容器、基质…")+'</div></div>';}
   html+='<div style="'+secBox("rgba(165,210,200,0.3)")+'"><div style="font-size:11px;font-weight:700;color:#5a9888;margin-bottom:8px">🔄 移栽</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("移栽日期","transplantDate",v.transplantDate)+taRow("移栽备注","transplantNotes",v.transplantNotes,"换盆、换土…")+'</div></div>';
   html+='<div style="'+secBox("rgba(165,195,220,0.25)")+'"><div style="font-size:11px;font-weight:700;color:#5a7898;margin-bottom:8px">📍 定植（最终位置）</div><div style="display:flex;flex-direction:column;gap:8px">'+dateRow("定植日期","finalPlantDate",v.finalPlantDate)+textRow("定植位置","finalPlantLocation",v.finalPlantLocation,"后院东侧、阳台南面…")+taRow("定植备注","finalPlantNotes",v.finalPlantNotes,"盆号、土壤配方…")+'</div></div>';
@@ -1023,7 +1023,7 @@ function savePropBatch(){
   if(!propForm.date){alert("请填写操作日期");return;}
   if(S.propEditId){
     var eb=PROP.find(function(x){return x.id===S.propEditId;});
-    if(eb){eb.method=propForm.method;eb.parentId=propForm.parentId;eb.parentName=propForm.parentName;eb.date=propForm.date;eb.medium=propForm.medium;eb.note=propForm.note;}
+    if(eb){eb.method=propForm.method;eb.parentId=propForm.parentId;eb.parentName=propForm.parentName;eb.date=propForm.date;eb.total=parseInt(propForm.total)||eb.total;eb.medium=propForm.medium;eb.note=propForm.note;}
     var eid=S.propEditId;S.propEditId=null;S.propAdding=false;S.propBatchId=eid;
     propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:""};
     saveProp();render();return;
@@ -1104,10 +1104,10 @@ function graduateSeedling(batchId,sIdx){
   sl.graduated=true;
   sl.plantId=null;
   saveProp();
+  window._propGradRef={batchId:batchId,sIdx:sIdx};
   S.showLib=false;
   S.showProp=false;
   S.formData=newP;S.formTab="basic";S.showAdd=true;S.editId=null;
-  window._propGradRef={batchId:batchId,sIdx:sIdx};
   render();
 }
 
