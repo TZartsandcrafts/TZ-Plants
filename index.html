@@ -1042,7 +1042,9 @@ function setPropParent(id){
   var p=S.plants.find(function(x){return x.id===id;});
   propForm.parentName=p?p.name:'';
   var wrap=document.getElementById('prop_parent_name_wrap');
-  if(wrap){wrap.style.display=id===''?'block':'none';if(id===''){var inp=wrap.querySelector('input');if(inp)inp.value=propForm.parentName;}}
+  if(wrap){
+    wrap.innerHTML=id===''?'<input value="'+q(propForm.parentName)+'" placeholder="或手填母株名称…" onchange="propForm.parentName=this.value" style="width:100%;margin-top:5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/>':'';
+  }
 }
 
 function savePropBatch(){
@@ -1172,7 +1174,7 @@ function buildPropAddForm(){
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:5px">繁育方式</div><div style="display:flex;flex-wrap:wrap;gap:5px">'+methodBtns+'</div></div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">关联母株</div>'+
     '<select onchange="setPropParent(this.value)" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.4);font-family:inherit;font-size:13px;color:#3a5030">'+plantOpts+'</select>'+
-    '<div id="prop_parent_name_wrap" style="display:'+(propForm.parentId===''?'block':'none')+'"><input value="'+q(propForm.parentName)+'" placeholder="或手填母株名称…" onchange="propForm.parentName=this.value" style="width:100%;margin-top:5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/></div>'+'</div>'+
+    '<div id="prop_parent_name_wrap">'+(propForm.parentId===''?'<input value="'+q(propForm.parentName)+'" placeholder="或手填母株名称…" onchange="propForm.parentName=this.value" style="width:100%;margin-top:5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/>':'')+'</div>'+'</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
     '<div style="min-width:0"><div style="font-size:11px;color:#6a8858;margin-bottom:4px">操作日期 *</div><input type="date" value="'+propForm.date+'" onchange="propForm.date=this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/></div>'+
     '<div style="min-width:0"><div style="font-size:11px;color:#6a8858;margin-bottom:4px">数量 *</div><input type="number" min="1" max="999" value="'+propForm.total+'" onchange="propForm.total=+this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;text-align:center;box-sizing:border-box"/></div>'+
