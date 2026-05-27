@@ -1027,6 +1027,23 @@ var PROP_STATUS={waiting:{icon:"⏳",label:"等待中",color:"#7a6010"},success:
 var propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:""};
 
 function setPropField(k,v){propForm[k]=v;if(k==="parentId"){var p=S.plants.find(function(x){return x.id===v;});propForm.parentName=p?p.name:"";}render();}
+// ── No-render updates for prop form (prevents input overlap on mobile) ──
+function setPropMethod(key){
+  propForm.method=key;
+  document.querySelectorAll('[data-pmethod]').forEach(function(b){
+    var sel=b.getAttribute('data-pmethod')===key;
+    b.style.background=sel?'rgba(140,185,110,0.4)':'rgba(180,210,160,0.15)';
+    b.style.borderColor=sel?'rgba(120,165,90,0.6)':'rgba(150,185,130,0.25)';
+    b.style.color=sel?'#2e4a22':'#6a8858';
+  });
+}
+function setPropParent(id){
+  propForm.parentId=id;
+  var p=S.plants.find(function(x){return x.id===id;});
+  propForm.parentName=p?p.name:'';
+  var wrap=document.getElementById('prop_parent_name_wrap');
+  if(wrap){wrap.style.display=id===''?'block':'none';if(id===''){var inp=wrap.querySelector('input');if(inp)inp.value=propForm.parentName;}}
+}
 
 function savePropBatch(){
   if(!propForm.date){alert("请填写操作日期");return;}
@@ -1147,15 +1164,15 @@ function buildPropAddForm(){
   if(!propForm.date)propForm.date=todayStr;
   var methodBtns=PROP_METHODS.map(function(m){
     var sel=propForm.method===m.key;
-    return '<button onclick="setPropField(\'method\',\''+m.key+'\')" style="padding:6px 10px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(sel?"rgba(140,185,110,0.4)":"rgba(180,210,160,0.15)")+';border:1px solid '+(sel?"rgba(120,165,90,0.6)":"rgba(150,185,130,0.25)")+';color:'+(sel?"#2e4a22":"#6a8858")+'">'+m.icon+' '+m.label+'</button>';
+    return '<button data-pmethod="'+m.key+'" onclick="setPropMethod(\''+m.key+'\')" style="padding:6px 10px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(sel?"rgba(140,185,110,0.4)":"rgba(180,210,160,0.15)")+';border:1px solid '+(sel?"rgba(120,165,90,0.6)":"rgba(150,185,130,0.25)")+';color:'+(sel?"#2e4a22":"#6a8858")+'">'+m.icon+' '+m.label+'</button>';
   }).join("");
   var plantOpts='<option value="">— 不关联（或手填） —</option>'+S.plants.map(function(p){return '<option value="'+p.id+'"'+(propForm.parentId===p.id?" selected":"")+'>'+q(p.name)+(p.variety?" · "+q(p.variety):"")+'</option>';}).join("");
   return '<div style="display:flex;flex-direction:column;gap:10px">'+
     '<div style="font-size:12px;font-weight:700;color:#4a6a38;margin-bottom:2px">'+(S.propEditId?"✏️ 编辑繁育批次":"➕ 新建繁育批次")+'</div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:5px">繁育方式</div><div style="display:flex;flex-wrap:wrap;gap:5px">'+methodBtns+'</div></div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">关联母株</div>'+
-    '<select onchange="setPropField(\'parentId\',this.value)" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.4);font-family:inherit;font-size:13px;color:#3a5030">'+plantOpts+'</select>'+
-    (propForm.parentId===''?'<input value="'+q(propForm.parentName)+'" placeholder="或手填母株名称…" onchange="propForm.parentName=this.value" style="width:100%;margin-top:5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030"/>':'')+'</div>'+
+    '<select onchange="setPropParent(this.value)" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.4);font-family:inherit;font-size:13px;color:#3a5030">'+plantOpts+'</select>'+
+    '<div id="prop_parent_name_wrap" style="display:'+(propForm.parentId===''?'block':'none')+'"><input value="'+q(propForm.parentName)+'" placeholder="或手填母株名称…" onchange="propForm.parentName=this.value" style="width:100%;margin-top:5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/></div>'+'</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
     '<div style="min-width:0"><div style="font-size:11px;color:#6a8858;margin-bottom:4px">操作日期 *</div><input type="date" value="'+propForm.date+'" onchange="propForm.date=this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/></div>'+
     '<div style="min-width:0"><div style="font-size:11px;color:#6a8858;margin-bottom:4px">数量 *</div><input type="number" min="1" max="999" value="'+propForm.total+'" onchange="propForm.total=+this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;text-align:center;box-sizing:border-box"/></div>'+
