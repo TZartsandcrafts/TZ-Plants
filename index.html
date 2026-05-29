@@ -482,8 +482,8 @@ function buildBottomNav(){
 }
 
 // ── Plant Detail ──
-function openPlantDetail(id){S.plantDetailId=id;S.tab="plants";window.scrollTo(0,0);render();}
-function closePlantDetail(){S.plantDetailId=null;render();}
+function openPlantDetail(id){S.plantDetailId=id;S.prevTab=S.tab;if(S.tab!=="plants")S.tab="plants";window.scrollTo(0,0);render();}
+function closePlantDetail(){S.plantDetailId=null;if(S.prevTab&&S.prevTab!=="plants"){S.tab=S.prevTab;}S.prevTab=null;render();}
 
 function buildPlantDetail(p){
   var wd=ds(ld(p.waterLog)),fd=ds(ld(p.fertLog)),md=ds(ld(p.medLog));
@@ -512,7 +512,7 @@ function buildPlantDetail(p){
   var startDate=p.sowDate||p.buyDate||p.opDate;
   return '<div style="min-height:100vh;padding-bottom:100px;background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc)">'+
     // Header
-    '<div style="padding:16px 16px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(90,120,70,0.2);background:rgba(220,232,216,0.95)">'+
+    '<div style="position:sticky;top:0;z-index:20;padding:14px 16px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(90,120,70,0.2);background:rgba(220,232,216,0.97);backdrop-filter:blur(8px)">'+
     '<button onclick="closePlantDetail()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:0;line-height:1">‹</button>'+
     '<div style="flex:1;min-width:0"><div style="font-size:22px;font-weight:800;color:#2e4a22;line-height:1.3">'+q(p.name)+(p.variety?'<span style="font-size:16px;font-weight:400;color:#5a7848;margin-left:8px">'+q(p.variety)+'</span>':'')+'</div></div>'+
     '<span style="background:'+stObj.bg+';color:'+stObj.color+';border-radius:12px;padding:4px 12px;font-size:12px;font-weight:600;flex-shrink:0">'+stObj.label+'</span>'+
@@ -521,16 +521,14 @@ function buildPlantDetail(p){
     // Photo
     photoHtml+
     // Basic info card
-    '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:16px;margin-top:14px;border:1px solid rgba(150,185,130,0.4)">'+
-    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">'+
-    (p.category?'<span style="background:rgba(150,195,120,0.25);border-radius:10px;padding:3px 12px;font-size:12px;color:#3a5828">'+q(p.category)+'</span>':'')+
-    (p.type?'<span style="background:rgba(165,200,140,0.2);border-radius:10px;padding:3px 12px;font-size:12px;color:#4a6a38">'+q(p.type)+'</span>':'')+
-    (src?'<span style="background:rgba(180,210,155,0.2);border-radius:10px;padding:3px 12px;font-size:12px;color:#5a7848">'+src.icon+' '+src.label+'</span>':'')+
-    (genusHint&&(!p.type||p.type.indexOf(genusHint)<0)?'<span style="background:rgba(140,190,110,0.15);border-radius:10px;padding:3px 12px;font-size:11px;color:#5a8040">🌿 '+q(genusHint)+'</span>':'')+
+    '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:14px 16px;margin-top:14px;border:1px solid rgba(150,185,130,0.4)">'+
+    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">'+
+    (p.category?'<span style="background:rgba(150,195,120,0.25);border-radius:10px;padding:3px 11px;font-size:13px;color:#3a5828;font-weight:600">'+q(p.category)+'</span>':'')+
+    (p.type?'<span style="background:rgba(165,200,140,0.2);border-radius:10px;padding:3px 11px;font-size:12px;color:#4a6a38">'+q(p.type)+'</span>':'')+
+    (genusHint&&(!p.type||(p.type.indexOf("\u79d1")<0&&p.type.indexOf(genusHint)<0))?'<span style="background:rgba(140,190,110,0.15);border-radius:10px;padding:3px 11px;font-size:12px;color:#5a8040">🌿 '+q(genusHint)+'</span>':'')+
+    (startDate?'<span style="font-size:12px;color:#8aaa78;margin-left:2px">🗓 '+ds(startDate)+'天</span>':'')+
     '</div>'+
-    (startDate?'<div style="font-size:12px;color:#7a9060">🗓 记录'+ds(startDate)+'天</div>':'')+
-    (p.finalPlantLocation?'<div style="font-size:14px;color:#4a6a38;margin-top:4px;margin-bottom:2px">📍 '+q(p.finalPlantLocation)+'</div>':'')+
-    (p.notes?'<div style="font-size:14px;color:#5a7040;margin-top:8px;line-height:1.7;border-top:1px solid rgba(150,185,130,0.2);padding-top:8px">'+q(p.notes)+'</div>':'')+
+    (p.notes?'<div style="font-size:14px;color:#5a7040;margin-top:10px;line-height:1.8;border-top:1px solid rgba(150,185,130,0.18);padding-top:10px;white-space:pre-wrap;word-break:break-word">'+q(p.notes)+'</div>':'')+
     '</div>'+
     // Care status
     '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:16px;margin-top:12px;border:1px solid '+(wu||fu?"rgba(200,140,50,0.5)":"rgba(150,185,130,0.4)")+'">'+
@@ -889,6 +887,9 @@ function buildLibInline(tab){
                 '<div><span style="'+LB()+'">防治对象</span><input value="'+q(fv("target"))+'" placeholder="白粉病、蚜虫…" onchange="setManualField(\'target\',this.value)" style="'+FS+'font-size:14px;"/></div>')+
         '<div><span style="'+LB()+'">稀释比例 / 用量</span><input value="'+q(fv("dosage"))+'" placeholder="稀释1000倍…" onchange="setManualField(\'dosage\',this.value)" style="'+FS+'font-size:14px;"/></div>'+
         '<div><span style="'+LB()+'">使用方法</span><input value="'+q(fv("usage"))+'" placeholder="叶面喷雾、浇根…" onchange="setManualField(\'usage\',this.value)" style="'+FS+'font-size:14px;"/></div>'+
+        (isFert?'<div><span style="'+LB()+'">适用场景</span><input value="'+q(fv("suitable"))+'" placeholder="果树、蔬菜、盆栽观叶…" onchange="setManualField(\'suitable\',this.value)" style="'+FS+'font-size:14px;"/></div>':'')+'<div><span style="'+LB()+'">注意事项</span><input value="'+q(fv("caution"))+'" placeholder="花期禁用、高温期减量…" onchange="setManualField(\'caution\',this.value)" style="'+FS+'font-size:14px;"/></div>'+
+        (!isFert?'<div><span style="'+LB()+'">安全间隔期（天）</span><input type="number" min="0" value="'+q(fv("safetyDays"))+'" placeholder="7" onchange="setManualField(\'safetyDays\',+this.value)" style="'+FS+'font-size:14px;width:130px;"/></div>':'')+
+        '<div><span style="'+LB()+'">价格</span><input value="'+q(fv("price"))+'" placeholder="如：¥68 / 500ml…" onchange="setManualField(\'price\',this.value)" style="'+FS+'font-size:14px;"/></div>'+
         '<div><span style="'+LB()+'">使用间隔（天）</span><input type="text" value="'+q(libForm.interval||"")+'" placeholder="如：14 或 7-14" onchange="libForm.interval=this.value.trim()" style="'+FS+'font-size:14px;width:160px;text-align:center;"/></div>'+
         '<div><span style="'+LB()+'">备注</span><input value="'+q(libForm.note||"")+'" placeholder="购买日期、存放位置…" onchange="libForm.note=this.value" style="'+FS+'font-size:14px;"/></div>'+
         '<div style="display:flex;gap:8px;margin-top:4px">'+
@@ -1013,7 +1014,7 @@ function render(){
       var dx=e.changedTouches[0].clientX-_tx;
       var dy=Math.abs(e.changedTouches[0].clientY-_ty);
       if(dx>60&&dy<40){
-        if(S.plantDetailId){S.plantDetailId=null;render();}
+        if(S.plantDetailId){closePlantDetail();}
         else if(S.showAdd||S.editId){cancelForm();}
         else if(S.invSubTab){S.invSubTab=null;S.libAdding=false;S.libExpanded=null;S.libSearch='';render();}
         else if(S.propAdding){S.propAdding=false;S.propEditId=null;render();}
