@@ -426,6 +426,23 @@ function storePlants(){try{localStorage.setItem(SK,JSON.stringify(S.plants));}ca
 var DEFAULT_CATS=["🍎 水果","🌿 调味","🌺 花木","🥬 蔬菜"];
 function loadCats(){try{var c=JSON.parse(localStorage.getItem("plant_cats")||"null");return c&&c.length?c:DEFAULT_CATS.slice();}catch(e){return DEFAULT_CATS.slice();}}
 function saveCats(){try{localStorage.setItem("plant_cats",JSON.stringify(S.cats));}catch(e){}}
+function renameCat(i){
+  var old=S.cats[i];
+  var nv=prompt('重命名分类：',old);
+  if(!nv||!nv.trim()||nv.trim()===old)return;
+  var nw=nv.trim();
+  S.cats[i]=nw;
+  S.plants.forEach(function(p){if(p.category===old)p.category=nw;});
+  saveCats();storePlants();render();
+}
+function deleteCat(i){
+  var old=S.cats[i];
+  if(!confirm('删除分类「'+old+'」？原属此分类的植物将变为无分类。'))return;
+  S.cats.splice(i,1);
+  S.plants.forEach(function(p){if(p.category===old)p.category='';});
+  saveCats();storePlants();render();
+}
+
 
 // ── State ──
 var S={
@@ -992,7 +1009,7 @@ function buildInventoryTab(){
     '<div style="margin-top:20px;background:rgba(255,255,255,0.6);border-radius:16px;padding:16px;border:1px solid rgba(150,185,130,0.4)">'+
     '<div style="font-size:14px;font-weight:700;color:#2e4a22;margin-bottom:12px">🏷️ 植物分类管理</div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px">'+
-    S.cats.map(function(c,i){return '<div style="display:flex;align-items:center;gap:4px;background:rgba(155,195,125,0.25);border:1px solid rgba(130,175,100,0.4);border-radius:20px;padding:4px 10px 4px 12px"><span style="font-size:13px;color:#2e4a22">'+q(c)+'</span><button onclick="if(confirm(\'删除分类「'+q(c)+'」吗？不影响已有植物。\')){S.cats.splice('+i+',1);saveCats();render();}" style="background:none;border:none;cursor:pointer;font-size:12px;color:#9a9888;padding:0 2px;line-height:1">✕</button></div>';}).join("")+
+    S.cats.map(function(c,i){return '<div style="display:flex;align-items:center;gap:4px;background:rgba(155,195,125,0.25);border:1px solid rgba(130,175,100,0.4);border-radius:20px;padding:4px 10px 4px 12px"><span style="font-size:13px;color:#2e4a22">'+q(c)+'</span><button onclick="renameCat('+i+')" title="重命名" style="background:none;border:none;cursor:pointer;font-size:11px;color:#7a9060;padding:0 2px;line-height:1">✏️</button><button onclick="deleteCat('+i+')" style="background:none;border:none;cursor:pointer;font-size:12px;color:#9a9888;padding:0 2px;line-height:1">✕</button></div>';}).join("")+
     '</div>'+
     '<div style="display:flex;gap:8px">'+
     '<input id="new_cat_inp" placeholder="输入新分类名称…" value="'+q(S.newCatInput)+'" onchange="S.newCatInput=this.value" style="'+FS+'flex:1;font-size:13px"/>'+
@@ -1105,6 +1122,12 @@ function saveForm(){
   S.formData=null;S.showAdd=false;S.editId=null;S.filterCat="all";S.search="";storePlants();render();
 }
 function cancelForm(){S.formData=null;S.showAdd=false;S.editId=null;render();}
+function startAdd(){
+  var newP=JSON.parse(JSON.stringify(BLANK));
+  newP.id='p'+Date.now();
+  S.formData=newP;S.formTab="basic";S.showAdd=true;S.editId=null;S.plantDetailId=null;
+  window.scrollTo(0,0);render();
+}
 
 function dRow(label,key,val){return '<div><span style="'+LB()+'">'+label+'</span><input type="number" min="1" value="'+q(val)+'" onchange="setFormField(\''+key+'\',+this.value)" style="'+FS+'width:100px;text-align:center;"/></div>';}
 function dateRow(label,key,val){return '<div><span style="'+LB()+'">'+label+'</span><div style="display:flex;gap:6px;align-items:center"><input type="date" value="'+q(val||"")+'" onchange="if(S.formData)S.formData[\''+key+'\']=this.value" onblur="render()" style="'+FS+'flex:1;color-scheme:light;"/>'+(val?'<button onclick="setFormField(\''+key+'\',\'\')" style="background:none;border:none;cursor:pointer;color:#9a8878;font-size:16px;padding:0 4px">✕</button>':"")+'</div></div>';}
