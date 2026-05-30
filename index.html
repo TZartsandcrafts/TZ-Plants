@@ -774,16 +774,12 @@ function buildMiniCal(){
 function skipTask(pid, type){
   var p=S.plants.find(function(x){return x.id===pid;});
   if(!p)return;
-  // Record a skip entry - date is today, skip:true flag
   var log=type==='water'?p.waterLog:p.fertLog;
   var interval=type==='water'?p.wi:p.fi;
-  var lastDate=ld(log);
-  // Next due = lastDate + interval (or today if never logged)
-  var pts=lastDate?lastDate.split('-'):td().split('-');
-  var base=new Date(+pts[0],+pts[1]-1,+pts[2]);
-  base.setDate(base.getDate()+interval);
-  var skipDate=base.getFullYear()+'-'+String(base.getMonth()+1).padStart(2,'0')+'-'+String(base.getDate()).padStart(2,'0');
-  log.push({date:skipDate,skip:true,note:'跳过'});
+  var today=td();
+  // Skip date = today (marks this cycle as skipped)
+  // Next due will be today + interval, same as if we had logged today
+  log.push({date:today,skip:true,note:'跳过'});
   storePlants();render();
 }
 function buildCalendarTab(){
