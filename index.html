@@ -336,6 +336,12 @@ function saveLib(){
 }
 var LIB=loadLib();
 
+function loadArchive(){try{var r=JSON.parse(localStorage.getItem("plant_archive")||"null");return r&&r.plants?r:{plants:[],batches:[]};} catch(e){return{plants:[],batches:[]};} }
+function saveArchive(){try{localStorage.setItem("plant_archive",JSON.stringify(ARCHIVE));}catch(e){}}
+var ARCHIVE=loadArchive();
+if(!ARCHIVE.plants)ARCHIVE.plants=[];
+if(!ARCHIVE.batches)ARCHIVE.batches=[];
+
 function loadProp(){try{return JSON.parse(localStorage.getItem("lib_prop")||"[]");}catch(e){return[];}}
 function saveProp(){try{localStorage.setItem("lib_prop",JSON.stringify(PROP));}catch(e){}}
 var PROP=loadProp();
@@ -462,7 +468,8 @@ var S={
   showCatManager:false,
   cats:loadCats(),
   newCatInput:"",
-  invSubTab:null, // null=overview, 'fert','med','soil'
+  invSubTab:null, // null=overview, 'fert','med','soil','archive'
+  archiveSubTab:'plants', // 'plants' | 'batches'
   // Quick action panel
   qa:null // {type:"water"|"fert"|"med", sel:{plantId:true...}, catSel:{cat:true...}, allSel:false, expanded:{cat:true...}}
 };
@@ -566,6 +573,7 @@ function buildPlantDetail(p){
     // Edit/Delete
     '<div style="display:flex;gap:10px;margin-top:16px">'+
     '<button onclick="startEdit(\''+pid+'\')" style="flex:1;padding:13px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;background:rgba(165,195,220,0.3);border:1px solid rgba(140,175,210,0.5);color:#384a68">✏️ 编辑信息</button>'+
+    '<button onclick="archivePlant(\''+pid+'\')" style="padding:13px 14px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:14px;background:rgba(160,190,140,0.25);border:1px solid rgba(130,170,100,0.4);color:#3a6028">📦</button>'+
     '<button onclick="confirm2(\'确认删除「'+q(p.name)+'」吗？\',function(){S.plantDetailId=null;delPlant(\''+pid+'\');})" style="padding:13px 18px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:14px;background:rgba(220,150,140,0.25);border:1px solid rgba(190,110,100,0.5);color:#7a2818">🗑</button>'+
     '</div>'+
     '</div></div>';
@@ -927,6 +935,7 @@ function buildPlantsTab(){
     '<div style="display:flex;gap:5px;overflow-x:auto">'+
     [{key:"entry",label:"录入"},{key:"name",label:"名称"},{key:"category",label:"类别"},{key:"planted",label:"定植"},{key:"location",label:"位置"}].map(function(s){return '<button onclick="S.sortBy=\''+s.key+'\';render()" style="'+gbtn(S.sortBy===s.key)+'padding:3px 10px;">'+s.label+'</button>';}).join("")+
     '</div></div>'+
+    '<div style="display:flex;justify-content:flex-end;margin-top:6px"><button onclick="S.invSubTab=\'archive\';S.archiveSubTab=\'plants\';S.tab=\'inventory\';render()" style="padding:4px 12px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(160,190,140,0.25);border:1px solid rgba(130,170,100,0.35);color:#3a6028">📦 查看存档（'+ARCHIVE.plants.length+'）</button></div>'+
     '</div></div>'+
     // Plant list
     '<div style="max-width:460px;margin:0 auto;padding:14px 16px">'+
@@ -941,13 +950,85 @@ function buildPlantsTab(){
 }
 
 // ── Breeding Tab ──
+
+// ── Archive ──
+function archivePlant(id){
+  var p=null;
+  for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===id){p=S.plants[i];break;}}
+  if(!p)return;
+  if(!confirm('将「'+p.name+'」归档？归档后将从植物页隐藏，可在档案库中查看。'))return;
+  p.archivedAt=td();
+  ARCHIVE.plants.push(JSON.parse(JSON.stringify(p)));
+  S.plants=S.plants.filter(function(x){return x.id!==id;});
+  storePlants();saveArchive();
+  S.plantDetailId=null;render();
+}
+function unarchivePlant(id){
+  var p=ARCHIVE.plants.find(function(x){return x.id===id;});
+  if(!p)return;
+  if(!confirm('将「'+p.name+'」恢复到植物页？'))return;
+  delete p.archivedAt;
+  S.plants.push(JSON.parse(JSON.stringify(p)));
+  ARCHIVE.plants=ARCHIVE.plants.filter(function(x){return x.id!==id;});
+  storePlants();saveArchive();render();
+}
+function archiveBatch(id){
+  var b=PROP.find(function(x){return x.id===id;});
+  if(!b)return;
+  if(!confirm('将此繁育批次归档？归档后将从繁育页隐藏，可在档案库中查看。'))return;
+  b.archivedAt=td();b.archived=true;b.harvestDate=b.harvestDate||td();
+  ARCHIVE.batches.push(JSON.parse(JSON.stringify(b)));
+  PROP.splice(PROP.indexOf(b),1);
+  saveProp();saveArchive();
+  S.propBatchId=null;render();
+}
+function unarchiveBatch(id){
+  var b=ARCHIVE.batches.find(function(x){return x.id===id;});
+  if(!b)return;
+  if(!confirm('将此繁育批次恢复到繁育页？'))return;
+  delete b.archivedAt;b.archived=false;
+  PROP.push(JSON.parse(JSON.stringify(b)));
+  ARCHIVE.batches=ARCHIVE.batches.filter(function(x){return x.id!==id;});
+  saveProp();saveArchive();render();
+}
+
+// ── Graduate whole batch as single plant card ──
+function graduateBatchAsOne(batchId){
+  var b=PROP.find(function(x){return x.id===batchId;});
+  if(!b)return;
+  var succ=b.seedlings.filter(function(s){return s.status==='success';}).length;
+  var total=b.total;
+  var name=b.parentName||'未命名';
+  var confirmed=confirm('将「'+name+'」整批建卡？\n成活 '+succ+'/'+total+' 株，将作为一张植物卡进入植物页。');
+  if(!confirmed)return;
+  var newP=JSON.parse(JSON.stringify(BLANK));
+  newP.id='p'+Date.now();
+  newP.name=name;
+  newP.fromBatchId=batchId;
+  newP.fromBatchLabel='来自繁育批次（'+b.date+'）';
+  // Copy dates if available
+  if(b.method==='seed'){newP.sowDate=b.date;}
+  else if(b.method==='cutting'){newP.opDate=b.date;}
+  var firstSuccess=b.seedlings.filter(function(s){return s.status==='success'&&s.successDate;}).sort(function(a,c){return a.successDate.localeCompare(c.successDate);})[0];
+  if(firstSuccess){
+    if(b.method==='seed')newP.germDate=firstSuccess.successDate;
+    else newP.rootDate=firstSuccess.successDate;
+  }
+  S.plants.push(newP);
+  b.batchPlantId=newP.id;
+  storePlants();saveProp();
+  // Open the new plant card for editing
+  S.formData=JSON.parse(JSON.stringify(newP));S.formTab='basic';S.showAdd=false;S.editId=newP.id;S.plantDetailId=null;S.tab='plants';
+  window.scrollTo(0,0);render();
+}
+
 function buildBreedingTab(){
   var body=S.propAdding?buildPropAddForm():S.propBatchId?buildPropBatchDetail(PROP.find(function(x){return x.id===S.propBatchId;})||PROP[0]):buildPropList(PROP);
   return '<div style="min-height:100vh;padding-bottom:100px">'+
     '<div style="padding:16px 16px 12px;border-bottom:1px solid rgba(150,185,130,0.3);background:rgba(220,232,216,0.95);position:sticky;top:0;z-index:10">'+
     '<div style="max-width:460px;margin:0 auto;display:flex;justify-content:space-between;align-items:center">'+
     '<div style="font-size:18px;font-weight:700;color:#2e4a22">🌱 繁育记录</div>'+
-    (!S.propAdding&&!S.propBatchId?'<button onclick="S.propAdding=true;propForm={method:\'cutting\',parentId:\'\',parentName:\'\',date:\'\',total:1,medium:\'\',note:\'\',env:\'\',notes:\'\'};render()" style="padding:8px 16px;border-radius:20px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(100,165,70,0.85);border:none;color:white">+ 新建批次</button>':'')+
+    (!S.propAdding&&!S.propBatchId?'<div style="display:flex;gap:8px"><button onclick="S.invSubTab=\'archive\';S.archiveSubTab=\'batches\';S.tab=\'inventory\';render()" style="padding:8px 13px;border-radius:20px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(180,210,160,0.3);border:1px solid rgba(150,185,130,0.4);color:#4a7040">📦 存档</button><button onclick="S.propAdding=true;propForm={method:\'cutting\',parentId:\'\',parentName:\'\',date:\'\',total:1,medium:\'\',note:\'\',env:\'\',notes:\'\'};render()" style="padding:8px 16px;border-radius:20px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(100,165,70,0.85);border:none;color:white">+ 新建批次</button></div>':'')+
     (S.propBatchId?'<button onclick="S.propBatchId=null;render()" style="padding:7px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(180,210,160,0.3);border:1px solid rgba(150,185,130,0.4);color:#4a7040">← 返回</button>':'')+
     (S.propAdding?'<button onclick="S.propAdding=false;S.propEditId=null;render()" style="padding:7px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button>':'')+
     '</div></div>'+
@@ -1090,8 +1171,80 @@ function buildLibInline(tab){
     '</div>';
 }
 
+
+function buildArchivePage(){
+  var sub=S.archiveSubTab||'plants';
+  var isPlants=sub==='plants';
+
+  var header='<div style="min-height:100vh;padding-bottom:100px;background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc)">'+
+    '<div style="padding:14px 16px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(90,120,70,0.2);background:rgba(220,232,216,0.95);position:sticky;top:0;z-index:10">'+
+    '<button onclick="S.invSubTab=null;render()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:0;line-height:1">‹</button>'+
+    '<div style="font-size:18px;font-weight:700;color:#2e4a22">📦 档案库</div>'+
+    '</div>'+
+    // Sub-tab switcher
+    '<div style="max-width:460px;margin:0 auto;padding:12px 16px 0">'+
+    '<div style="display:flex;gap:8px;margin-bottom:14px">'+
+    '<button onclick="S.archiveSubTab=\'plants\';render()" style="flex:1;padding:10px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:'+(isPlants?'rgba(140,185,110,0.4)':'rgba(255,255,255,0.5)')+';border:1.5px solid '+(isPlants?'rgba(110,165,80,0.6)':'rgba(150,185,130,0.3)')+';color:'+(isPlants?'#2e4a22':'#6a8858')+'">🪴 植物存档<span style="font-size:11px;font-weight:400;margin-left:6px;color:#7a9060">'+ARCHIVE.plants.length+'</span></button>'+
+    '<button onclick="S.archiveSubTab=\'batches\';render()" style="flex:1;padding:10px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:'+(!isPlants?'rgba(140,185,110,0.4)':'rgba(255,255,255,0.5)')+';border:1.5px solid '+(!isPlants?'rgba(110,165,80,0.6)':'rgba(150,185,130,0.3)')+';color:'+(!isPlants?'#2e4a22':'#6a8858')+'">🌱 繁育存档<span style="font-size:11px;font-weight:400;margin-left:6px;color:#7a9060">'+ARCHIVE.batches.length+'</span></button>'+
+    '</div>';
+
+  var body='';
+
+  if(isPlants){
+    if(ARCHIVE.plants.length===0){
+      body='<div style="text-align:center;padding:60px 0;color:#9aaa88;font-size:13px;line-height:2.2">暂无植物存档<br/>在植物详情页点击 📦 可归档植物</div>';
+    } else {
+      body=ARCHIVE.plants.slice().reverse().map(function(p){
+        var arDate=p.archivedAt||'';
+        return '<div style="background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);border-radius:14px;padding:13px 14px;margin-bottom:10px">'+
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
+          (p.photo?'<img src="'+p.photo+'" style="width:44px;height:44px;object-fit:cover;border-radius:8px;flex-shrink:0"/>':
+            '<div style="width:44px;height:44px;border-radius:8px;background:rgba(180,210,160,0.3);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🪴</div>')+
+          '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:15px;font-weight:700;color:#2e4a22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+q(p.name)+(p.variety?'<span style="font-size:12px;font-weight:400;color:#5a7848;margin-left:6px">'+q(p.variety)+'</span>':'')+'</div>'+
+          (p.category?'<div style="font-size:11px;color:#7a9060;margin-top:2px">'+q(p.category)+'</div>':'')+
+          (arDate?'<div style="font-size:10px;color:#aab89a;margin-top:1px">归档于 '+arDate+'</div>':'')+
+          (p.fromBatchLabel?'<div style="font-size:10px;color:#8aaa78;margin-top:1px">🌱 '+q(p.fromBatchLabel)+'</div>':'')+
+          '</div></div>'+
+          '<div style="display:flex;gap:8px">'+
+          '<button onclick="unarchivePlant(\''+p.id+'\')" style="flex:1;padding:8px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(140,185,110,0.25);border:1px solid rgba(110,165,80,0.4);color:#2e5a20">↩ 恢复到植物页</button>'+
+          '</div></div>';
+      }).join('');
+    }
+  } else {
+    // Batches
+    if(ARCHIVE.batches.length===0){
+      body='<div style="text-align:center;padding:60px 0;color:#9aaa88;font-size:13px;line-height:2.2">暂无繁育存档<br/>在繁育批次详情页点击 📦 归档 可归档批次</div>';
+    } else {
+      body=ARCHIVE.batches.slice().reverse().map(function(b){
+        var m=PROP_METHODS.find(function(x){return x.key===b.method;})||PROP_METHODS[0];
+        var succ=b.seedlings.filter(function(s){return s.status==='success';}).length;
+        var rate=b.total>0?Math.round((succ/b.total)*100):0;
+        var linkedPlant=b.batchPlantId?S.plants.find(function(p){return p.id===b.batchPlantId;})||ARCHIVE.plants.find(function(p){return p.id===b.batchPlantId;}):null;
+        return '<div style="background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);border-radius:14px;padding:13px 14px;margin-bottom:10px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
+          '<div><span style="font-size:15px;font-weight:700;color:#2e4a22">'+m.icon+' '+q(b.parentName||'未命名')+'</span>'+
+          '<span style="font-size:11px;color:#7a9060;margin-left:8px">'+m.label+'</span></div>'+
+          '<span style="font-size:10px;color:#aab89a">'+(b.archivedAt?'归档 '+b.archivedAt:'')+'</span>'+
+          '</div>'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+
+          '<span style="font-size:11px;background:rgba(80,180,80,0.12);color:#2a6a35;border-radius:8px;padding:2px 8px">✅ '+succ+'/'+b.total+' ('+rate+'%)</span>'+
+          '<span style="font-size:11px;background:rgba(180,210,160,0.2);color:#5a7848;border-radius:8px;padding:2px 8px">📅 '+q(b.date)+'</span>'+
+          (linkedPlant?'<span style="font-size:11px;background:rgba(165,195,220,0.2);color:#384a68;border-radius:8px;padding:2px 8px">🪴 已建卡：'+q(linkedPlant.name)+'</span>':'')+
+          '</div>'+
+          '<div style="display:flex;gap:8px">'+
+          '<button onclick="unarchiveBatch(\''+b.id+'\')" style="flex:1;padding:8px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(140,185,110,0.25);border:1px solid rgba(110,165,80,0.4);color:#2e5a20">↩ 恢复到繁育页</button>'+
+          '</div></div>';
+      }).join('');
+    }
+  }
+
+  return header+'<div>'+body+'</div></div></div>';
+}
+
 function buildInventoryTab(){
   // If a sub-tab is open, show inline full-page library
+  if(S.invSubTab==="archive"){return buildArchivePage();}
   if(S.invSubTab){
     // Temporarily set S.libTab and S.showLib to reuse buildLibModal content extraction
     var prevLibTab=S.libTab;
@@ -1114,6 +1267,7 @@ function buildInventoryTab(){
     '<button onclick="S.invSubTab=\'fert\';S.libTab=\'fert\';S.libAdding=false;S.libExpanded=null;S.libSearch=\'\';render()" style="padding:18px 8px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;background:rgba(140,195,110,0.25);border:1.5px solid rgba(120,175,90,0.4);color:#2e4a22;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="font-size:32px">🌿</span><span>肥料库</span><span style="font-size:12px;color:#7a9060;font-weight:400">'+LIB.fert.length+'种</span></button>'+
     '<button onclick="S.invSubTab=\'med\';S.libTab=\'med\';S.libAdding=false;S.libExpanded=null;S.libSearch=\'\';render()" style="padding:18px 8px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;background:rgba(210,155,120,0.2);border:1.5px solid rgba(190,135,100,0.4);color:#5a3828;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="font-size:32px">💊</span><span>药品库</span><span style="font-size:12px;color:#7a7060;font-weight:400">'+LIB.med.length+'种</span></button>'+
     '<button onclick="S.invSubTab=\'soil\';S.libTab=\'soil\';S.libAdding=false;S.libExpanded=null;S.libSearch=\'\';render()" style="padding:18px 8px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;background:rgba(190,165,120,0.2);border:1.5px solid rgba(170,145,100,0.4);color:#4a3a20;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="font-size:32px">🪴</span><span>盆土库</span><span style="font-size:12px;color:#7a6a50;font-weight:400">'+LIB.soil.length+'种</span></button>'+
+    '<button onclick="S.invSubTab=\'archive\';S.archiveSubTab=\'plants\';render()" style="padding:18px 8px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;background:rgba(155,185,135,0.2);border:1.5px solid rgba(130,165,100,0.4);color:#2e4a22;display:flex;flex-direction:column;align-items:center;gap:7px;grid-column:span 3"><span style="font-size:28px">📦</span><span>档案库</span><span style="font-size:12px;color:#7a9060;font-weight:400">植物 '+ARCHIVE.plants.length+' · 繁育 '+ARCHIVE.batches.length+'</span></button>'+
     '</div>'+
     // Category manager
     '<div style="margin-top:20px;background:rgba(255,255,255,0.6);border-radius:16px;padding:16px;border:1px solid rgba(150,185,130,0.4)">'+
@@ -1484,7 +1638,7 @@ function buildLogModal(){
 
 // ── Calendar Modal ──
 function openCal(pid){S.calPlantId=pid;S.calYr=new Date().getFullYear();S.calMo=new Date().getMonth();S.calSel=null;window.scrollTo(0,0);render();}
-function closeCal(){S.calPlantId=null;render();}
+function closeCal(){var pid=S.calPlantId;S.calPlantId=null;S.tab='plants';S.plantDetailId=pid;window.scrollTo(0,0);render();}
 function calPrev(){if(S.calMo===0){S.calYr--;S.calMo=11;}else S.calMo--;S.calSel=null;render();}
 function calNext(){if(S.calMo===11){S.calYr++;S.calMo=0;}else S.calMo++;S.calSel=null;render();}
 function calClick(d){S.calSel=S.calSel===d?null:d;render();}
@@ -2054,7 +2208,8 @@ function buildPropBatchDetail(b){
     '<span style="font-size:16px;font-weight:700;color:#2e4a22">'+m.icon+' '+q(b.parentName||"未命名")+' <span style="font-size:12px;font-weight:400;color:#6a8858">'+m.label+'</span></span>'+
     '<div style="display:flex;gap:5px">'+
     '<button onclick="startPropEdit(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(165,195,220,0.28);border:1px solid rgba(140,175,210,0.45);color:#384a68">✏️ 编辑</button>'+
-    (b.method==="seed"&&!b.archived?'<button onclick="if(confirm(\'确认采收归档？\')){archivePropBatch(\''+b.id+'\')}" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(160,200,140,0.28);border:1px solid rgba(130,175,100,0.45);color:#2e5a20">🌾 采收归档</button>':"")+
+    (!b.batchPlantId?'<button onclick="graduateBatchAsOne(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(140,185,110,0.28);border:1px solid rgba(110,165,80,0.45);color:#2e5a20">🌿 整批建卡</button>':"")+
+    '<button onclick="archiveBatch(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(160,200,140,0.28);border:1px solid rgba(130,175,100,0.45);color:#2e5a20">📦 归档</button>'+
     '<button onclick="delPropBatch(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,150,140,0.22);border:1px solid rgba(190,110,100,0.4);color:#7a2818">删除</button>'+
     '</div>'+
     '</div>'+
@@ -2097,7 +2252,7 @@ function buildPropBatchDetail(b){
 
 // ── Export / Import ──
 function exportData(){
-  var data={plants:S.plants,fert:LIB.fert,med:LIB.med,soil:LIB.soil,prop:PROP,exportTime:new Date().toISOString()};
+  var data={plants:S.plants,fert:LIB.fert,med:LIB.med,soil:LIB.soil,prop:PROP,archive:ARCHIVE,exportTime:new Date().toISOString()};
   var json=JSON.stringify(data,null,2);
   var blob=new Blob([json],{type:"application/json;charset=utf-8"});
   var url=URL.createObjectURL(blob);
@@ -2123,6 +2278,7 @@ function importData(){
         if(Array.isArray(data.med)){LIB.med=data.med;mc=data.med.length;}
         if(Array.isArray(data.soil)){LIB.soil=data.soil;sc=data.soil.length;}
         var brc=0;if(Array.isArray(data.prop)){PROP.splice(0,PROP.length);data.prop.forEach(function(x){PROP.push(x);});brc=PROP.length;saveProp();}
+        if(data.archive){ARCHIVE.plants=data.archive.plants||[];ARCHIVE.batches=data.archive.batches||[];saveArchive();}
         storePlants();saveLib();render();
         alert("✅ 导入成功！\n植物："+pc+"株\n肥料库："+fc+"种\n药品库："+mc+"种\n盆土库："+sc+"种\n繁育批次："+brc+"批");
       }catch(err){alert("❌ 导入失败，请确认文件是由「植物志」导出的备份。");}
@@ -2154,11 +2310,6 @@ function fetchWeather(){
 }
 
 // ── Init ──
-render();
-fetchWeather();
-</script>
-</body>
-
 render();
 fetchWeather();
 </script>
