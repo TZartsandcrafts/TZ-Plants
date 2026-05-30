@@ -809,7 +809,7 @@ function buildPlantsTab(){
     '<div style="font-size:11px;color:#9aaa88;text-align:center;margin-top:14px">共 '+list.length+(list.length<S.plants.length?"/"+S.plants.length:"")+" 株植物</div>")+
     '</div>'+
     // FAB
-    '<button onclick="startAdd()" style="position:fixed;bottom:calc(env(safe-area-inset-bottom,16px) + 70px);right:max(16px,calc(50vw - 214px));width:54px;height:54px;border-radius:50%;background:rgba(90,160,60,0.9);border:none;cursor:pointer;font-size:26px;color:white;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 14px rgba(50,120,30,0.35)">+</button>'+
+    '<button onclick="startAdd()" style="position:fixed;bottom:calc(max(env(safe-area-inset-bottom,0px),20px) + 86px);right:max(16px,calc(50vw - 214px));width:54px;height:54px;border-radius:50%;background:rgba(90,160,60,0.9);border:none;cursor:pointer;font-size:26px;color:white;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 14px rgba(50,120,30,0.35);z-index:50">+</button>'+
     '</div>';
 }
 
