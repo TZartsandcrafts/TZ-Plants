@@ -1332,8 +1332,8 @@ function buildInventoryTab(){
           var idx=S.cats.indexOf(c);
           return '<div style="display:flex;align-items:center;gap:4px;background:rgba(155,195,125,0.25);border:1px solid rgba(130,175,100,0.4);border-radius:20px;padding:4px 10px 4px 12px">'+
             '<span style="font-size:13px;color:#2e4a22">'+q(c)+'</span>'+
-            '<button onclick="renameCatByName('+JSON.stringify(c)+')" title="重命名" style="background:none;border:none;cursor:pointer;font-size:11px;color:#7a9060;padding:0 2px;line-height:1">✏️</button>'+
-            '<button onclick="deleteCatByName('+JSON.stringify(c)+')" style="background:none;border:none;cursor:pointer;font-size:12px;color:#9a9888;padding:0 2px;line-height:1">✕</button>'+
+            '<button onclick="renameCatByName(decodeURIComponent(\''+encodeURIComponent(c)+'\'))" title="重命名" style="background:none;border:none;cursor:pointer;font-size:11px;color:#7a9060;padding:0 2px;line-height:1">✏️</button>'+
+            '<button onclick="deleteCatByName(decodeURIComponent(\''+encodeURIComponent(c)+'\'))" style="background:none;border:none;cursor:pointer;font-size:12px;color:#9a9888;padding:0 2px;line-height:1">✕</button>'+
             '</div>';
         }).join('')+
         (liveCats.length===0?'<div style="font-size:12px;color:#9aaa88">暂无分类，请先在植物信息中填写分类</div>':'')+
@@ -1359,7 +1359,8 @@ function render(){
       var dx=e.changedTouches[0].clientX-_tx;
       var dy=Math.abs(e.changedTouches[0].clientY-_ty);
       if(dx>60&&dy<40){
-        if(S.plantDetailId){closePlantDetail();}
+        if(S.calPlantId){closeCal();}
+        else if(S.plantDetailId){closePlantDetail();}
         else if(S.showAdd||S.editId){cancelForm();}
         else if(S.invSubTab){S.invSubTab=null;S.libAdding=false;S.libExpanded=null;S.libSearch='';render();}
         else if(S.propAdding){S.propAdding=false;S.propEditId=null;render();}
