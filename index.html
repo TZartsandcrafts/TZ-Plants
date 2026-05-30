@@ -582,7 +582,7 @@ function buildPlantDetail(p){
     // Basic info card
     '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:14px 16px;margin-top:14px;border:1px solid rgba(150,185,130,0.4)">'+
     '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">'+
-    (p.category?'<span id="cattag_'+p.id+'" onclick="catLongPress(\''+p.id+'\')" style="background:rgba(150,195,120,0.25);border-radius:10px;padding:3px 11px;font-size:13px;color:#3a5828;font-weight:600;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">'+q(p.category)+' ✏️</span>':'')+
+    (p.category?'<span style="background:rgba(150,195,120,0.25);border-radius:10px;padding:3px 11px;font-size:13px;color:#3a5828;font-weight:600">'+q(p.category)+'</span>':'')+
     (p.type?'<span style="background:rgba(165,200,140,0.2);border-radius:10px;padding:3px 11px;font-size:12px;color:#4a6a38">'+q(p.type)+'</span>':'')+
     (genusHint&&(!p.type||(p.type.indexOf("\u79d1")<0&&p.type.indexOf(genusHint)<0))?'<span style="background:rgba(140,190,110,0.15);border-radius:10px;padding:3px 11px;font-size:12px;color:#5a8040">🌿 '+q(genusHint)+'</span>':'')+
     (startDate?'<span style="font-size:12px;color:#8aaa78;margin-left:2px">🗓 '+ds(startDate)+'天</span>':'')+
@@ -622,7 +622,7 @@ function buildMiniCal(){
   // Use per-month nav state when expanded
   var yr=exp?S.miniCalYr:new Date().getFullYear();
   var mo=exp?S.miniCalMo:new Date().getMonth();
-  var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440'};
+  var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440',skip_water:'#5a8edc',skip_fert:'#4aaa58'};
 
   // Build dot map for displayed month + neighbours
   var dotMap={};
@@ -647,13 +647,37 @@ function buildMiniCal(){
     }
     addDots(wd,wi,'water');
     addDots(fd,fi,'fert');
+    // Med dots: mark dates where med was logged
+    var mi=parseIntervalMin(p.mi);
+    var md2=ld(p.medLog);
+    if(mi<900) addDots(md2,mi,'med');
+    // Skip dots: mark actual skip dates
+    [p.waterLog,p.fertLog].forEach(function(log,li){
+      (log||[]).forEach(function(r){
+        if(r.skip){
+          var sk='skip_'+(li===0?'water':'fert');
+          if(!dotMap[r.date])dotMap[r.date]=[];
+          if(dotMap[r.date].indexOf(sk)<0)dotMap[r.date].push(sk);
+          // Remove regular dot for that date if present
+          var reg=li===0?'water':'fert';
+          var idx=dotMap[r.date].indexOf(reg);
+          if(idx>=0)dotMap[r.date].splice(idx,1);
+        }
+      });
+    });
   });
 
   function renderDots(ds2){
     var types=dotMap[ds2]||[];
     if(!types.length)return '';
     return '<div style="display:flex;gap:2px;justify-content:center;margin-top:2px">'+
-      types.map(function(t){return '<div style="width:5px;height:5px;border-radius:50%;background:'+dotColor[t]+'"></div>';}).join('')+
+      types.map(function(t){
+        var isSkip=t.indexOf('skip_')===0;
+        var col=dotColor[t]||'#888';
+        return isSkip?
+          '<div style="width:5px;height:5px;border-radius:50%;border:1.5px solid '+col+';background:transparent"></div>':
+          '<div style="width:5px;height:5px;border-radius:50%;background:'+col+'"></div>';
+      }).join('')+
       '</div>';
   }
 
@@ -758,7 +782,14 @@ function buildMiniCal(){
     '<span style="font-size:13px;font-weight:700;color:#2e4a22">'+(exp?'月历':'本周')+'</span>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
     '<div style="display:flex;gap:6px">'+
-    ['water','fert'].map(function(t){return '<div style="display:flex;align-items:center;gap:3px"><div style="width:6px;height:6px;border-radius:50%;background:'+dotColor[t]+'"></div><span style="font-size:10px;color:#7a9060">'+(t==='water'?'浇水':'施肥')+'</span></div>';}).join('')+
+    [{t:'water',l:'浇水'},{t:'fert',l:'施肥'},{t:'med',l:'给药'},{t:'skip',l:'跳过'}].map(function(x){
+      var isSkip=x.t==='skip';
+      var col=isSkip?'#9aaa88':(dotColor[x.t]||'#888');
+      var dot=isSkip?
+        '<div style="width:6px;height:6px;border-radius:50%;border:1.5px solid '+col+';background:transparent"></div>':
+        '<div style="width:6px;height:6px;border-radius:50%;background:'+col+'"></div>';
+      return '<div style="display:flex;align-items:center;gap:3px">'+dot+'<span style="font-size:10px;color:#7a9060">'+x.l+'</span></div>';
+    }).join('')+
     '</div>'+
     '<span style="font-size:12px;color:#8aaa78;margin-left:4px">'+(exp?'▲':'▽')+'</span>'+
     '</div></div>';
@@ -995,7 +1026,13 @@ function buildPlantsTab(){
 
   var catFilter=usedCats.length>0?('<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;margin-bottom:8px">'+
     '<button onclick="S.filterCat=\'all\';render()" style="'+gbtn(S.filterCat==="all")+'">全部</button>'+
-    usedCats.slice().sort(function(a,b){return a.localeCompare(b,"zh");}).map(function(c){return '<button onclick="S.filterCat=\''+q(c)+'\';render()" style="'+gbtn(S.filterCat===c)+'">'+q(c)+'</button>';}).join("")+
+    usedCats.slice().sort(function(a,b){return a.localeCompare(b,"zh");}).map(function(c){
+      var isAct=S.filterCat===c;
+      return '<span style="display:inline-flex;align-items:center;gap:2px">'+
+        '<button onclick="S.filterCat=\''+q(c)+'\';render()" style="'+gbtn(isAct)+'">'+q(c)+'</button>'+
+        '<button onclick="event.stopPropagation();renameCatByName(decodeURIComponent(\''+encodeURIComponent(c)+'\'))" style="background:none;border:none;cursor:pointer;font-size:10px;color:#9aaa88;padding:0 2px;line-height:1;opacity:0.7">✏️</button>'+
+        '</span>';
+    }).join("")+
     '</div>'):"";
 
   function buildCompactCard(p){
@@ -1094,15 +1131,15 @@ function graduateBatchAsOne(batchId){
   if(!b)return;
   var succ=b.seedlings.filter(function(s){return s.status==='success';}).length;
   var total=b.total;
-  var name=b.parentName||'未命名';
-  var confirmed=confirm('将「'+name+'」整批建卡？\n成活 '+succ+'/'+total+' 株，将作为一张植物卡进入植物页。');
-  if(!confirmed)return;
+  var existCount=(b.batchPlantIds||[]).length;
+  var defaultName=b.parentName||(existCount>0?'未命名 '+(existCount+1):'未命名');
+  var name=prompt('植物卡名称：'+(existCount>0?'\n（此批次已建 '+existCount+' 张卡）':''), defaultName);
+  if(!name||!name.trim())return;
   var newP=JSON.parse(JSON.stringify(BLANK));
   newP.id='p'+Date.now();
-  newP.name=name;
+  newP.name=name.trim();
   newP.fromBatchId=batchId;
   newP.fromBatchLabel='来自繁育批次（'+b.date+'）';
-  // Copy dates if available
   if(b.method==='seed'){newP.sowDate=b.date;}
   else if(b.method==='cutting'){newP.opDate=b.date;}
   var firstSuccess=b.seedlings.filter(function(s){return s.status==='success'&&s.successDate;}).sort(function(a,c){return a.successDate.localeCompare(c.successDate);})[0];
@@ -1111,9 +1148,10 @@ function graduateBatchAsOne(batchId){
     else newP.rootDate=firstSuccess.successDate;
   }
   S.plants.push(newP);
-  b.batchPlantId=newP.id;
+  if(!b.batchPlantIds)b.batchPlantIds=[];
+  b.batchPlantIds.push(newP.id);
+  b.batchPlantId=newP.id; // keep for backwards compat
   storePlants();saveProp();
-  // Open the new plant card for editing
   S.formData=JSON.parse(JSON.stringify(newP));S.formTab='basic';S.showAdd=false;S.editId=newP.id;S.plantDetailId=null;S.tab='plants';
   window.scrollTo(0,0);render();
 }
@@ -1316,7 +1354,7 @@ function buildArchivePage(){
         var m=PROP_METHODS.find(function(x){return x.key===b.method;})||PROP_METHODS[0];
         var succ=b.seedlings.filter(function(s){return s.status==='success';}).length;
         var rate=b.total>0?Math.round((succ/b.total)*100):0;
-        var linkedPlant=b.batchPlantId?S.plants.find(function(p){return p.id===b.batchPlantId;})||ARCHIVE.plants.find(function(p){return p.id===b.batchPlantId;}):null;
+        var linkedPlants=(b.batchPlantIds||[b.batchPlantId].filter(Boolean)).map(function(pid){return S.plants.find(function(p){return p.id===pid;})||ARCHIVE.plants.find(function(p){return p.id===pid;});}).filter(Boolean);
         return '<div style="background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);border-radius:14px;padding:13px 14px;margin-bottom:10px">'+
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
           '<div><span style="font-size:15px;font-weight:700;color:#2e4a22">'+m.icon+' '+q(b.parentName||'未命名')+'</span>'+
@@ -1326,7 +1364,7 @@ function buildArchivePage(){
           '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+
           '<span style="font-size:11px;background:rgba(80,180,80,0.12);color:#2a6a35;border-radius:8px;padding:2px 8px">✅ '+succ+'/'+b.total+' ('+rate+'%)</span>'+
           '<span style="font-size:11px;background:rgba(180,210,160,0.2);color:#5a7848;border-radius:8px;padding:2px 8px">📅 '+q(b.date)+'</span>'+
-          (linkedPlant?'<span style="font-size:11px;background:rgba(165,195,220,0.2);color:#384a68;border-radius:8px;padding:2px 8px">🪴 已建卡：'+q(linkedPlant.name)+'</span>':'')+
+          (linkedPlants.length?linkedPlants.map(function(lp){return '<span style="font-size:11px;background:rgba(165,195,220,0.2);color:#384a68;border-radius:8px;padding:2px 8px">🪴 '+q(lp.name)+'</span>';}).join(''): '')+
           '</div>'+
           '<div style="display:flex;gap:8px">'+
           '<button onclick="unarchiveBatch(\''+b.id+'\')" style="flex:1;padding:8px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(140,185,110,0.25);border:1px solid rgba(110,165,80,0.4);color:#2e5a20">↩ 恢复到繁育页</button>'+
@@ -2325,7 +2363,7 @@ function buildPropBatchDetail(b){
     '<span style="font-size:16px;font-weight:700;color:#2e4a22">'+m.icon+' '+q(b.parentName||"未命名")+' <span style="font-size:12px;font-weight:400;color:#6a8858">'+m.label+'</span></span>'+
     '<div style="display:flex;gap:5px">'+
     '<button onclick="startPropEdit(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(165,195,220,0.28);border:1px solid rgba(140,175,210,0.45);color:#384a68">✏️ 编辑</button>'+
-    (!b.batchPlantId?'<button onclick="graduateBatchAsOne(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(140,185,110,0.28);border:1px solid rgba(110,165,80,0.45);color:#2e5a20">🌿 整批建卡</button>':"")+
+    '<button onclick="graduateBatchAsOne(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(140,185,110,0.28);border:1px solid rgba(110,165,80,0.45);color:#2e5a20">🌿 '+(b.batchPlantIds&&b.batchPlantIds.length>0?'再次建卡（'+b.batchPlantIds.length+'）':'整批建卡')+'</button>'+
     '<button onclick="archiveBatch(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(160,200,140,0.28);border:1px solid rgba(130,175,100,0.45);color:#2e5a20">📦 归档</button>'+
     '<button onclick="delPropBatch(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,150,140,0.22);border:1px solid rgba(190,110,100,0.4);color:#7a2818">删除</button>'+
     '</div>'+
