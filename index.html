@@ -432,6 +432,26 @@ function storePlants(){try{localStorage.setItem(SK,JSON.stringify(S.plants));}ca
 var DEFAULT_CATS=["🍎 水果","🌿 调味","🌺 花木","🥬 蔬菜"];
 function loadCats(){try{var c=JSON.parse(localStorage.getItem("plant_cats")||"null");return c&&c.length?c:DEFAULT_CATS.slice();}catch(e){return DEFAULT_CATS.slice();}}
 function saveCats(){try{localStorage.setItem("plant_cats",JSON.stringify(S.cats));}catch(e){}}
+
+function catLongPress(pid){
+  var p=S.plants.find(function(x){return x.id===pid;});
+  if(!p||!p.category)return;
+  var catName=p.category;
+  var nv=prompt('重命名分类「'+catName+'」\n留空确认可删除此分类', catName);
+  if(nv===null)return;
+  if(nv.trim()===''){
+    if(confirm('删除分类「'+catName+'」？原属此分类的植物将变为无分类。')){
+      deleteCatByName(catName);
+    }
+  } else if(nv.trim()!==catName){
+    renameCatByName_direct(catName, nv.trim());
+  }
+}
+function renameCatByName_direct(old, nw){
+  S.plants.forEach(function(p){if(p.category===old)p.category=nw;});
+  var ci=S.cats.indexOf(old);if(ci>=0)S.cats[ci]=nw;
+  storePlants();saveCats();render();
+}
 function renameCatByName(old){
   var nv=prompt('重命名分类：',old);
   if(!nv||!nv.trim()||nv.trim()===old)return;
@@ -562,7 +582,7 @@ function buildPlantDetail(p){
     // Basic info card
     '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:14px 16px;margin-top:14px;border:1px solid rgba(150,185,130,0.4)">'+
     '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">'+
-    (p.category?'<span style="background:rgba(150,195,120,0.25);border-radius:10px;padding:3px 11px;font-size:13px;color:#3a5828;font-weight:600">'+q(p.category)+'</span>':'')+
+    (p.category?'<span ontouchstart="_catT=setTimeout(function(){catLongPress(\''+p.id+'\')},600)" ontouchend="clearTimeout(_catT)" ontouchmove="clearTimeout(_catT)" oncontextmenu="event.preventDefault();catLongPress(\''+p.id+'\')" style="background:rgba(150,195,120,0.25);border-radius:10px;padding:3px 11px;font-size:13px;color:#3a5828;font-weight:600;cursor:pointer;user-select:none">'+q(p.category)+'</span>':'')+
     (p.type?'<span style="background:rgba(165,200,140,0.2);border-radius:10px;padding:3px 11px;font-size:12px;color:#4a6a38">'+q(p.type)+'</span>':'')+
     (genusHint&&(!p.type||(p.type.indexOf("\u79d1")<0&&p.type.indexOf(genusHint)<0))?'<span style="background:rgba(140,190,110,0.15);border-radius:10px;padding:3px 11px;font-size:12px;color:#5a8040">🌿 '+q(genusHint)+'</span>':'')+
     (startDate?'<span style="font-size:12px;color:#8aaa78;margin-left:2px">🗓 '+ds(startDate)+'天</span>':'')+
@@ -1397,22 +1417,6 @@ function render(){
   if(S.calPlantId){
     el.innerHTML=buildCalPage();
     window.scrollTo(0,0);
-    // Swipe right to go back
-    (function(){
-      var sx=0,sy=0;
-      var div=el;
-      function onStart(e){
-        var t=e.touches?e.touches[0]:e;
-        sx=t.clientX;sy=t.clientY;
-      }
-      function onEnd(e){
-        var t=e.changedTouches?e.changedTouches[0]:e;
-        var dx=t.clientX-sx, dy=t.clientY-sy;
-        if(dx>60&&Math.abs(dy)<80&&sx<60){closeCal();}
-      }
-      div.addEventListener('touchstart',onStart,{passive:true});
-      div.addEventListener('touchend',onEnd,{passive:true});
-    })();
     return;
   }
   if(S.confirmCb)html+=buildConfirmModal();
