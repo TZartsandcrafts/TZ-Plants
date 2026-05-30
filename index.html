@@ -958,10 +958,14 @@ function buildCalendarTab(){
   }
 
   // App header
-  var now=new Date();
-  var wkMap=["日","一","二","三","四","五","六"];
-  var dateStr=(now.getMonth()+1)+"月"+now.getDate()+"日 · 周"+wkMap[now.getDay()];
-  var appHeaderHtml='<div style="background:rgba(220,232,216,0.95);border-bottom:1px solid rgba(150,185,130,0.3);position:sticky;top:0;z-index:10;margin:-16px -16px 16px -16px"><div style="max-width:460px;margin:0 auto;padding:16px 18px 12px"><div style="display:flex;align-items:flex-end;justify-content:space-between"><div><div style="font-size:26px;font-weight:900;color:#1e3a14;letter-spacing:-0.5px;line-height:1">植物志</div><div style="font-size:12px;color:#7a9868;margin-top:3px">🌿 我的花园</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:700;color:#2e4a22;line-height:1">'+dateStr+'</div></div></div></div></div>';
+  var plantCount=S.plants.length;
+  var appHeaderHtml='<div style="background:rgba(220,232,216,0.95);border-bottom:1px solid rgba(150,185,130,0.3);position:sticky;top:0;z-index:10;margin:-16px -16px 16px -16px"><div style="max-width:460px;margin:0 auto;padding:16px 18px 12px"><div style="display:flex;align-items:center;justify-content:space-between">'+
+    '<div><div style="font-size:28px;font-weight:900;color:#1e3a14;letter-spacing:-0.5px;line-height:1">植物志</div><div style="font-size:12px;color:#7a9868;margin-top:4px;letter-spacing:0.2px">🌿 我的植物</div></div>'+
+    '<div style="background:rgba(90,160,60,0.12);border:1.5px solid rgba(90,160,60,0.25);border-radius:20px;padding:6px 14px;display:flex;align-items:baseline;gap:4px">'+
+    '<span style="font-size:22px;font-weight:900;color:#2e6a18;line-height:1">'+plantCount+'</span>'+
+    '<span style="font-size:11px;color:#6a9050;font-weight:500">株</span>'+
+    '</div>'+
+    '</div></div></div>';
 
   // Weather widget
   var weatherHtml='<div style="background:rgba(255,255,255,0.6);border-radius:16px;padding:14px 16px;margin-bottom:16px;border:1px solid rgba(150,185,130,0.4)">'+
