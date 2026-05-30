@@ -1175,7 +1175,27 @@ function render(){
   // Modals on top
   if(S.showLib)html+=buildLibModal();
   if(S.logPlantId)html+=buildLogModal();
-  if(S.calPlantId){el.innerHTML=buildCalPage();window.scrollTo(0,0);return;}
+  if(S.calPlantId){
+    el.innerHTML=buildCalPage();
+    window.scrollTo(0,0);
+    // Swipe right to go back
+    (function(){
+      var sx=0,sy=0;
+      var div=el;
+      function onStart(e){
+        var t=e.touches?e.touches[0]:e;
+        sx=t.clientX;sy=t.clientY;
+      }
+      function onEnd(e){
+        var t=e.changedTouches?e.changedTouches[0]:e;
+        var dx=t.clientX-sx, dy=t.clientY-sy;
+        if(dx>60&&Math.abs(dy)<80&&sx<60){closeCal();}
+      }
+      div.addEventListener('touchstart',onStart,{passive:true});
+      div.addEventListener('touchend',onEnd,{passive:true});
+    })();
+    return;
+  }
   if(S.confirmCb)html+=buildConfirmModal();
 
   el.innerHTML=html;
