@@ -1374,7 +1374,23 @@ function render(){
   if(!window._swipeInited){
     window._swipeInited=true;
     var _tx=0,_ty=0;
-    document.addEventListener("touchstart",function(e){_tx=e.touches[0].clientX;_ty=e.touches[0].clientY;},{passive:true});
+    var _isHorizSwipe=false;
+    document.addEventListener("touchstart",function(e){
+      _tx=e.touches[0].clientX;_ty=e.touches[0].clientY;_isHorizSwipe=false;
+    },{passive:true});
+    document.addEventListener("touchmove",function(e){
+      if(!_isHorizSwipe){
+        var mdx=Math.abs(e.touches[0].clientX-_tx);
+        var mdy=Math.abs(e.touches[0].clientY-_ty);
+        if(mdx>8||mdy>8){
+          _isHorizSwipe=mdx>mdy;
+        }
+      }
+      // Prevent page drag when swiping horizontally in expanded miniCal
+      if(_isHorizSwipe&&S.miniCalExpanded&&!S.calPlantId){
+        e.preventDefault();
+      }
+    },{passive:false});
     document.addEventListener("touchend",function(e){
       var dx=e.changedTouches[0].clientX-_tx;
       var dy=Math.abs(e.changedTouches[0].clientY-_ty);
@@ -1389,11 +1405,8 @@ function render(){
       }
       // miniCal month swipe: horizontal swipe anywhere when expanded
       if(S.miniCalExpanded&&Math.abs(dx)>50&&dy<60&&!S.calPlantId){
-        if(dx<0){// swipe left = next month
-          var m=S.miniCalMo+1;if(m>11){S.miniCalMo=0;S.miniCalYr++;}else{S.miniCalMo=m;}
-        } else {// swipe right = prev month
-          var m=S.miniCalMo-1;if(m<0){S.miniCalMo=11;S.miniCalYr--;}else{S.miniCalMo=m;}
-        }
+        if(dx<0){var m=S.miniCalMo+1;if(m>11){S.miniCalMo=0;S.miniCalYr++;}else{S.miniCalMo=m;}}
+        else{var m=S.miniCalMo-1;if(m<0){S.miniCalMo=11;S.miniCalYr--;}else{S.miniCalMo=m;}}
         render();
       }
     },{passive:true});
