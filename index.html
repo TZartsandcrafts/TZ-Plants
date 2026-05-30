@@ -1028,10 +1028,7 @@ function buildPlantsTab(){
     '<button onclick="S.filterCat=\'all\';render()" style="'+gbtn(S.filterCat==="all")+'">全部</button>'+
     usedCats.slice().sort(function(a,b){return a.localeCompare(b,"zh");}).map(function(c){
       var isAct=S.filterCat===c;
-      return '<span style="display:inline-flex;align-items:center;gap:2px">'+
-        '<button onclick="S.filterCat=\''+q(c)+'\';render()" style="'+gbtn(isAct)+'">'+q(c)+'</button>'+
-        '<button onclick="event.stopPropagation();renameCatByName(decodeURIComponent(\''+encodeURIComponent(c)+'\'))" style="background:none;border:none;cursor:pointer;font-size:10px;color:#9aaa88;padding:0 2px;line-height:1;opacity:0.7">✏️</button>'+
-        '</span>';
+      return '<button onclick="S.filterCat=\''+q(c)+'\';render()" oncontextmenu="event.preventDefault();renameCatByName(decodeURIComponent(\''+encodeURIComponent(c)+'\'))" ontouchstart="_catFT=setTimeout(function(){renameCatByName(decodeURIComponent(\''+encodeURIComponent(c)+'\'))},600)" ontouchend="clearTimeout(_catFT)" ontouchmove="clearTimeout(_catFT)" style="'+gbtn(isAct)+';-webkit-touch-callout:none">'+q(c)+'</button>';
     }).join("")+
     '</div>'):"";
 
@@ -1815,7 +1812,7 @@ function buildCalPage(){
   for(var d=1;d<=dm;d++){
     var mo2=S.calMo+1;var dStr=S.calYr+"-"+(mo2<10?"0"+mo2:mo2)+"-"+(d<10?"0"+d:d);
     var evts=evMap[dStr]||[];var isT=dStr===tod,isS=S.calSel===dStr;
-    var dots=evts.map(function(e){return e.type;}).filter(function(v,i2,a){return a.indexOf(v)===i2;}).map(function(t){return '<div style="width:6px;height:6px;border-radius:50%;background:'+(TC[t]||"#888")+'"></div>';}).join("");
+    var dots=evts.reduce(function(acc,e){if(!acc.types[e.type]){acc.types[e.type]=true;acc.html+=e.skip?'<div style="width:6px;height:6px;border-radius:50%;border:1.5px solid '+(TC[e.type]||'#888')+';background:transparent"></div>':'<div style="width:6px;height:6px;border-radius:50%;background:'+(TC[e.type]||'#888')+'"></div>';}return acc;},{types:{},html:''}).html;
     cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(evts.length>0?"pointer":"default")+';background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:44px"><div style="font-size:13px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:3px;flex-wrap:wrap">'+dots+'</div></div>';
   }
   var selEvts=S.calSel?(evMap[S.calSel]||[]):[];
@@ -1891,7 +1888,7 @@ function buildCalModal(){
   for(var d=1;d<=dm;d++){
     var mo2=S.calMo+1;var dStr=S.calYr+"-"+(mo2<10?"0"+mo2:mo2)+"-"+(d<10?"0"+d:d);
     var evts=evMap[dStr]||[];var isT=dStr===tod,isS=S.calSel===dStr;
-    var dots=evts.map(function(e){return e.type;}).filter(function(v,i2,a){return a.indexOf(v)===i2;}).map(function(t){return '<div style="width:6px;height:6px;border-radius:50%;background:'+(TC[t]||"#888")+'"></div>';}).join("");
+    var dots=evts.reduce(function(acc,e){if(!acc.types[e.type]){acc.types[e.type]=true;acc.html+=e.skip?'<div style="width:6px;height:6px;border-radius:50%;border:1.5px solid '+(TC[e.type]||'#888')+';background:transparent"></div>':'<div style="width:6px;height:6px;border-radius:50%;background:'+(TC[e.type]||'#888')+'"></div>';}return acc;},{types:{},html:''}).html;
     cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(evts.length>0?"pointer":"default")+';background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:40px"><div style="font-size:12px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:2px;flex-wrap:wrap">'+dots+'</div></div>';
   }
   var selEvts=S.calSel?(evMap[S.calSel]||[]):[];
@@ -2361,11 +2358,15 @@ function buildPropBatchDetail(b){
   var header='<div style="background:rgba(180,210,160,0.25);border-radius:11px;padding:11px 13px;margin-bottom:12px">'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
     '<span style="font-size:16px;font-weight:700;color:#2e4a22">'+m.icon+' '+q(b.parentName||"未命名")+' <span style="font-size:12px;font-weight:400;color:#6a8858">'+m.label+'</span></span>'+
+    '<div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">'+
     '<div style="display:flex;gap:5px">'+
     '<button onclick="startPropEdit(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(165,195,220,0.28);border:1px solid rgba(140,175,210,0.45);color:#384a68">✏️ 编辑</button>'+
     '<button onclick="graduateBatchAsOne(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(140,185,110,0.28);border:1px solid rgba(110,165,80,0.45);color:#2e5a20">🌿 '+(b.batchPlantIds&&b.batchPlantIds.length>0?'再次建卡（'+b.batchPlantIds.length+'）':'整批建卡')+'</button>'+
+    '</div>'+
+    '<div style="display:flex;gap:5px">'+
     '<button onclick="archiveBatch(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(160,200,140,0.28);border:1px solid rgba(130,175,100,0.45);color:#2e5a20">📦 归档</button>'+
-    '<button onclick="delPropBatch(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,150,140,0.22);border:1px solid rgba(190,110,100,0.4);color:#7a2818">删除</button>'+
+    '<button onclick="delPropBatch(\''+b.id+'\')" style="padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:11px;background:rgba(220,150,140,0.22);border:1px solid rgba(190,110,100,0.4);color:#7a2818">🗑 删除</button>'+
+    '</div>'+
     '</div>'+
     '</div>'+
     '<div style="font-size:11px;color:#7a9060">操作日期：'+q(b.date)+(days!==null?"（"+days+"天前）":"")+
