@@ -1175,7 +1175,7 @@ function render(){
   // Modals on top
   if(S.showLib)html+=buildLibModal();
   if(S.logPlantId)html+=buildLogModal();
-  if(S.calPlantId)html+=buildCalModal();
+  if(S.calPlantId){el.innerHTML=buildCalPage();window.scrollTo(0,0);return;}
   if(S.confirmCb)html+=buildConfirmModal();
 
   el.innerHTML=html;
@@ -1463,11 +1463,87 @@ function buildLogModal(){
 }
 
 // ── Calendar Modal ──
-function openCal(pid){S.calPlantId=pid;S.calYr=new Date().getFullYear();S.calMo=new Date().getMonth();S.calSel=null;render();}
+function openCal(pid){S.calPlantId=pid;S.calYr=new Date().getFullYear();S.calMo=new Date().getMonth();S.calSel=null;window.scrollTo(0,0);render();}
 function closeCal(){S.calPlantId=null;render();}
 function calPrev(){if(S.calMo===0){S.calYr--;S.calMo=11;}else S.calMo--;S.calSel=null;render();}
 function calNext(){if(S.calMo===11){S.calYr++;S.calMo=0;}else S.calMo++;S.calSel=null;render();}
 function calClick(d){S.calSel=S.calSel===d?null:d;render();}
+function buildCalPage(){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.calPlantId){p=S.plants[i];break;}}
+  if(!p){S.calPlantId=null;return buildTabLayout();}
+  var TC={water:"#5090d0",fert:"#5a9848",med:"#d07050",milestone:"#8060a0"};
+  var TL={water:"💧浇水",fert:"🌿施肥",med:"💊给药",milestone:"📌里程碑"};
+  var evMap={};
+  function addEv(type,log){(log||[]).forEach(function(r){if(!evMap[r.date])evMap[r.date]=[];evMap[r.date].push(Object.assign({type:type},r));});}
+  addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);
+  [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,"🌱生根"],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
+  var fd=new Date(S.calYr,S.calMo,1).getDay();
+  var dm=new Date(S.calYr,S.calMo+1,0).getDate();
+  var tod=td();
+  var MN=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+  var cells="";
+  for(var i=0;i<fd;i++)cells+="<div></div>";
+  for(var d=1;d<=dm;d++){
+    var mo2=S.calMo+1;var dStr=S.calYr+"-"+(mo2<10?"0"+mo2:mo2)+"-"+(d<10?"0"+d:d);
+    var evts=evMap[dStr]||[];var isT=dStr===tod,isS=S.calSel===dStr;
+    var dots=evts.map(function(e){return e.type;}).filter(function(v,i2,a){return a.indexOf(v)===i2;}).map(function(t){return '<div style="width:6px;height:6px;border-radius:50%;background:'+(TC[t]||"#888")+'"></div>';}).join("");
+    cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(evts.length>0?"pointer":"default")+';background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:44px"><div style="font-size:13px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:3px;flex-wrap:wrap">'+dots+'</div></div>';
+  }
+  var selEvts=S.calSel?(evMap[S.calSel]||[]):[];
+
+  // App header with back button
+  var wkMap=["日","一","二","三","四","五","六"];
+  var now=new Date();
+  var headerHtml='<div style="background:rgba(220,232,216,0.95);border-bottom:1px solid rgba(150,185,130,0.3);position:sticky;top:0;z-index:10;margin:-16px -16px 16px -16px">'+
+    '<div style="max-width:460px;margin:0 auto;padding:14px 18px 12px">'+
+    '<div style="display:flex;align-items:center;gap:12px">'+
+    '<button onclick="closeCal()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:0;line-height:1">‹</button>'+
+    '<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:800;color:#1e3a14;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📅 '+q(p.name)+'</div>'+
+    '<div style="font-size:11px;color:#7a9868;margin-top:1px">护理日历</div></div>'+
+    '</div></div></div>';
+
+  return '<div style="min-height:100vh;padding-bottom:40px;max-width:460px;margin:0 auto">'+
+    headerHtml+
+    '<div style="padding:0 16px">'+
+    // Month nav
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+    '<button onclick="calPrev()" style="background:none;border:none;cursor:pointer;font-size:28px;color:#5a8040;padding:4px 10px">‹</button>'+
+    '<span style="font-size:16px;font-weight:700;color:#2e4a22">'+S.calYr+'年 '+MN[S.calMo]+'</span>'+
+    '<button onclick="calNext()" style="background:none;border:none;cursor:pointer;font-size:28px;color:#5a8040;padding:4px 10px">›</button>'+
+    '</div>'+
+    // Weekday headers
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px">'+
+    ["日","一","二","三","四","五","六"].map(function(d2){return '<div style="text-align:center;font-size:11px;color:#8aaa78;padding:3px 0">'+d2+'</div>';}).join("")+
+    '</div>'+
+    // Calendar grid
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:12px">'+cells+'</div>'+
+    // Legend
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:8px 12px;background:rgba(255,255,255,0.5);border-radius:12px;border:1px solid rgba(150,185,130,0.3)">'+
+    Object.keys(TL).map(function(t){return '<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6a8858"><div style="width:8px;height:8px;border-radius:50%;background:'+TC[t]+'"></div><span>'+TL[t]+'</span></div>';}).join("")+
+    '</div>'+
+    // Selected day detail
+    (S.calSel?
+      '<div style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 16px;border:1px solid rgba(150,185,130,0.4);margin-bottom:16px">'+
+      '<div style="font-size:13px;font-weight:700;color:#2e4a22;margin-bottom:10px">'+fmt(S.calSel)+' 的操作</div>'+
+      (selEvts.length===0?'<div style="font-size:12px;color:#9aaa88;text-align:center;padding:8px 0">无记录</div>':
+        selEvts.map(function(e,i2){
+          return '<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:'+(i2<selEvts.length-1?"1px solid rgba(150,185,130,0.2)":"none")+'">'+
+            '<div style="font-size:13px;font-weight:700;color:'+(TC[e.type]||"#5a7848")+'">'+(TL[e.type]||e.label||"")+'</div>'+
+            (e.type==="milestone"&&e.label?'<div style="font-size:12px;color:#7a9060;margin-top:2px">'+q(e.label)+'</div>':"")+
+            (e.name?'<div style="font-size:12px;color:#4a6a38;margin-top:2px">名称：'+q(e.name)+'</div>':"")+
+            (e.amount?'<div style="font-size:12px;color:#6a8858;margin-top:2px">用量：'+q(e.amount)+'</div>':"")+
+            (e.reason?'<div style="font-size:12px;color:#9a7040;margin-top:2px">病症：'+q(e.reason)+'</div>':"")+
+            (e.note?'<div style="font-size:12px;color:#7a9060;margin-top:2px">备注：'+q(e.note)+'</div>':"")+
+            '</div>';
+        }).join(""))+
+      '</div>'
+    :"")+
+    '</div>'+
+    // Bottom nav (same as other pages)
+    buildBottomNav()+
+    '</div>';
+}
+
 function buildCalModal(){
   var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.calPlantId){p=S.plants[i];break;}}
   if(!p)return "";
