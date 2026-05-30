@@ -356,7 +356,7 @@ var BLANK={name:"",variety:"",type:"",category:"",notes:"",photo:"",status:"heal
   hardeningDate:"",hardeningDays:7,hardeningNotes:"",
   prePlantDate:"",prePlantNotes:"",transplantDate:"",transplantNotes:"",
   finalPlantDate:"",finalPlantNotes:"",finalPlantLocation:"",
-  wi:3,fi:14,mi:30,medMode:"symptom",waterLog:[],fertLog:[],medLog:[]};
+  wi:7,fi:14,mi:30,medMode:"symptom",waterLog:[],fertLog:[],medLog:[]};
 
 // ── Helpers ──
 function q(s){
@@ -379,7 +379,7 @@ function fmt(d){
 }
 function ld(log){return log&&log.length?log[log.length-1].date:null;}
 var AI_R=[{k:["多肉","仙人掌"],w:10,f:30},{k:["玫瑰","月季"],w:2,f:10},{k:["薄荷","香草"],w:2,f:14},{k:["蝴蝶兰","兰花"],w:7,f:14},{k:["橡皮树","龟背竹"],w:5,f:21},{k:["绿萝","吊兰"],w:3,f:14},{k:["番茄","辣椒"],w:1,f:7}];
-function autoInt(n){for(var i=0;i<AI_R.length;i++){var r=AI_R[i];for(var j=0;j<r.k.length;j++){if(n.indexOf(r.k[j])>=0)return{wi:r.w,fi:r.f};}}return{wi:3,fi:14};}
+function autoInt(n){for(var i=0;i<AI_R.length;i++){var r=AI_R[i];for(var j=0;j<r.k.length;j++){if(n.indexOf(r.k[j])>=0)return{wi:r.w,fi:r.f};}}return{wi:7,fi:14};}
 function getN(o,v){return o==null?999:o;}
 function parseIntervalMin(val){if(val==null||val==="")return 999;var s=String(val).trim();var m=s.match(/^(\d+)/);return m?parseInt(m[1]):999;}
 
@@ -716,31 +716,41 @@ function buildMiniCal(){
 
     // Selected day detail
     if(S.miniCalSel){
-      var selDots=dotMap[S.miniCalSel]||[];
       var typeLabel={water:'💧 浇水',fert:'🌿 施肥'};
-      if(selDots.length>0){
-        // Find which plants are due on this day
-        var plantLines=[];
-        selDots.forEach(function(type){
-          S.plants.forEach(function(p){
-            var interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
-            var lastLog=type==='water'?ld(p.waterLog):ld(p.fertLog);
-            if(interval>=900)return;
-            var base=lastLog?(function(){var pts=lastLog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():(function(){var pts=today.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
-            var next=new Date(base);next.setDate(base.getDate()+interval);
-            var nextDs=next.getFullYear()+'-'+String(next.getMonth()+1).padStart(2,'0')+'-'+String(next.getDate()).padStart(2,'0');
-            if(nextDs===S.miniCalSel)plantLines.push({name:p.name,type:type});
-          });
+      var selTarget=(function(){var p=S.miniCalSel.split('-');return new Date(+p[0],+p[1]-1,+p[2]);})();
+      var plantLines=[];
+      ['water','fert'].forEach(function(type){
+        S.plants.forEach(function(p){
+          var interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
+          var lastLog=type==='water'?ld(p.waterLog):ld(p.fertLog);
+          if(interval>=900)return;
+          // Check all multiples of interval from base to see if any lands on selTarget
+          var base=lastLog?(function(){var pts=lastLog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():(function(){var pts=today.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
+          var diffDays=Math.round((selTarget-base)/(86400000));
+          if(diffDays>0&&diffDays%interval===0){
+            plantLines.push({name:p.name,type:type});
+          }
+          // Also handle never-logged: treat today as base, check if selTarget is a multiple
+          if(!lastLog){
+            var pts=today.split('-');var todayObj2=new Date(+pts[0],+pts[1]-1,+pts[2]);
+            var diff2=Math.round((selTarget-todayObj2)/86400000);
+            if(diff2===0)plantLines.push({name:p.name,type:type});
+          }
         });
-        selDetail='<div style="background:rgba(240,248,235,0.8);border-radius:10px;padding:10px 12px;border:1px solid rgba(140,180,110,0.3)">'+
-          '<div style="font-size:12px;font-weight:700;color:#2e4a22;margin-bottom:6px">'+S.miniCalSel.slice(5).replace('-','/')+'</div>'+
+      });
+      // Deduplicate
+      var seen={};
+      plantLines=plantLines.filter(function(l){var k=l.name+'|'+l.type;if(seen[k])return false;seen[k]=true;return true;});
+      selDetail='<div style="background:rgba(240,248,235,0.8);border-radius:10px;padding:10px 12px;border:1px solid rgba(140,180,110,0.3)">'+
+        '<div style="font-size:12px;font-weight:700;color:#2e4a22;margin-bottom:6px">'+S.miniCalSel.slice(5).replace('-','/')+(plantLines.length?'　共'+plantLines.length+'项':'')+'</div>'+
+        (plantLines.length?
           plantLines.map(function(l){
             return '<div style="font-size:12px;color:#3a6028;display:flex;align-items:center;gap:6px;padding:2px 0">'+
               '<span style="color:'+(l.type==='water'?dotColor.water:dotColor.fert)+'">'+typeLabel[l.type].split(' ')[0]+'</span>'+
               '<span>'+q(l.name)+'</span></div>';
-          }).join('')+
-          '</div>';
-      }
+          }).join(''):
+          '<div style="font-size:11px;color:#9aaa88">暂无匹配记录</div>')+
+        '</div>';
     }
   }
 
@@ -760,6 +770,22 @@ function buildMiniCal(){
     '</div>';
 }
 
+
+function skipTask(pid, type){
+  var p=S.plants.find(function(x){return x.id===pid;});
+  if(!p)return;
+  // Record a skip entry - date is today, skip:true flag
+  var log=type==='water'?p.waterLog:p.fertLog;
+  var interval=type==='water'?p.wi:p.fi;
+  var lastDate=ld(log);
+  // Next due = lastDate + interval (or today if never logged)
+  var pts=lastDate?lastDate.split('-'):td().split('-');
+  var base=new Date(+pts[0],+pts[1]-1,+pts[2]);
+  base.setDate(base.getDate()+interval);
+  var skipDate=base.getFullYear()+'-'+String(base.getMonth()+1).padStart(2,'0')+'-'+String(base.getDate()).padStart(2,'0');
+  log.push({date:skipDate,skip:true,note:'跳过'});
+  storePlants();render();
+}
 function buildCalendarTab(){
   var today=td();
   var todayDate=new Date(); todayDate.setHours(0,0,0,0);
@@ -809,7 +835,10 @@ function buildCalendarTab(){
       '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:#2e4a22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+q(t.plant.name)+'</div>'+
       (showOverdue&&t.overdueDays>0?'<div style="font-size:11px;color:#c05020;font-weight:600">逾期 '+t.overdueDays+' 天</div>':'<div style="font-size:11px;color:#7a9060">'+typeLabel[t.type]+'</div>')+
       '</div>'+
+      '<div style="display:flex;gap:5px">'+
+      '<button onclick="event.stopPropagation();skipTask(\''+t.plant.id+'\',\''+t.type+'\')" style="padding:5px 10px;border-radius:20px;cursor:pointer;font-family:inherit;font-size:12px;background:rgba(180,180,170,0.25);border:1px solid rgba(160,160,150,0.4);color:#7a8870;white-space:nowrap">跳过</button>'+
       '<button onclick="event.stopPropagation();openLog(\''+t.plant.id+'\',\''+t.type+'\')" style="padding:5px 12px;border-radius:20px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:'+typeColor[t.type]+';border:none;color:white;white-space:nowrap">记录</button>'+
+      '</div>'+
       '</div>';
   }
 
@@ -1714,7 +1743,7 @@ function buildLogModal(){
   var extra="";
   if(type==="fert")extra=fertPicker+'<div><span style="'+LB()+'">肥料名称</span><input value="'+q(logForm.name)+'" onchange="logForm.name=this.value" placeholder="复合肥、磷酸二氢钾…" style="'+FS+'"/></div><div><span style="'+LB()+'">用量/浓度</span><input value="'+q(logForm.amount)+'" onchange="logForm.amount=this.value" placeholder="5g/L…" style="'+FS+'"/></div>';
   else if(type==="med")extra=medPicker+'<div><span style="'+LB()+'">药品名称</span><input value="'+q(logForm.name)+'" onchange="logForm.name=this.value" placeholder="多菌灵、吡虫啉…" style="'+FS+'"/></div><div><span style="'+LB()+'">病症/原因</span><input value="'+q(logForm.reason)+'" onchange="logForm.reason=this.value" placeholder="白粉病、蚜虫…" style="'+FS+'"/></div><div><span style="'+LB()+'">用量/浓度</span><input value="'+q(logForm.amount)+'" onchange="logForm.amount=this.value" placeholder="稀释800倍…" style="'+FS+'"/></div>';
-  var histHtml=[].concat(log).reverse().map(function(r,ri){var oi=log.length-1-ri;return '<div style="background:rgba(255,255,255,0.6);border-radius:10px;padding:10px 12px;margin-bottom:7px;border:1px solid rgba(150,185,130,0.3)"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><span style="font-size:12px;font-weight:700;color:#3a5228">'+fmt(r.date)+'</span>'+(r.name?'<span style="font-size:11px;color:#5a7848;margin-left:8px">'+q(r.name)+'</span>':'')+(r.amount?'<span style="font-size:11px;color:#7a9060;margin-left:6px">· '+q(r.amount)+'</span>':'')+(r.reason?'<div style="font-size:11px;color:#9a7040;margin-top:2px">病症：'+q(r.reason)+'</div>':'')+(r.note?'<div style="font-size:11px;color:#7a9060;margin-top:2px">'+q(r.note)+'</div>':'')+'</div><div style="display:flex;gap:5px"><button onclick="startLogEdit('+oi+')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#7a9868">✏️</button><button onclick="confirm2(\'确认删除这条记录吗？\',function(){delLog('+oi+');})" style="background:none;border:none;cursor:pointer;font-size:13px;color:#b07060">🗑</button></div></div></div>';}).join("");
+  var histHtml=[].concat(log).reverse().map(function(r,ri){var oi=log.length-1-ri;return '<div style="background:'+(r.skip?'rgba(240,240,235,0.5)':'rgba(255,255,255,0.6)')+';border-radius:10px;padding:10px 12px;margin-bottom:7px;border:1px solid '+(r.skip?'rgba(180,180,165,0.3)':'rgba(150,185,130,0.3)')+'"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><span style="font-size:12px;font-weight:700;color:#3a5228">'+fmt(r.date)+'</span>'+(r.skip?'<span style="font-size:11px;color:#9a9880;margin-left:8px">⏭ 已跳过</span>':((r.name?'<span style="font-size:11px;color:#5a7848;margin-left:8px">'+q(r.name)+'</span>':'')+(r.amount?'<span style="font-size:11px;color:#7a9060;margin-left:6px">· '+q(r.amount)+'</span>':'')+(r.reason?'<div style="font-size:11px;color:#9a7040;margin-top:2px">病症：'+q(r.reason)+'</div>':'')+(r.note&&!r.skip?'<div style="font-size:11px;color:#7a9060;margin-top:2px">'+q(r.note)+'</div>':'')))+'</div><div style="display:flex;gap:5px">'+(r.skip?'':'<button onclick="startLogEdit('+oi+')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#7a9868">✏️</button>')+'<button onclick="confirm2(\'确认删除这条记录吗？\',function(){delLog('+oi+');})" style="background:none;border:none;cursor:pointer;font-size:13px;color:#b07060">🗑</button></div></div></div>';}).join("");
   return '<div class="modal-overlay" onclick="if(event.target===this)closeLog()">'+
     '<div style="background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:82vh;display:flex;flex-direction:column;overflow:hidden">'+
     '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:700;color:#2e4a22">'+icon+' '+label+'记录</span><button onclick="closeLog()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
