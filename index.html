@@ -432,6 +432,21 @@ function storePlants(){try{localStorage.setItem(SK,JSON.stringify(S.plants));}ca
 var DEFAULT_CATS=["🍎 水果","🌿 调味","🌺 花木","🥬 蔬菜"];
 function loadCats(){try{var c=JSON.parse(localStorage.getItem("plant_cats")||"null");return c&&c.length?c:DEFAULT_CATS.slice();}catch(e){return DEFAULT_CATS.slice();}}
 function saveCats(){try{localStorage.setItem("plant_cats",JSON.stringify(S.cats));}catch(e){}}
+function renameCatByName(old){
+  var nv=prompt('重命名分类：',old);
+  if(!nv||!nv.trim()||nv.trim()===old)return;
+  var nw=nv.trim();
+  S.plants.forEach(function(p){if(p.category===old)p.category=nw;});
+  // also update S.cats if present
+  var ci=S.cats.indexOf(old);if(ci>=0)S.cats[ci]=nw;
+  storePlants();saveCats();render();
+}
+function deleteCatByName(old){
+  if(!confirm('删除分类「'+old+'」？原属此分类的植物将变为无分类。'))return;
+  S.plants.forEach(function(p){if(p.category===old)p.category='';});
+  var ci=S.cats.indexOf(old);if(ci>=0)S.cats.splice(ci,1);
+  storePlants();saveCats();render();
+}
 function renameCat(i){
   var old=S.cats[i];
   var nv=prompt('重命名分类：',old);
@@ -454,7 +469,7 @@ function deleteCat(i){
 var S={
   plants:loadPlants(),editId:null,showAdd:false,
   search:"",filterCat:"all",sortBy:"entry",
-  showLib:false,libTab:"fert",libSearch:"",libExpanded:null,libAdding:false,miniCalExpanded:false,
+  showLib:false,libTab:"fert",libSearch:"",libExpanded:null,libAdding:false,miniCalExpanded:false,miniCalYr:new Date().getFullYear(),miniCalMo:new Date().getMonth(),miniCalSel:null,
   showProp:false,propBatchId:null,propAdding:false,propEditId:null,
   logPlantId:null,logType:null,
   calPlantId:null,calYr:new Date().getFullYear(),calMo:new Date().getMonth(),calSel:null,
@@ -582,65 +597,58 @@ function buildPlantDetail(p){
 // ── Calendar Tab ──
 
 function buildMiniCal(){
-  var now=new Date();
-  var yr=now.getFullYear(), mo=now.getMonth();
   var today=td();
   var exp=S.miniCalExpanded;
+  // Use per-month nav state when expanded
+  var yr=exp?S.miniCalYr:new Date().getFullYear();
+  var mo=exp?S.miniCalMo:new Date().getMonth();
+  var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440'};
 
-  // Build a map: date string -> [types]
+  // Build dot map for displayed month + neighbours
   var dotMap={};
   S.plants.forEach(function(p){
     var wi=parseIntervalMin(p.wi), fi=parseIntervalMin(p.fi);
     var wd=ld(p.waterLog), fd=ld(p.fertLog);
-    // For each plant, compute next due dates for water and fert
-    function addDots(lastDate, interval, type){
-      if(interval>=900) return;
-      var base=lastDate?(function(){var p=lastDate.split('-');return new Date(+p[0],+p[1]-1,+p[2]);})():new Date(today);
-      if(!lastDate){ // never logged, assume due today
-        var ds2=today;
-        if(!dotMap[ds2]) dotMap[ds2]=[];
-        if(dotMap[ds2].indexOf(type)<0) dotMap[ds2].push(type);
+    function addDots(lastDate,interval,type){
+      if(interval>=900)return;
+      var base=lastDate?(function(){var pts=lastDate.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():(function(){var pts=today.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
+      if(!lastDate){
+        if(!dotMap[today])dotMap[today]=[];
+        if(dotMap[today].indexOf(type)<0)dotMap[today].push(type);
         return;
       }
-      // next due = lastDate + interval days
-      for(var offset=0; offset<=35; offset++){
-        var d=new Date(base); d.setDate(d.getDate()+interval+offset*interval);
-        // only mark within displayed range
+      for(var offset=0;offset<=60;offset++){
+        var d=new Date(base);d.setDate(d.getDate()+interval+offset*interval);
         var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-        if(!dotMap[ds2]) dotMap[ds2]=[];
-        if(dotMap[ds2].indexOf(type)<0) dotMap[ds2].push(type);
-        if(offset>0) break; // only next occurrence beyond today
+        if(!dotMap[ds2])dotMap[ds2]=[];
+        if(dotMap[ds2].indexOf(type)<0)dotMap[ds2].push(type);
+        if(offset>0)break;
       }
     }
-    addDots(wd, wi, 'water');
-    addDots(fd, fi, 'fert');
+    addDots(wd,wi,'water');
+    addDots(fd,fi,'fert');
   });
-
-  var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440'};
 
   function renderDots(ds2){
     var types=dotMap[ds2]||[];
-    if(!types.length) return '';
+    if(!types.length)return '';
     return '<div style="display:flex;gap:2px;justify-content:center;margin-top:2px">'+
       types.map(function(t){return '<div style="width:5px;height:5px;border-radius:50%;background:'+dotColor[t]+'"></div>';}).join('')+
       '</div>';
   }
 
-  // ---- Collapsed: one row = current week (Mon-Sun) ----
-  var wkMap=["日","一","二","三","四","五","六"];
+  // ---- Collapsed: current week row ----
+  var wkMap=['日','一','二','三','四','五','六'];
   var todayObj=(function(){var p=today.split('-');return new Date(+p[0],+p[1]-1,+p[2]);})();
-  var dayOfWeek=todayObj.getDay(); // 0=Sun
-  // Start from Monday of current week
   var weekStart=new Date(todayObj);
-  weekStart.setDate(todayObj.getDate() - ((dayOfWeek+6)%7));
-
+  weekStart.setDate(todayObj.getDate()-((todayObj.getDay()+6)%7));
   var weekRow='';
   for(var i=0;i<7;i++){
-    var d=new Date(weekStart); d.setDate(weekStart.getDate()+i);
+    var d=new Date(weekStart);d.setDate(weekStart.getDate()+i);
     var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     var isToday=ds2===today;
     weekRow+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px">'+
-      '<div style="font-size:10px;color:'+(isToday?'#2e7a1e':'#9aaa88')+';">'+wkMap[d.getDay()]+'</div>'+
+      '<div style="font-size:10px;color:'+(isToday?'#2e7a1e':'#9aaa88')+'">'+wkMap[d.getDay()]+'</div>'+
       '<div style="width:30px;height:30px;border-radius:50%;background:'+(isToday?'rgba(70,160,70,0.85)':'transparent')+
         ';display:flex;align-items:center;justify-content:center;font-size:'+(isToday?'15':'13')+'px;font-weight:'+(isToday?'800':'400')+
         ';color:'+(isToday?'white':'#2e4a22')+';line-height:1">'+d.getDate()+'</div>'+
@@ -648,44 +656,87 @@ function buildMiniCal(){
       '</div>';
   }
 
-  // ---- Expanded: full month grid ----
+  // ---- Expanded: full month grid with click + month nav ----
   var fullGrid='';
+  var selDetail='';
   if(exp){
-    // Header row: weekday labels
-    fullGrid='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:10px">'+
-      ["一","二","三","四","五","六","日"].map(function(w){
+    var MN=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+    // Month nav row
+    var monthNav='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<button onclick="event.stopPropagation();var m=S.miniCalMo-1;if(m<0){S.miniCalMo=11;S.miniCalYr--;}else{S.miniCalMo=m;}render()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:2px 8px;line-height:1">‹</button>'+
+      '<span style="font-size:14px;font-weight:700;color:#2e4a22">'+yr+'年 '+MN[mo]+'</span>'+
+      '<button onclick="event.stopPropagation();var m=S.miniCalMo+1;if(m>11){S.miniCalMo=0;S.miniCalYr++;}else{S.miniCalMo=m;}render()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:2px 8px;line-height:1">›</button>'+
+      '</div>';
+
+    var wdHeader='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px">'+
+      ['一','二','三','四','五','六','日'].map(function(w){
         return '<div style="text-align:center;font-size:10px;color:#9aaa88;padding:2px 0">'+w+'</div>';
-      }).join('');
-    // First day of month
+      }).join('')+'</div>';
+
     var first=new Date(yr,mo,1);
-    var startOffset=(first.getDay()+6)%7; // Mon=0
+    var startOffset=(first.getDay()+6)%7;
     var daysInMonth=new Date(yr,mo+1,0).getDate();
-    // Empty cells
-    for(var j=0;j<startOffset;j++) fullGrid+='<div></div>';
+    var cells='';
+    for(var j=0;j<startOffset;j++)cells+='<div></div>';
     for(var day=1;day<=daysInMonth;day++){
-      var ds2=yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      var mo2=mo+1;
+      var ds2=yr+'-'+String(mo2).padStart(2,'0')+'-'+String(day).padStart(2,'0');
       var isToday=ds2===today;
-      fullGrid+='<div style="display:flex;flex-direction:column;align-items:center;padding:2px 0">'+
+      var isSel=S.miniCalSel===ds2;
+      var hasDots=(dotMap[ds2]||[]).length>0;
+      cells+='<div onclick="event.stopPropagation();S.miniCalSel=(S.miniCalSel===\''+ds2+'\'?null:\''+ds2+'\');render()" style="display:flex;flex-direction:column;align-items:center;padding:2px 0;cursor:'+(hasDots?'pointer':'default')+';border-radius:8px;background:'+(isSel?'rgba(140,185,110,0.4)':'transparent')+'">'+
         '<div style="width:28px;height:28px;border-radius:50%;background:'+(isToday?'rgba(70,160,70,0.85)':'transparent')+
           ';display:flex;align-items:center;justify-content:center;font-size:'+(isToday?'14':'12')+'px;font-weight:'+(isToday?'800':'400')+
           ';color:'+(isToday?'white':'#2e4a22')+'">'+day+'</div>'+
         renderDots(ds2)+
         '</div>';
     }
-    fullGrid+='</div>';
+
+    fullGrid=monthNav+wdHeader+'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:10px">'+cells+'</div>';
+
+    // Selected day detail
+    if(S.miniCalSel){
+      var selDots=dotMap[S.miniCalSel]||[];
+      var typeLabel={water:'💧 浇水',fert:'🌿 施肥'};
+      if(selDots.length>0){
+        // Find which plants are due on this day
+        var plantLines=[];
+        selDots.forEach(function(type){
+          S.plants.forEach(function(p){
+            var interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
+            var lastLog=type==='water'?ld(p.waterLog):ld(p.fertLog);
+            if(interval>=900)return;
+            var base=lastLog?(function(){var pts=lastLog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():(function(){var pts=today.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
+            var next=new Date(base);next.setDate(base.getDate()+interval);
+            var nextDs=next.getFullYear()+'-'+String(next.getMonth()+1).padStart(2,'0')+'-'+String(next.getDate()).padStart(2,'0');
+            if(nextDs===S.miniCalSel)plantLines.push({name:p.name,type:type});
+          });
+        });
+        selDetail='<div style="background:rgba(240,248,235,0.8);border-radius:10px;padding:10px 12px;border:1px solid rgba(140,180,110,0.3)">'+
+          '<div style="font-size:12px;font-weight:700;color:#2e4a22;margin-bottom:6px">'+S.miniCalSel.slice(5).replace('-','/')+'</div>'+
+          plantLines.map(function(l){
+            return '<div style="font-size:12px;color:#3a6028;display:flex;align-items:center;gap:6px;padding:2px 0">'+
+              '<span style="color:'+(l.type==='water'?dotColor.water:dotColor.fert)+'">'+typeLabel[l.type].split(' ')[0]+'</span>'+
+              '<span>'+q(l.name)+'</span></div>';
+          }).join('')+
+          '</div>';
+      }
+    }
   }
 
-  return '<div style="background:rgba(255,255,255,0.6);border-radius:16px;padding:12px 14px;margin-bottom:16px;border:1px solid rgba(150,185,130,0.4)">'+
-    '<div onclick="S.miniCalExpanded=!S.miniCalExpanded;render()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:'+(exp?'10':'8')+'px">'+
-    '<span style="font-size:13px;font-weight:700;color:#2e4a22">'+(exp?(yr+'年'+(mo+1)+'月'):'本周')+'</span>'+
+  var titleRow='<div onclick="S.miniCalExpanded=!S.miniCalExpanded;if(!S.miniCalExpanded)S.miniCalSel=null;render()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:'+(exp?'4':'8')+'px">'+
+    '<span style="font-size:13px;font-weight:700;color:#2e4a22">'+(exp?'月历':'本周')+'</span>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
     '<div style="display:flex;gap:6px">'+
-      ['water','fert'].map(function(t){return '<div style="display:flex;align-items:center;gap:3px"><div style="width:6px;height:6px;border-radius:50%;background:'+dotColor[t]+'"></div><span style="font-size:10px;color:#7a9060">'+(t==='water'?'浇水':'施肥')+'</span></div>';}).join('')+
+    ['water','fert'].map(function(t){return '<div style="display:flex;align-items:center;gap:3px"><div style="width:6px;height:6px;border-radius:50%;background:'+dotColor[t]+'"></div><span style="font-size:10px;color:#7a9060">'+(t==='water'?'浇水':'施肥')+'</span></div>';}).join('')+
     '</div>'+
     '<span style="font-size:12px;color:#8aaa78;margin-left:4px">'+(exp?'▲':'▽')+'</span>'+
-    '</div></div>'+
-    '<div style="display:flex;gap:4px">'+weekRow+'</div>'+
-    fullGrid+
+    '</div></div>';
+
+  return '<div style="background:rgba(255,255,255,0.6);border-radius:16px;padding:12px 14px;margin-bottom:16px;border:1px solid rgba(150,185,130,0.4)">'+
+    titleRow+
+    (exp?fullGrid:'<div style="display:flex;gap:4px">'+weekRow+'</div>')+
+    selDetail+
     '</div>';
 }
 
@@ -1269,16 +1320,29 @@ function buildInventoryTab(){
     '<button onclick="S.invSubTab=\'soil\';S.libTab=\'soil\';S.libAdding=false;S.libExpanded=null;S.libSearch=\'\';render()" style="padding:18px 8px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;background:rgba(190,165,120,0.2);border:1.5px solid rgba(170,145,100,0.4);color:#4a3a20;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="font-size:32px">🪴</span><span>盆土库</span><span style="font-size:12px;color:#7a6a50;font-weight:400">'+LIB.soil.length+'种</span></button>'+
     '<button onclick="S.invSubTab=\'archive\';S.archiveSubTab=\'plants\';render()" style="padding:18px 8px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;background:rgba(155,185,135,0.2);border:1.5px solid rgba(130,165,100,0.4);color:#2e4a22;display:flex;flex-direction:column;align-items:center;gap:7px;grid-column:span 3"><span style="font-size:28px">📦</span><span>档案库</span><span style="font-size:12px;color:#7a9060;font-weight:400">植物 '+ARCHIVE.plants.length+' · 繁育 '+ARCHIVE.batches.length+'</span></button>'+
     '</div>'+
-    // Category manager
-    '<div style="margin-top:20px;background:rgba(255,255,255,0.6);border-radius:16px;padding:16px;border:1px solid rgba(150,185,130,0.4)">'+
-    '<div style="font-size:14px;font-weight:700;color:#2e4a22;margin-bottom:12px">🏷️ 植物分类管理</div>'+
-    '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px">'+
-    S.cats.map(function(c,i){return '<div style="display:flex;align-items:center;gap:4px;background:rgba(155,195,125,0.25);border:1px solid rgba(130,175,100,0.4);border-radius:20px;padding:4px 10px 4px 12px"><span style="font-size:13px;color:#2e4a22">'+q(c)+'</span><button onclick="renameCat('+i+')" title="重命名" style="background:none;border:none;cursor:pointer;font-size:11px;color:#7a9060;padding:0 2px;line-height:1">✏️</button><button onclick="deleteCat('+i+')" style="background:none;border:none;cursor:pointer;font-size:12px;color:#9a9888;padding:0 2px;line-height:1">✕</button></div>';}).join("")+
-    '</div>'+
-    '<div style="display:flex;gap:8px">'+
-    '<input id="new_cat_inp" placeholder="输入新分类名称…" value="'+q(S.newCatInput)+'" onchange="S.newCatInput=this.value" style="'+FS+'flex:1;font-size:13px"/>'+
-    '<button onclick="var el=document.getElementById(\'new_cat_inp\');var v=(el?el.value:\'\').trim();if(v&&S.cats.indexOf(v)<0){S.cats.push(v);saveCats();}S.newCatInput=\'\';render()" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap">+ 添加</button>'+
-    '</div></div>'+
+    // Category manager - reads from actual plant data
+    (function(){
+      var liveCats=[];S.plants.forEach(function(p){if(p.category&&liveCats.indexOf(p.category)<0)liveCats.push(p.category);});
+      liveCats.sort(function(a,b){return a.localeCompare(b,'zh');});
+      return '<div style="margin-top:20px;background:rgba(255,255,255,0.6);border-radius:16px;padding:16px;border:1px solid rgba(150,185,130,0.4)">'+
+        '<div style="font-size:14px;font-weight:700;color:#2e4a22;margin-bottom:4px">🏷️ 植物分类管理</div>'+
+        '<div style="font-size:11px;color:#9aaa88;margin-bottom:10px">以下分类来自植物数据，点 ✏️ 重命名会同步更新所有关联植物</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px">'+
+        liveCats.map(function(c){
+          var idx=S.cats.indexOf(c);
+          return '<div style="display:flex;align-items:center;gap:4px;background:rgba(155,195,125,0.25);border:1px solid rgba(130,175,100,0.4);border-radius:20px;padding:4px 10px 4px 12px">'+
+            '<span style="font-size:13px;color:#2e4a22">'+q(c)+'</span>'+
+            '<button onclick="renameCatByName('+JSON.stringify(c)+')" title="重命名" style="background:none;border:none;cursor:pointer;font-size:11px;color:#7a9060;padding:0 2px;line-height:1">✏️</button>'+
+            '<button onclick="deleteCatByName('+JSON.stringify(c)+')" style="background:none;border:none;cursor:pointer;font-size:12px;color:#9a9888;padding:0 2px;line-height:1">✕</button>'+
+            '</div>';
+        }).join('')+
+        (liveCats.length===0?'<div style="font-size:12px;color:#9aaa88">暂无分类，请先在植物信息中填写分类</div>':'')+
+        '</div>'+
+        '<div style="display:flex;gap:8px">'+
+        '<input id="new_cat_inp" placeholder="新增分类名称…" value="'+q(S.newCatInput)+'" onchange="S.newCatInput=this.value" style="'+FS+'flex:1;font-size:13px"/>'+
+        '<button onclick="var el=document.getElementById(\'new_cat_inp\');var v=(el?el.value:\'\').trim();if(v){S.newCatInput=v;}S.newCatInput=\'\';render()" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.5);color:#2e4a22;white-space:nowrap">+ 添加</button>'+
+        '</div></div>';
+    })()+
     '</div></div>';
 }
 
