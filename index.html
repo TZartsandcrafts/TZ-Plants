@@ -359,7 +359,7 @@ function q(s){
   r=r.replace(/>/g,"&gt;");r=r.replace(/"/g,"&quot;");
   return r;
 }
-function td(){return new Date().toISOString().slice(0,10);}
+function td(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function ds(d){
   if(!d)return null;
   var m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -448,7 +448,7 @@ function deleteCat(i){
 var S={
   plants:loadPlants(),editId:null,showAdd:false,
   search:"",filterCat:"all",sortBy:"entry",
-  showLib:false,libTab:"fert",libSearch:"",libExpanded:null,libAdding:false,
+  showLib:false,libTab:"fert",libSearch:"",libExpanded:null,libAdding:false,miniCalExpanded:false,
   showProp:false,propBatchId:null,propAdding:false,propEditId:null,
   logPlantId:null,logType:null,
   calPlantId:null,calYr:new Date().getFullYear(),calMo:new Date().getMonth(),calSel:null,
@@ -572,6 +572,115 @@ function buildPlantDetail(p){
 }
 
 // ── Calendar Tab ──
+
+function buildMiniCal(){
+  var now=new Date();
+  var yr=now.getFullYear(), mo=now.getMonth();
+  var today=td();
+  var exp=S.miniCalExpanded;
+
+  // Build a map: date string -> [types]
+  var dotMap={};
+  S.plants.forEach(function(p){
+    var wi=parseIntervalMin(p.wi), fi=parseIntervalMin(p.fi);
+    var wd=ld(p.waterLog), fd=ld(p.fertLog);
+    // For each plant, compute next due dates for water and fert
+    function addDots(lastDate, interval, type){
+      if(interval>=900) return;
+      var base=lastDate?(function(){var p=lastDate.split('-');return new Date(+p[0],+p[1]-1,+p[2]);})():new Date(today);
+      if(!lastDate){ // never logged, assume due today
+        var ds2=today;
+        if(!dotMap[ds2]) dotMap[ds2]=[];
+        if(dotMap[ds2].indexOf(type)<0) dotMap[ds2].push(type);
+        return;
+      }
+      // next due = lastDate + interval days
+      for(var offset=0; offset<=35; offset++){
+        var d=new Date(base); d.setDate(d.getDate()+interval+offset*interval);
+        // only mark within displayed range
+        var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        if(!dotMap[ds2]) dotMap[ds2]=[];
+        if(dotMap[ds2].indexOf(type)<0) dotMap[ds2].push(type);
+        if(offset>0) break; // only next occurrence beyond today
+      }
+    }
+    addDots(wd, wi, 'water');
+    addDots(fd, fi, 'fert');
+  });
+
+  var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440'};
+
+  function renderDots(ds2){
+    var types=dotMap[ds2]||[];
+    if(!types.length) return '';
+    return '<div style="display:flex;gap:2px;justify-content:center;margin-top:2px">'+
+      types.map(function(t){return '<div style="width:5px;height:5px;border-radius:50%;background:'+dotColor[t]+'"></div>';}).join('')+
+      '</div>';
+  }
+
+  // ---- Collapsed: one row = current week (Mon-Sun) ----
+  var wkMap=["日","一","二","三","四","五","六"];
+  var todayObj=(function(){var p=today.split('-');return new Date(+p[0],+p[1]-1,+p[2]);})();
+  var dayOfWeek=todayObj.getDay(); // 0=Sun
+  // Start from Monday of current week
+  var weekStart=new Date(todayObj);
+  weekStart.setDate(todayObj.getDate() - ((dayOfWeek+6)%7));
+
+  var weekRow='';
+  for(var i=0;i<7;i++){
+    var d=new Date(weekStart); d.setDate(weekStart.getDate()+i);
+    var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    var isToday=ds2===today;
+    weekRow+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px">'+
+      '<div style="font-size:10px;color:'+(isToday?'#2e7a1e':'#9aaa88')+';">'+wkMap[d.getDay()]+'</div>'+
+      '<div style="width:30px;height:30px;border-radius:50%;background:'+(isToday?'rgba(70,160,70,0.85)':'transparent')+
+        ';display:flex;align-items:center;justify-content:center;font-size:'+(isToday?'15':'13')+'px;font-weight:'+(isToday?'800':'400')+
+        ';color:'+(isToday?'white':'#2e4a22')+';line-height:1">'+d.getDate()+'</div>'+
+      renderDots(ds2)+
+      '</div>';
+  }
+
+  // ---- Expanded: full month grid ----
+  var fullGrid='';
+  if(exp){
+    // Header row: weekday labels
+    fullGrid='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:10px">'+
+      ["一","二","三","四","五","六","日"].map(function(w){
+        return '<div style="text-align:center;font-size:10px;color:#9aaa88;padding:2px 0">'+w+'</div>';
+      }).join('');
+    // First day of month
+    var first=new Date(yr,mo,1);
+    var startOffset=(first.getDay()+6)%7; // Mon=0
+    var daysInMonth=new Date(yr,mo+1,0).getDate();
+    // Empty cells
+    for(var j=0;j<startOffset;j++) fullGrid+='<div></div>';
+    for(var day=1;day<=daysInMonth;day++){
+      var ds2=yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      var isToday=ds2===today;
+      fullGrid+='<div style="display:flex;flex-direction:column;align-items:center;padding:2px 0">'+
+        '<div style="width:28px;height:28px;border-radius:50%;background:'+(isToday?'rgba(70,160,70,0.85)':'transparent')+
+          ';display:flex;align-items:center;justify-content:center;font-size:'+(isToday?'14':'12')+'px;font-weight:'+(isToday?'800':'400')+
+          ';color:'+(isToday?'white':'#2e4a22')+'">'+day+'</div>'+
+        renderDots(ds2)+
+        '</div>';
+    }
+    fullGrid+='</div>';
+  }
+
+  return '<div style="background:rgba(255,255,255,0.6);border-radius:16px;padding:12px 14px;margin-bottom:16px;border:1px solid rgba(150,185,130,0.4)">'+
+    '<div onclick="S.miniCalExpanded=!S.miniCalExpanded;render()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:'+(exp?'10':'8')+'px">'+
+    '<span style="font-size:13px;font-weight:700;color:#2e4a22">'+(exp?(yr+'年'+(mo+1)+'月'):'本周')+'</span>'+
+    '<div style="display:flex;align-items:center;gap:6px">'+
+    '<div style="display:flex;gap:6px">'+
+      ['water','fert'].map(function(t){return '<div style="display:flex;align-items:center;gap:3px"><div style="width:6px;height:6px;border-radius:50%;background:'+dotColor[t]+'"></div><span style="font-size:10px;color:#7a9060">'+(t==='water'?'浇水':'施肥')+'</span></div>';}).join('')+
+    '</div>'+
+    '<span style="font-size:12px;color:#8aaa78;margin-left:4px">'+(exp?'▲':'▽')+'</span>'+
+    '</div></div>'+
+    '<div style="display:flex;gap:4px">'+weekRow+'</div>'+
+    fullGrid+
+    '</div>';
+}
+
 function buildCalendarTab(){
   var today=td();
   var todayDate=new Date(); todayDate.setHours(0,0,0,0);
@@ -756,6 +865,7 @@ function buildCalendarTab(){
     appHeaderHtml+
     '<div style="padding:0 16px">'+
     weatherHtml+
+    buildMiniCal()+
     (overdueTasks.length>0?'<div style="background:rgba(230,90,50,0.1);border:1.5px solid rgba(210,80,40,0.35);border-radius:16px;padding:14px;margin-bottom:16px">'+
     '<div style="font-size:13px;font-weight:700;color:#c04010;margin-bottom:10px">⚠️ 逾期任务（'+overdueTasks.length+'项）</div>'+
     '<div style="display:flex;flex-direction:column;gap:7px">'+overdueTasks.map(function(t){return taskChip(t,true);}).join("")+'</div>'+
