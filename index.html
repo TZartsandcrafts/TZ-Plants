@@ -624,61 +624,76 @@ function buildMiniCal(){
   var mo=exp?S.miniCalMo:new Date().getMonth();
   var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440',skip_water:'#5a8edc',skip_fert:'#4aaa58'};
 
-  // Build dot map for displayed month + neighbours
+  // Build dot map: past=logged(solid)/skipped(hollow), future=plan(semi-hollow)
   var dotMap={};
+  var todPts=today.split('-');
+  var todObj=new Date(+todPts[0],+todPts[1]-1,+todPts[2]);
+
+  function addPlanDot(ds2,type){
+    if(!dotMap[ds2])dotMap[ds2]=[];
+    // only add plan if no real log dot already on that date
+    var has=dotMap[ds2].find(function(x){return x.type===type;});
+    if(!has)dotMap[ds2].push({type:type,plan:true});
+  }
+  function addLogDot(ds2,type,skip){
+    if(!dotMap[ds2])dotMap[ds2]=[];
+    // replace any plan dot with real one
+    dotMap[ds2]=dotMap[ds2].filter(function(x){return x.type!==type;});
+    dotMap[ds2].push({type:type,skip:!!skip});
+  }
+
   S.plants.forEach(function(p){
-    var wi=parseIntervalMin(p.wi), fi=parseIntervalMin(p.fi);
-    var wd=ld(p.waterLog), fd=ld(p.fertLog);
-    function addDots(lastDate,interval,type){
-      if(interval>=900)return;
-      var base=lastDate?(function(){var pts=lastDate.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():(function(){var pts=today.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
-      if(!lastDate){
-        if(!dotMap[today])dotMap[today]=[];
-        if(dotMap[today].indexOf(type)<0)dotMap[today].push(type);
-        return;
-      }
-      for(var offset=0;offset<=60;offset++){
-        var d=new Date(base);d.setDate(d.getDate()+interval+offset*interval);
-        var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-        if(!dotMap[ds2])dotMap[ds2]=[];
-        if(dotMap[ds2].indexOf(type)<0)dotMap[ds2].push(type);
-        if(offset>0)break;
-      }
-    }
-    addDots(wd,wi,'water');
-    addDots(fd,fi,'fert');
-    // Med dots: mark dates where med was logged
-    var mi=parseIntervalMin(p.mi);
-    var md2=ld(p.medLog);
-    if(mi<900) addDots(md2,mi,'med');
-    // Skip dots: mark actual skip dates
-    [p.waterLog,p.fertLog].forEach(function(log,li){
+    // 1. Mark all logged operations (past)
+    ['water','fert','med'].forEach(function(type){
+      var log=type==='water'?p.waterLog:type==='fert'?p.fertLog:p.medLog;
       (log||[]).forEach(function(r){
-        if(r.skip){
-          var sk='skip_'+(li===0?'water':'fert');
-          if(!dotMap[r.date])dotMap[r.date]=[];
-          if(dotMap[r.date].indexOf(sk)<0)dotMap[r.date].push(sk);
-          // Remove regular dot for that date if present
-          var reg=li===0?'water':'fert';
-          var idx=dotMap[r.date].indexOf(reg);
-          if(idx>=0)dotMap[r.date].splice(idx,1);
-        }
+        addLogDot(r.date,type,r.skip);
       });
     });
+
+    // 2. Mark future plan dots based on interval from last log
+    function addPlanDots(lastDate,interval,type){
+      if(!interval||interval>=900)return;
+      var base=lastDate?(function(){var pts=lastDate.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todObj;
+      for(var n=1;n<=60;n++){
+        var d=new Date(base);d.setDate(base.getDate()+interval*n);
+        var dObj=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+        if(dObj<=todObj)continue; // only future
+        var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        addPlanDot(ds2,type);
+      }
+    }
+    addPlanDots(ld(p.waterLog),parseIntervalMin(p.wi),'water');
+    addPlanDots(ld(p.fertLog),parseIntervalMin(p.fi),'fert');
+    var mi=parseIntervalMin(p.mi);
+    if(mi<900) addPlanDots(ld(p.medLog),mi,'med');
   });
 
   function renderDots(ds2){
-    var types=dotMap[ds2]||[];
-    if(!types.length)return '';
-    return '<div style="display:flex;gap:2px;justify-content:center;margin-top:2px">'+
-      types.map(function(t){
-        var isSkip=t.indexOf('skip_')===0;
-        var col=dotColor[t]||'#888';
-        return isSkip?
-          '<div style="width:5px;height:5px;border-radius:50%;border:1.5px solid '+col+';background:transparent"></div>':
-          '<div style="width:5px;height:5px;border-radius:50%;background:'+col+'"></div>';
-      }).join('')+
-      '</div>';
+    var entries=dotMap[ds2]||[];
+    if(!entries.length)return '';
+    // dedupe by type: real > skip > plan
+    var seen={};
+    entries.forEach(function(e){
+      if(!seen[e.type]){seen[e.type]=e;}
+      else{
+        var cur=seen[e.type];
+        // prefer real logged over skip over plan
+        var rank=function(x){return x.plan?0:x.skip?1:2;};
+        if(rank(e)>rank(cur))seen[e.type]=e;
+      }
+    });
+    var html='';
+    var types=['water','fert','med'];
+    types.forEach(function(t){
+      if(!seen[t])return;
+      var e=seen[t];
+      var col=dotColor[t]||'#888';
+      if(e.skip) html+='<div style="width:5px;height:5px;border-radius:50%;border:1.5px solid '+col+';background:transparent"></div>';
+      else if(e.plan) html+='<div style="width:5px;height:5px;border-radius:50%;border:1.5px solid '+col+';background:transparent;opacity:0.55"></div>';
+      else html+='<div style="width:5px;height:5px;border-radius:50%;background:'+col+'"></div>';
+    });
+    return html?'<div style="display:flex;gap:2px;justify-content:center;margin-top:2px">'+html+'</div>':'';
   }
 
   // ---- Collapsed: current week row ----
@@ -738,40 +753,41 @@ function buildMiniCal(){
 
     fullGrid=monthNav+wdHeader+'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:10px">'+cells+'</div>';
 
-    // Selected day detail
+    // Selected day detail - reads from dotMap
     if(S.miniCalSel){
-      var typeLabel={water:'💧 浇水',fert:'🌿 施肥'};
-      var selTarget=(function(){var p=S.miniCalSel.split('-');return new Date(+p[0],+p[1]-1,+p[2]);})();
+      var tlabel={water:'💧',fert:'🌿',med:'💊'};
+      var tname={water:'浇水',fert:'施肥',med:'给药'};
+      var selEntries=dotMap[S.miniCalSel]||[];
       var plantLines=[];
-      ['water','fert'].forEach(function(type){
+      selEntries.forEach(function(e){
         S.plants.forEach(function(p){
-          var interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
-          var lastLog=type==='water'?ld(p.waterLog):ld(p.fertLog);
-          if(interval>=900)return;
-          // Check all multiples of interval from base to see if any lands on selTarget
-          var base=lastLog?(function(){var pts=lastLog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():(function(){var pts=today.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
-          var diffDays=Math.round((selTarget-base)/(86400000));
-          if(diffDays>0&&diffDays%interval===0){
-            plantLines.push({name:p.name,type:type});
-          }
-          // Also handle never-logged: treat today as base, check if selTarget is a multiple
-          if(!lastLog){
-            var pts=today.split('-');var todayObj2=new Date(+pts[0],+pts[1]-1,+pts[2]);
-            var diff2=Math.round((selTarget-todayObj2)/86400000);
-            if(diff2===0)plantLines.push({name:p.name,type:type});
+          var log=e.type==='water'?p.waterLog:e.type==='fert'?p.fertLog:p.medLog;
+          if(e.plan){
+            var interval=e.type==='water'?parseIntervalMin(p.wi):e.type==='fert'?parseIntervalMin(p.fi):parseIntervalMin(p.mi);
+            var lastLog=ld(log);
+            if(!interval||interval>=900)return;
+            var base=lastLog?(function(){var pts=lastLog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todObj;
+            var selT=(function(){var pts=S.miniCalSel.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
+            var diff=Math.round((selT-base)/86400000);
+            if(diff>0&&diff%interval===0)plantLines.push({name:p.name,type:e.type,plan:true});
+          } else {
+            (log||[]).forEach(function(r){
+              if(r.date===S.miniCalSel)plantLines.push({name:p.name,type:e.type,skip:r.skip});
+            });
           }
         });
       });
-      // Deduplicate
-      var seen={};
-      plantLines=plantLines.filter(function(l){var k=l.name+'|'+l.type;if(seen[k])return false;seen[k]=true;return true;});
+      var seenL={};
+      plantLines=plantLines.filter(function(l){var k=l.name+'|'+l.type;if(seenL[k])return false;seenL[k]=true;return true;});
       selDetail='<div style="background:rgba(240,248,235,0.8);border-radius:10px;padding:10px 12px;border:1px solid rgba(140,180,110,0.3)">'+
         '<div style="font-size:12px;font-weight:700;color:#2e4a22;margin-bottom:6px">'+S.miniCalSel.slice(5).replace('-','/')+(plantLines.length?'　共'+plantLines.length+'项':'')+'</div>'+
         (plantLines.length?
           plantLines.map(function(l){
+            var col=dotColor[l.type]||'#888';
+            var suffix=l.skip?' (跳过)':l.plan?' (计划)':'';
             return '<div style="font-size:12px;color:#3a6028;display:flex;align-items:center;gap:6px;padding:2px 0">'+
-              '<span style="color:'+(l.type==='water'?dotColor.water:dotColor.fert)+'">'+typeLabel[l.type].split(' ')[0]+'</span>'+
-              '<span>'+q(l.name)+'</span></div>';
+              '<span style="color:'+col+'">'+(tlabel[l.type]||'●')+'</span>'+
+              '<span>'+q(l.name)+'<span style="color:#9aaa88;font-size:11px">'+suffix+'</span></span></div>';
           }).join(''):
           '<div style="font-size:11px;color:#9aaa88">暂无匹配记录</div>')+
         '</div>';
@@ -1500,7 +1516,7 @@ function render(){
 
   // Modals on top
   if(S.showLib)html+=buildLibModal();
-  if(S.logPlantId)html+=buildLogModal();
+  if(S.logPlantId){el.innerHTML=buildLogPage();window.scrollTo(0,0);return;}
   if(S.calPlantId){
     el.innerHTML=buildCalPage();
     window.scrollTo(0,0);
@@ -1758,7 +1774,7 @@ function buildPlantCard(p){
 var logEditIdx=null;
 var logForm={date:"",note:"",name:"",reason:"",amount:""};
 function openLog(pid,type){S.logPlantId=pid;S.logType=type;logEditIdx=null;logForm={date:td(),note:"",name:"",reason:"",amount:""};render();}
-function closeLog(){S.logPlantId=null;S.logType=null;logEditIdx=null;render();}
+function closeLog(){var pid=S.logPlantId;S.logPlantId=null;S.logType=null;logEditIdx=null;S.tab='plants';S.plantDetailId=pid;window.scrollTo(0,0);render();}
 function startLogEdit(idx){
   var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.logPlantId){p=S.plants[i];break;}}
   if(!p)return;
@@ -1784,6 +1800,91 @@ function delLog(idx){
   var log=S.logType==="water"?(p.waterLog||[]):S.logType==="fert"?(p.fertLog||[]):(p.medLog||[]);
   log.splice(idx,1);storePlants();render();
 }
+
+function buildLogPage(){
+  var icons={water:"💧",fert:"🌿",med:"💊"};
+  var labels={water:"浇水",fert:"施肥",med:"给药"};
+  var type=S.logType,icon=icons[type],label=labels[type];
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.logPlantId){p=S.plants[i];break;}}
+  if(!p)return buildTabLayout();
+  var log=type==="water"?(p.waterLog||[]):type==="fert"?(p.fertLog||[]):(p.medLog||[]);
+  var isEdit=logEditIdx!==null;
+
+  // Library picker as dropdown
+  var libPicker="";
+  if(type==="fert"&&LIB.fert.length>0){
+    libPicker='<div><span style="'+LB()+'">从库存选择（可选）</span>'+
+      '<select onchange="if(this.value){var f=LIB.fert.find(function(x){return x.name===this.value;}.bind(this));if(f){logForm.name=f.name;logForm.amount=f.dosage||\'\';}}render()" style="'+FS+'">'+
+      '<option value="">— 不从库存选择 —</option>'+
+      LIB.fert.map(function(f){return '<option value="'+q(f.name)+'"'+(logForm.name===f.name?' selected':'')+'>'+q(f.name)+'</option>';}).join('')+
+      '</select></div>';
+  }
+  if(type==="med"&&LIB.med.length>0){
+    libPicker='<div><span style="'+LB()+'">从库存选择（可选）</span>'+
+      '<select onchange="if(this.value){var m=LIB.med.find(function(x){return x.name===this.value;}.bind(this));if(m){logForm.name=m.name;logForm.amount=m.dosage||\'\';logForm.reason=m.target||\'\';}}render()" style="'+FS+'">'+
+      '<option value="">— 不从库存选择 —</option>'+
+      LIB.med.map(function(m){return '<option value="'+q(m.name)+'"'+(logForm.name===m.name?' selected':'')+'>'+q(m.name)+'</option>';}).join('')+
+      '</select></div>';
+  }
+
+  var extra="";
+  if(type==="fert")extra=libPicker+'<div><span style="'+LB()+'">肥料名称</span><input value="'+q(logForm.name)+'" onchange="logForm.name=this.value" placeholder="复合肥、磷酸二氢钾…" style="'+FS+'"/></div><div><span style="'+LB()+'">用量/浓度</span><input value="'+q(logForm.amount)+'" onchange="logForm.amount=this.value" placeholder="5g/L…" style="'+FS+'"/></div>';
+  else if(type==="med")extra=libPicker+'<div><span style="'+LB()+'">药品名称</span><input value="'+q(logForm.name)+'" onchange="logForm.name=this.value" placeholder="多菌灵、吡虫啉…" style="'+FS+'"/></div><div><span style="'+LB()+'">病症/原因</span><input value="'+q(logForm.reason)+'" onchange="logForm.reason=this.value" placeholder="白粉病、蚜虫…" style="'+FS+'"/></div><div><span style="'+LB()+'">用量/浓度</span><input value="'+q(logForm.amount)+'" onchange="logForm.amount=this.value" placeholder="稀释800倍…" style="'+FS+'"/></div>';
+
+  var histHtml=[].concat(log).reverse().map(function(r,ri){
+    var oi=log.length-1-ri;
+    return '<div style="background:'+(r.skip?'rgba(240,240,235,0.5)':'rgba(255,255,255,0.6)')+';border-radius:10px;padding:10px 12px;margin-bottom:7px;border:1px solid '+(r.skip?'rgba(180,180,165,0.3)':'rgba(150,185,130,0.3)')+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+      '<div><span style="font-size:12px;font-weight:700;color:#3a5228">'+fmt(r.date)+'</span>'+
+      (r.skip?'<span style="font-size:11px;color:#9a9880;margin-left:8px">⏭ 已跳过</span>':
+        ((r.name?'<span style="font-size:11px;color:#5a7848;margin-left:8px">'+q(r.name)+'</span>':'')+
+        (r.amount?'<span style="font-size:11px;color:#7a9060;margin-left:6px">· '+q(r.amount)+'</span>':'')+
+        (r.reason?'<div style="font-size:11px;color:#9a7040;margin-top:2px">病症：'+q(r.reason)+'</div>':'')+
+        (r.note&&!r.skip?'<div style="font-size:11px;color:#7a9060;margin-top:2px">'+q(r.note)+'</div>':'')))+
+      '</div>'+
+      '<div style="display:flex;gap:5px">'+
+      (r.skip?'':'<button onclick="startLogEdit('+oi+')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#7a9868">✏️</button>')+
+      '<button onclick="confirm2(\'确认删除这条记录吗？\',function(){delLog('+oi+')})" style="background:none;border:none;cursor:pointer;font-size:13px;color:#b07060">🗑</button>'+
+      '</div></div></div>';
+  }).join("");
+
+  // Add swipe back
+  var swipeScript='<script>'+
+    '(function(){'+
+    'var sx=0,sy=0;'+
+    'document.addEventListener("touchstart",function(e){if(!S.logPlantId)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;},{passive:true});'+
+    'document.addEventListener("touchend",function(e){if(!S.logPlantId)return;var dx=e.changedTouches[0].clientX-sx;var dy=Math.abs(e.changedTouches[0].clientY-sy);if(dx>60&&dy<80&&sx<30){closeLog();}},{passive:true});'+
+    '})();'+
+    '<\/script>';
+
+  return '<div style="min-height:100vh;background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc);padding-bottom:60px">'+
+    '<div style="background:rgba(220,232,216,0.95);border-bottom:1px solid rgba(150,185,130,0.3);position:sticky;top:0;z-index:10">'+
+    '<div style="max-width:460px;margin:0 auto;padding:14px 18px 12px;display:flex;align-items:center;gap:12px">'+
+    '<button onclick="closeLog()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:0;line-height:1">‹</button>'+
+    '<div><div style="font-size:18px;font-weight:800;color:#1e3a14">'+icon+' '+q(p.name)+' · '+label+'记录</div>'+
+    '<div style="font-size:11px;color:#7a9868;margin-top:1px">'+label+'日志管理</div></div>'+
+    '</div></div>'+
+    '<div style="max-width:460px;margin:0 auto;padding:14px 16px">'+
+    // New/Edit form
+    '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:14px 16px;margin-bottom:14px;border:1px solid rgba(150,185,130,0.4)">'+
+    '<div style="font-size:12px;color:#6a8858;font-weight:700;margin-bottom:10px">'+(isEdit?"修改记录":"新增记录")+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
+    '<div><span style="'+LB()+'">日期</span><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="logForm.date=this.value" style="'+FS+'color-scheme:light;"/></div>'+
+    extra+
+    '<div><span style="'+LB()+'">'+(type==="water"?"备注（可选）":"备注")+'</span><textarea onchange="logForm.note=this.value" placeholder="'+(type==="water"?"浇水量、方式…":type==="fert"?"施肥观察…":"用药后观察…")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(logForm.note)+'</textarea></div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<button onclick="saveLog()" style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:rgba(100,165,70,0.85);border:none;color:white">✓ '+(isEdit?"保存修改":"添加")+'</button>'+
+    (isEdit?'<button onclick="logEditIdx=null;render()" style="padding:10px 16px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button>':"")+
+    '</div>'+
+    '</div></div>'+
+    // History
+    '<div style="font-size:12px;color:#6a8858;font-weight:700;margin-bottom:8px">历史记录（'+log.length+'条）</div>'+
+    (log.length===0?'<div style="font-size:12px;color:#9aaa88;text-align:center;padding:30px 0">暂无记录</div>':histHtml)+
+    '</div>'+
+    buildBottomNav()+
+    '</div>';
+}
+
 function buildLogModal(){
   var icons={water:"💧",fert:"🌿",med:"💊"};
   var labels={water:"浇水",fert:"施肥",med:"给药"};
