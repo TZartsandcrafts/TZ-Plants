@@ -532,7 +532,7 @@ function buildConfirmModal(){
 }
 
 // ── Nav ──
-function navTo(tab){S.tab=tab;S.plantDetailId=null;S.showAdd=false;S.editId=null;render();}
+function navTo(tab){S.tab=tab;S.plantDetailId=null;S.calPlantId=null;S.showAdd=false;S.editId=null;render();}
 function buildBottomNav(){
   var tabs=[["calendar","📅","日历"],["plants","🪴","植物"],["breeding","🌱","繁育"],["inventory","📦","库存"]];
   return '<div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(240,245,236,0.97);border-top:1px solid rgba(150,185,130,0.4);display:flex;max-width:460px;margin:0 auto;left:50%;transform:translateX(-50%);width:100%;padding-bottom:max(env(safe-area-inset-bottom),20px)">'+
@@ -1504,6 +1504,25 @@ function render(){
   if(S.calPlantId){
     el.innerHTML=buildCalPage();
     window.scrollTo(0,0);
+    // Swipe left/right to change month
+    (function(){
+      var sx=0,sy=0,moved=false;
+      el.addEventListener('touchstart',function(e){sx=e.touches[0].clientX;sy=e.touches[0].clientY;moved=false;},{passive:true});
+      el.addEventListener('touchmove',function(e){
+        var dx=Math.abs(e.touches[0].clientX-sx),dy=Math.abs(e.touches[0].clientY-sy);
+        if(dx>8||dy>8)moved=true;
+        if(moved&&dx>dy){e.preventDefault();}
+      },{passive:false});
+      el.addEventListener('touchend',function(e){
+        var dx=e.changedTouches[0].clientX-sx;
+        var dy=Math.abs(e.changedTouches[0].clientY-sy);
+        if(Math.abs(dx)>50&&dy<80){
+          if(dx<0){var m=S.calMo+1;if(m>11){S.calMo=0;S.calYr++;}else{S.calMo=m;}}
+          else{if(sx>30){var m=S.calMo-1;if(m<0){S.calMo=11;S.calYr--;}else{S.calMo=m;}}}
+          render();
+        }
+      },{passive:true});
+    })();
     return;
   }
   if(S.confirmCb)html+=buildConfirmModal();
@@ -1807,17 +1826,41 @@ function buildCalPage(){
   function addEv(type,log){(log||[]).forEach(function(r){if(!evMap[r.date])evMap[r.date]=[];evMap[r.date].push(Object.assign({type:type},r));});}
   addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);
   [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,"🌱生根"],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
+  // Add plan dots for future dates based on care intervals
+  var tod=td();
+  var todPts=tod.split('-');var todObj=new Date(+todPts[0],+todPts[1]-1,+todPts[2]);
+  function addPlanDots(lastDate,interval,type){
+    if(!interval||interval>=900)return;
+    var base=lastDate?(function(){var pts=lastDate.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todObj;
+    for(var offset=1;offset<=24;offset++){
+      var nd=new Date(base);nd.setDate(base.getDate()+interval*offset);
+      var ds3=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0')+'-'+String(nd.getDate()).padStart(2,'0');
+      if(ds3<=tod)continue; // only future
+      if(!evMap[ds3])evMap[ds3]=[];
+      if(!evMap[ds3].find(function(e){return e.type===type;}))
+        evMap[ds3].push({type:type,date:ds3,plan:true});
+    }
+  }
+  addPlanDots(ld(p.waterLog),parseIntervalMin(p.wi),'water');
+  addPlanDots(ld(p.fertLog),parseIntervalMin(p.fi),'fert');
   var fd=new Date(S.calYr,S.calMo,1).getDay();
   var dm=new Date(S.calYr,S.calMo+1,0).getDate();
-  var tod=td();
   var MN=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
   var cells="";
   for(var i=0;i<fd;i++)cells+="<div></div>";
   for(var d=1;d<=dm;d++){
     var mo2=S.calMo+1;var dStr=S.calYr+"-"+(mo2<10?"0"+mo2:mo2)+"-"+(d<10?"0"+d:d);
     var evts=evMap[dStr]||[];var isT=dStr===tod,isS=S.calSel===dStr;
-    var dots=evts.reduce(function(acc,e){if(!acc.types[e.type]){acc.types[e.type]=true;acc.html+=e.skip?'<div style="width:6px;height:6px;border-radius:50%;border:1.5px solid '+(TC[e.type]||'#888')+';background:transparent"></div>':'<div style="width:6px;height:6px;border-radius:50%;background:'+(TC[e.type]||'#888')+'"></div>';}return acc;},{types:{},html:''}).html;
-    cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(evts.length>0?"pointer":"default")+';background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:44px"><div style="font-size:13px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:3px;flex-wrap:wrap">'+dots+'</div></div>';
+    var hasDots=evts.length>0;
+    var dots=evts.reduce(function(acc,e){
+      if(!acc.types[e.type]){acc.types[e.type]=true;
+        var col=TC[e.type]||'#888';
+        acc.html+=e.plan?
+          '<div style="width:6px;height:6px;border-radius:50%;border:1.5px solid '+col+';background:transparent;opacity:0.6"></div>':
+          e.skip?'<div style="width:6px;height:6px;border-radius:50%;border:1.5px solid '+col+';background:transparent"></div>':
+          '<div style="width:6px;height:6px;border-radius:50%;background:'+col+'"></div>';
+      }return acc;},{types:{},html:''}).html;
+    cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(hasDots?"pointer":"default")+';background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:44px"><div style="font-size:13px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:3px;flex-wrap:wrap">'+dots+'</div></div>';
   }
   var selEvts=S.calSel?(evMap[S.calSel]||[]):[];
 
