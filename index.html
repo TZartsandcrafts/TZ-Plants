@@ -1504,25 +1504,31 @@ function render(){
   if(S.calPlantId){
     el.innerHTML=buildCalPage();
     window.scrollTo(0,0);
-    // Swipe left/right to change month
-    (function(){
-      var sx=0,sy=0,moved=false;
-      el.addEventListener('touchstart',function(e){sx=e.touches[0].clientX;sy=e.touches[0].clientY;moved=false;},{passive:true});
-      el.addEventListener('touchmove',function(e){
-        var dx=Math.abs(e.touches[0].clientX-sx),dy=Math.abs(e.touches[0].clientY-sy);
-        if(dx>8||dy>8)moved=true;
-        if(moved&&dx>dy){e.preventDefault();}
+    if(!el._calSwipe){
+      el._calSwipe=true;
+      var _csx=0,_csy=0;
+      document.addEventListener('touchstart',function(e){
+        if(!S.calPlantId)return;
+        _csx=e.touches[0].clientX;_csy=e.touches[0].clientY;
+      },{passive:true});
+      document.addEventListener('touchmove',function(e){
+        if(!S.calPlantId)return;
+        var dx=Math.abs(e.touches[0].clientX-_csx);
+        var dy=Math.abs(e.touches[0].clientY-_csy);
+        if(dx>dy&&dx>8)e.preventDefault();
       },{passive:false});
-      el.addEventListener('touchend',function(e){
-        var dx=e.changedTouches[0].clientX-sx;
-        var dy=Math.abs(e.changedTouches[0].clientY-sy);
+      document.addEventListener('touchend',function(e){
+        if(!S.calPlantId)return;
+        var dx=e.changedTouches[0].clientX-_csx;
+        var dy=Math.abs(e.changedTouches[0].clientY-_csy);
         if(Math.abs(dx)>50&&dy<80){
+          if(_csx<30&&dx>0){closeCal();return;}
           if(dx<0){var m=S.calMo+1;if(m>11){S.calMo=0;S.calYr++;}else{S.calMo=m;}}
-          else{if(sx>30){var m=S.calMo-1;if(m<0){S.calMo=11;S.calYr--;}else{S.calMo=m;}}}
+          else if(_csx>=30){var m=S.calMo-1;if(m<0){S.calMo=11;S.calYr--;}else{S.calMo=m;}}
           render();
         }
       },{passive:true});
-    })();
+    }
     return;
   }
   if(S.confirmCb)html+=buildConfirmModal();
