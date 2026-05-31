@@ -658,7 +658,7 @@ function buildMiniCal(){
       for(var n=1;n<=60;n++){
         var d=new Date(base);d.setDate(base.getDate()+interval*n);
         var dObj=new Date(d.getFullYear(),d.getMonth(),d.getDate());
-        if(dObj<=todObj)continue; // only future
+        if(dObj<todObj)continue; // skip past, include today
         var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
         addPlanDot(ds2,type);
       }
@@ -666,7 +666,7 @@ function buildMiniCal(){
     addPlanDots(ld(p.waterLog),parseIntervalMin(p.wi),'water');
     addPlanDots(ld(p.fertLog),parseIntervalMin(p.fi),'fert');
     var mi=parseIntervalMin(p.mi);
-    if(mi<900) addPlanDots(ld(p.medLog),mi,'med');
+    if(mi<900&&p.medLog&&p.medLog.length>0) addPlanDots(ld(p.medLog),mi,'med');
   });
 
   function renderDots(ds2){
@@ -1476,7 +1476,8 @@ function render(){
       var dy=Math.abs(e.changedTouches[0].clientY-_ty);
       // Back gesture: must start from left edge (< 30px)
       if(dx>60&&dy<40&&_tx<30){
-        if(S.calPlantId){closeCal();}
+        if(S.logPlantId){closeLog();}
+        else if(S.calPlantId){closeCal();}
         else if(S.plantDetailId){closePlantDetail();}
         else if(S.showAdd||S.editId){cancelForm();}
         else if(S.invSubTab){S.invSubTab=null;S.libAdding=false;S.libExpanded=null;S.libSearch='';render();}
@@ -1869,7 +1870,7 @@ function buildLogPage(){
     '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:14px 16px;margin-bottom:14px;border:1px solid rgba(150,185,130,0.4)">'+
     '<div style="font-size:12px;color:#6a8858;font-weight:700;margin-bottom:10px">'+(isEdit?"修改记录":"新增记录")+'</div>'+
     '<div style="display:flex;flex-direction:column;gap:8px">'+
-    '<div><span style="'+LB()+'">日期</span><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="logForm.date=this.value" style="'+FS+'color-scheme:light;"/></div>'+
+    '<div><span style="'+LB()+'">日期</span><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="logForm.date=this.value" style="'+FS+'color-scheme:light;display:block;"/></div>'+
     extra+
     '<div><span style="'+LB()+'">'+(type==="water"?"备注（可选）":"备注")+'</span><textarea onchange="logForm.note=this.value" placeholder="'+(type==="water"?"浇水量、方式…":type==="fert"?"施肥观察…":"用药后观察…")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(logForm.note)+'</textarea></div>'+
     '<div style="display:flex;gap:8px">'+
@@ -1909,7 +1910,7 @@ function buildLogModal(){
     '<div style="background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:82vh;display:flex;flex-direction:column;overflow:hidden">'+
     '<div style="padding:14px 18px 10px;border-bottom:1px solid rgba(150,185,130,0.3);display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:700;color:#2e4a22">'+icon+' '+label+'记录</span><button onclick="closeLog()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#7a9868">✕</button></div>'+
     '<div style="padding:12px 18px;border-bottom:1px solid rgba(150,185,130,0.2);background:rgba(200,225,185,0.2)"><div style="font-size:11px;color:#6a8858;margin-bottom:8px;font-weight:700">'+(isEdit?"修改记录":"新增记录")+'</div><div style="display:flex;flex-direction:column;gap:7px">'+
-    '<div><span style="'+LB()+'">日期</span><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="logForm.date=this.value" style="'+FS+'color-scheme:light;"/></div>'+
+    '<div><span style="'+LB()+'">日期</span><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="logForm.date=this.value" style="'+FS+'color-scheme:light;display:block;"/></div>'+
     extra+
     '<div><span style="'+LB()+'">'+(type==="water"?"备注（可选）":"备注")+'</span><textarea onchange="logForm.note=this.value" placeholder="'+(type==="water"?"浇水量、方式…":type==="fert"?"施肥观察…":"用药后观察…")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(logForm.note)+'</textarea></div>'+
     '<div style="display:flex;gap:7px"><button onclick="saveLog()" style="flex:1;padding:8px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.6);color:#2e4a22">✓ '+(isEdit?"保存修改":"添加")+'</button>'+(isEdit?'<button onclick="logEditIdx=null;render()" style="flex:1;padding:8px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;background:rgba(200,215,195,0.4);border:1px solid rgba(160,185,145,0.4);color:#6a7e58">取消</button>':"")+'</div>'+
