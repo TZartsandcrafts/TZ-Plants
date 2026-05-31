@@ -19,7 +19,7 @@ input::placeholder,textarea::placeholder{color:#9aaa88;opacity:1}
 .modal-overlay{position:fixed;inset:0;z-index:200;background:rgba(50,80,30,0.45);display:flex;align-items:flex-end;justify-content:center;touch-action:none;}
 .modal-panel{background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;touch-action:auto;padding-bottom:env(safe-area-inset-bottom,0px);}
 .modal-scroll{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
-input,select,textarea{box-sizing:border-box;max-width:100%;}
+input,select,textarea{box-sizing:border-box;max-width:100%;width:100%;}
 </style>
 </head>
 <body>
@@ -1875,7 +1875,7 @@ function buildLogPage(){
     '<div style="background:rgba(220,232,216,0.95);border-bottom:1px solid rgba(150,185,130,0.3);position:sticky;top:0;z-index:10">'+
     '<div style="max-width:460px;margin:0 auto;padding:14px 18px 12px;display:flex;align-items:center;gap:12px">'+
     '<button onclick="closeLog()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:0;line-height:1">‹</button>'+
-    '<div><div style="font-size:18px;font-weight:800;color:#1e3a14">'+icon+' '+q(p.name)+' · '+label+'记录</div>'+
+    '<div><div style="font-size:18px;font-weight:800;color:#1e3a14">'+icon+' '+q(p.name)+(p.variety?' <span style="font-size:14px;font-weight:500;color:#5a7848">'+q(p.variety)+'</span>':'')+' · '+label+'记录</div>'+
     '<div style="font-size:11px;color:#7a9868;margin-top:1px">'+label+'日志管理</div></div>'+
     '</div></div>'+
     '<div style="max-width:460px;margin:0 auto;padding:14px 16px">'+
@@ -2000,7 +2000,7 @@ function buildCalPage(){
     '<div style="max-width:460px;margin:0 auto;padding:14px 18px 12px">'+
     '<div style="display:flex;align-items:center;gap:12px">'+
     '<button onclick="closeCal()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#5a8040;padding:0;line-height:1">‹</button>'+
-    '<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:800;color:#1e3a14;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📅 '+q(p.name)+'</div>'+
+    '<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:800;color:#1e3a14;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📅 '+q(p.name)+(p.variety?' <span style="font-size:13px;font-weight:500;color:#5a7848">'+q(p.variety)+'</span>':'')+'</div>'+
     '<div style="font-size:11px;color:#7a9868;margin-top:1px">护理日历</div></div>'+
     '</div></div></div>';
 
