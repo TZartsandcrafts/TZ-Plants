@@ -19,6 +19,7 @@ input::placeholder,textarea::placeholder{color:#9aaa88;opacity:1}
 .modal-overlay{position:fixed;inset:0;z-index:200;background:rgba(50,80,30,0.45);display:flex;align-items:flex-end;justify-content:center;touch-action:none;}
 .modal-panel{background:#f0f5ec;border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;touch-action:auto;padding-bottom:env(safe-area-inset-bottom,0px);}
 .modal-scroll{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
+input,select,textarea{box-sizing:border-box;max-width:100%;}
 </style>
 </head>
 <body>
@@ -658,8 +659,20 @@ function buildMiniCal(){
       for(var n=1;n<=60;n++){
         var d=new Date(base);d.setDate(base.getDate()+interval*n);
         var dObj=new Date(d.getFullYear(),d.getMonth(),d.getDate());
-        if(dObj<todObj)continue; // skip past, include today
-        var ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        // If due date is past or today (overdue), show on today instead
+        var ds2;
+        if(dObj<=todObj){
+          // Check if this is the most recent due date (next one would be in future)
+          var nextD=new Date(base);nextD.setDate(base.getDate()+interval*(n+1));
+          var nextObj=new Date(nextD.getFullYear(),nextD.getMonth(),nextD.getDate());
+          if(nextObj>todObj){
+            ds2=today; // overdue - show on today
+          } else {
+            continue; // even older cycle, skip
+          }
+        } else {
+          ds2=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        }
         addPlanDot(ds2,type);
       }
     }
@@ -1869,7 +1882,7 @@ function buildLogPage(){
     // New/Edit form
     '<div style="background:rgba(255,255,255,0.65);border-radius:16px;padding:14px 16px;margin-bottom:14px;border:1px solid rgba(150,185,130,0.4)">'+
     '<div style="font-size:12px;color:#6a8858;font-weight:700;margin-bottom:10px">'+(isEdit?"修改记录":"新增记录")+'</div>'+
-    '<div style="display:flex;flex-direction:column;gap:8px">'+
+    '<div style="display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:100%;overflow:hidden">'+
     '<div><span style="'+LB()+'">日期</span><input type="date" value="'+q(logForm.date)+'" max="'+td()+'" onchange="logForm.date=this.value" style="background:rgba(255,255,255,0.7);border:1px solid rgba(150,185,130,0.5);border-radius:8px;padding:8px 12px;color:#2e4a22;font-size:13px;font-family:inherit;width:100%;max-width:100%;box-sizing:border-box;outline:none;display:block;color-scheme:light;"/></div>'+
     extra+
     '<div><span style="'+LB()+'">'+(type==="water"?"备注（可选）":"备注")+'</span><textarea onchange="logForm.note=this.value" placeholder="'+(type==="water"?"浇水量、方式…":type==="fert"?"施肥观察…":"用药后观察…")+'" rows="2" style="'+FS+'resize:vertical;line-height:1.6">'+q(logForm.note)+'</textarea></div>'+
@@ -1942,8 +1955,16 @@ function buildCalPage(){
     var base=lastDate?(function(){var pts=lastDate.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todObj;
     for(var offset=1;offset<=24;offset++){
       var nd=new Date(base);nd.setDate(base.getDate()+interval*offset);
-      var ds3=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0')+'-'+String(nd.getDate()).padStart(2,'0');
-      if(ds3<tod)continue; // skip past only, include today
+      var ndObj=new Date(nd.getFullYear(),nd.getMonth(),nd.getDate());
+      var ds3;
+      if(ndObj<=todObj){
+        var nextNd=new Date(base);nextNd.setDate(base.getDate()+interval*(offset+1));
+        var nextObj=new Date(nextNd.getFullYear(),nextNd.getMonth(),nextNd.getDate());
+        if(nextObj>todObj){ds3=tod;}
+        else{continue;}
+      } else {
+        ds3=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0')+'-'+String(nd.getDate()).padStart(2,'0');
+      }
       if(!evMap[ds3])evMap[ds3]=[];
       if(!evMap[ds3].find(function(e){return e.type===type;}))
         evMap[ds3].push({type:type,date:ds3,plan:true});
@@ -2162,7 +2183,7 @@ function buildLibModal(){
   var addForm=S.libAdding?
     '<div class="modal-scroll" style="background:rgba(200,225,185,0.25);padding:12px 14px;border-bottom:1px solid rgba(150,185,130,0.25);max-height:60vh">'+
     '<div style="font-size:11px;font-weight:700;color:#4a6a38;margin-bottom:10px">'+(libEditId?"✏️ 修改":"＋ 添加新")+(isFert?"肥料":"药品")+'</div>'+
-    '<div style="display:flex;flex-direction:column;gap:8px">'+
+    '<div style="display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:100%;overflow:hidden">'+
     '<div><span style="'+LB()+'">'+(isFert?"肥料":"药品")+'名称 *</span><input id="lib_name_inp" value="'+q(libForm.name||"")+'" placeholder="'+(isFert?"复合肥、磷酸二氢钾…":"多菌灵、阿维菌素…")+'" onchange="libForm.name=this.value" style="'+FS+'"/></div>'+
     '<div><span style="'+LB()+'">品牌 / 商品名</span><input value="'+q(fv("brand"))+'" placeholder="奥绿、花多多、拜耳…" onchange="setManualField(\'brand\',this.value)" style="'+FS+'"/></div>'+
     '<div><span style="'+LB()+'">类型</span><input value="'+q(fv("type"))+'" placeholder="'+(isFert?"复合肥、有机肥、缓释肥…":"杀菌剂、杀虫剂、杀螨剂…")+'" onchange="setManualField(\'type\',this.value)" style="'+FS+'"/></div>'+
@@ -2187,7 +2208,7 @@ function buildLibModal(){
     var soilAddForm=S.libAdding?
       '<div class="modal-scroll" style="background:rgba(200,225,185,0.25);padding:12px 14px;border-bottom:1px solid rgba(150,185,130,0.25);max-height:60vh">'+
       '<div style="font-size:11px;font-weight:700;color:#4a6a38;margin-bottom:10px">'+(soilEditId?"✏️ 修改":"＋ 添加新")+'盆土</div>'+
-      '<div style="display:flex;flex-direction:column;gap:8px">'+
+      '<div style="display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:100%;overflow:hidden">'+
       '<div><span style="'+LB()+'">产品名称 *</span><input id="soil_name_inp" value="'+q(soilForm.name)+'" placeholder="泥炭土、椰糠、多肉专用土…" onchange="setSoilField(\'name\',this.value)" style="'+FS+'"/></div>'+
       '<div><span style="'+LB()+'">品牌</span><input value="'+q(soilForm.brand)+'" placeholder="品氏、红牛、翡翠…" onchange="setSoilField(\'brand\',this.value)" style="'+FS+'"/></div>'+
       '<div><span style="'+LB()+'">购入来源 / 渠道</span><input value="'+q(soilForm.src)+'" placeholder="某宝、本地花市…" onchange="setSoilField(\'src\',this.value)" style="'+FS+'"/></div>'+
