@@ -357,7 +357,7 @@ var BLANK={name:"",variety:"",type:"",category:"",notes:"",photo:"",status:"heal
   hardeningDate:"",hardeningDays:7,hardeningNotes:"",
   prePlantDate:"",prePlantNotes:"",transplantDate:"",transplantNotes:"",
   finalPlantDate:"",finalPlantNotes:"",finalPlantLocation:"",
-  wi:7,fi:14,mi:30,medMode:"symptom",waterLog:[],fertLog:[],medLog:[]};
+  wi:7,fi:14,mi:30,medMode:"symptom",waterLog:[],fertLog:[],medLog:[],noteLog:[]};
 
 // ── Helpers ──
 function q(s){
@@ -1938,14 +1938,33 @@ function closeCal(){var pid=S.calPlantId;S.calPlantId=null;S.tab='plants';S.plan
 function calPrev(){if(S.calMo===0){S.calYr--;S.calMo=11;}else S.calMo--;S.calSel=null;render();}
 function calNext(){if(S.calMo===11){S.calYr++;S.calMo=0;}else S.calMo++;S.calSel=null;render();}
 function calClick(d){S.calSel=S.calSel===d?null:d;render();}
+function saveCalNote(){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.calPlantId){p=S.plants[i];break;}}
+  if(!p||!S.calSel)return;
+  var el=document.getElementById("cal_note_inp");
+  var text=el?el.value.trim():"";
+  if(!text)return;
+  if(!p.noteLog)p.noteLog=[];
+  p.noteLog.push({id:Date.now().toString(),date:S.calSel,text:text});
+  p.noteLog.sort(function(a,b){return a.date.localeCompare(b.date);});
+  storePlants();
+  if(el)el.value="";
+  render();
+}
+function deleteCalNote(noteId){
+  var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.calPlantId){p=S.plants[i];break;}}
+  if(!p||!p.noteLog)return;
+  p.noteLog=p.noteLog.filter(function(n){return n.id!==noteId;});
+  storePlants();render();
+}
 function buildCalPage(){
   var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.calPlantId){p=S.plants[i];break;}}
   if(!p){S.calPlantId=null;return buildTabLayout();}
-  var TC={water:"#5090d0",fert:"#5a9848",med:"#d07050",milestone:"#8060a0"};
-  var TL={water:"💧浇水",fert:"🌿施肥",med:"💊给药",milestone:"📌里程碑"};
+  var TC={water:"#5090d0",fert:"#5a9848",med:"#d07050",milestone:"#8060a0",note:"#d08030"};
+  var TL={water:"💧浇水",fert:"🌿施肥",med:"💊给药",milestone:"📌里程碑",note:"📝备注"};
   var evMap={};
   function addEv(type,log){(log||[]).forEach(function(r){if(!evMap[r.date])evMap[r.date]=[];evMap[r.date].push(Object.assign({type:type},r));});}
-  addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);
+  addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);addEv("note",p.noteLog||[]);
   [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,"🌱生根"],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
   // Add plan dots for future dates based on care intervals
   var tod=td();
@@ -1989,7 +2008,7 @@ function buildCalPage(){
           e.skip?'<div style="width:6px;height:6px;border-radius:50%;border:1.5px solid '+col+';background:transparent"></div>':
           '<div style="width:6px;height:6px;border-radius:50%;background:'+col+'"></div>';
       }return acc;},{types:{},html:''}).html;
-    cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(hasDots?"pointer":"default")+';background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:44px"><div style="font-size:13px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:3px;flex-wrap:wrap">'+dots+'</div></div>';
+    cells+='<div onclick="calClick(\''+dStr+'\')" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:pointer;background:'+(isS?"rgba(140,185,110,0.5)":isT?"rgba(180,210,155,0.4)":"rgba(255,255,255,0.4)")+';border:1px solid '+(isS?"rgba(120,165,90,0.7)":isT?"rgba(150,190,120,0.5)":"transparent")+';min-height:44px"><div style="font-size:13px;color:'+(isT?"#2e4a22":"#4a6a38")+';font-weight:'+(isT?700:400)+'">'+d+'</div><div style="display:flex;justify-content:center;gap:2px;margin-top:3px;flex-wrap:wrap">'+dots+'</div></div>';
   }
   var selEvts=S.calSel?(evMap[S.calSel]||[]):[];
 
@@ -2027,9 +2046,11 @@ function buildCalPage(){
     (S.calSel?
       '<div style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 16px;border:1px solid rgba(150,185,130,0.4);margin-bottom:16px">'+
       '<div style="font-size:13px;font-weight:700;color:#2e4a22;margin-bottom:10px">'+fmt(S.calSel)+' 的操作</div>'+
-      (selEvts.length===0?'<div style="font-size:12px;color:#9aaa88;text-align:center;padding:8px 0">无记录</div>':
-        selEvts.map(function(e,i2){
-          return '<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:'+(i2<selEvts.length-1?"1px solid rgba(150,185,130,0.2)":"none")+'">'+
+      (selEvts.filter(function(e){return e.type!=="note";}).length===0 && (selEvts.filter(function(e){return e.type==="note";}).length===0)?
+        '<div style="font-size:12px;color:#9aaa88;text-align:center;padding:4px 0 8px">无操作记录</div>':
+        selEvts.filter(function(e){return e.type!=="note";}).map(function(e,i2){
+          var nonNotes=selEvts.filter(function(x){return x.type!=="note";});
+          return '<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:'+(i2<nonNotes.length-1?"1px solid rgba(150,185,130,0.2)":"none")+'">'+
             '<div style="font-size:13px;font-weight:700;color:'+(TC[e.type]||"#5a7848")+'">'+(TL[e.type]||e.label||"")+'</div>'+
             (e.type==="milestone"&&e.label?'<div style="font-size:12px;color:#7a9060;margin-top:2px">'+q(e.label)+'</div>':"")+
             (e.name?'<div style="font-size:12px;color:#4a6a38;margin-top:2px">名称：'+q(e.name)+'</div>':"")+
@@ -2038,8 +2059,31 @@ function buildCalPage(){
             (e.note?'<div style="font-size:12px;color:#7a9060;margin-top:2px">备注：'+q(e.note)+'</div>':"")+
             '</div>';
         }).join(""))+
+      // Note entries for this day
+      (selEvts.filter(function(e){return e.type==="note";}).length>0?
+        '<div style="border-top:1px solid rgba(150,185,130,0.2);margin-top:4px;padding-top:10px">'+
+        selEvts.filter(function(e){return e.type==="note";}).map(function(e){
+          return '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">'+
+            '<div style="flex:1;background:rgba(208,128,48,0.1);border-radius:8px;padding:8px 10px;border:1px solid rgba(208,128,48,0.25)">'+
+            '<div style="font-size:11px;color:#d08030;font-weight:600;margin-bottom:3px">📝 备注</div>'+
+            '<div style="font-size:13px;color:#4a3a20;line-height:1.6;white-space:pre-wrap;word-break:break-word">'+q(e.text)+'</div>'+
+            '</div>'+
+            '<button onclick="deleteCalNote(\''+e.id+'\')" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:16px;color:#c09070;padding:6px 2px;line-height:1">✕</button>'+
+            '</div>';
+        }).join("")+
+        '</div>':"")+
+      // Add note input
+      '<div style="margin-top:12px;border-top:1px solid rgba(150,185,130,0.2);padding-top:12px">'+
+      '<div style="font-size:12px;color:#7a9060;margin-bottom:6px;font-weight:600">📝 添加备注</div>'+
+      '<textarea id="cal_note_inp" placeholder="记录这天的观察、操作或任何想记下来的事…" rows="3" style="'+FS+'resize:none;line-height:1.6;font-size:13px;border-radius:10px"></textarea>'+
+      '<button onclick="saveCalNote()" style="margin-top:8px;width:100%;padding:11px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:rgba(208,128,48,0.2);border:1px solid rgba(208,128,48,0.4);color:#7a4a10">保存备注</button>'+
+      '</div>'+
       '</div>'
-    :"")+
+    :
+      '<div style="background:rgba(255,255,255,0.5);border-radius:14px;padding:20px 16px;border:1px solid rgba(150,185,130,0.3);text-align:center;margin-bottom:16px">'+
+      '<div style="font-size:28px;margin-bottom:8px">📅</div>'+
+      '<div style="font-size:13px;color:#8aaa78">点击日期查看记录或添加备注</div>'+
+      '</div>')+
     '</div>'+
     // Bottom nav (same as other pages)
     buildBottomNav()+
