@@ -796,8 +796,16 @@ function buildMiniCal(){
       });
       var seenL={};
       plantLines=plantLines.filter(function(l){var k=l.name+'|'+l.type;if(seenL[k])return false;seenL[k]=true;return true;});
+      // Collect notes for selected date
+      var noteLines=[];
+      S.plants.forEach(function(p){
+        (p.noteLog||[]).forEach(function(n){
+          if(n.date===S.miniCalSel)noteLines.push({name:p.name,text:n.text});
+        });
+      });
+      var totalItems=plantLines.length+noteLines.length;
       selDetail='<div style="background:rgba(240,248,235,0.8);border-radius:10px;padding:10px 12px;border:1px solid rgba(140,180,110,0.3)">'+
-        '<div style="font-size:12px;font-weight:700;color:#2e4a22;margin-bottom:6px">'+S.miniCalSel.slice(5).replace('-','/')+(plantLines.length?'　共'+plantLines.length+'项':'')+'</div>'+
+        '<div style="font-size:12px;font-weight:700;color:#2e4a22;margin-bottom:6px">'+S.miniCalSel.slice(5).replace('-','/')+(totalItems?'　共'+totalItems+'项':'')+'</div>'+
         (plantLines.length?
           plantLines.map(function(l){
             var col=dotColor[l.type]||'#888';
@@ -805,8 +813,14 @@ function buildMiniCal(){
             return '<div style="font-size:12px;color:#3a6028;display:flex;align-items:center;gap:6px;padding:2px 0">'+
               '<span style="color:'+col+'">'+(tlabel[l.type]||'●')+'</span>'+
               '<span>'+q(l.name)+'<span style="color:#9aaa88;font-size:11px">'+suffix+'</span></span></div>';
-          }).join(''):
-          '<div style="font-size:11px;color:#9aaa88">暂无匹配记录</div>')+
+          }).join(''): '')+
+        (noteLines.length?
+          noteLines.map(function(n){
+            return '<div style="font-size:12px;color:#7a4a10;display:flex;align-items:flex-start;gap:6px;padding:3px 0;border-top:1px solid rgba(208,128,48,0.15);margin-top:2px">'+
+              '<span style="color:#d08030;flex-shrink:0">📝</span>'+
+              '<span><span style="color:#9aaa88;font-size:11px">'+q(n.name)+'　</span>'+q(n.text)+'</span></div>';
+          }).join(''): '')+
+        (!plantLines.length&&!noteLines.length?'<div style="font-size:11px;color:#9aaa88">暂无匹配记录</div>':'')+
         '</div>';
     }
   }
@@ -1187,6 +1201,7 @@ function graduateBatchAsOne(batchId){
     var bl=getSuccessLabel(b);
     if(bl==="发芽")newP.germDate=firstSuccess.successDate;
     else newP.rootDate=firstSuccess.successDate;
+    newP.propSuccessLabel=bl;
   }
   S.plants.push(newP);
   if(!b.batchPlantIds)b.batchPlantIds=[];
@@ -1976,7 +1991,8 @@ function buildCalPage(){
   var evMap={};
   function addEv(type,log){(log||[]).forEach(function(r){if(!evMap[r.date])evMap[r.date]=[];evMap[r.date].push(Object.assign({type:type},r));});}
   addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);addEv("note",p.noteLog||[]);
-  [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,"🌱生根"],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
+  var rootLabel="🌱"+(p.propSuccessLabel||"生根/成活");
+  [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,rootLabel],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
   // Add plan dots for future dates based on care intervals
   var tod=td();
   var todPts=tod.split('-');var todObj=new Date(+todPts[0],+todPts[1]-1,+todPts[2]);
@@ -2109,7 +2125,8 @@ function buildCalModal(){
   var evMap={};
   function addEv(type,log){(log||[]).forEach(function(r){if(!evMap[r.date])evMap[r.date]=[];evMap[r.date].push(Object.assign({type:type},r));});}
   addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);addEv("note",p.noteLog||[]);
-  [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,"🌱生根"],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
+  var rootLabel="🌱"+(p.propSuccessLabel||"生根/成活");
+  [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,rootLabel],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
   var fd=new Date(S.calYr,S.calMo,1).getDay();
   var dm=new Date(S.calYr,S.calMo+1,0).getDate();
   var tod=td();
@@ -2510,6 +2527,7 @@ function graduateSeedling(batchId,sIdx){
   var sl_label=getSuccessLabel(b);
   if(sl_label==="发芽"&&sl.successDate){newP.germDate=sl.successDate;}
   else if(sl.successDate){newP.rootDate=sl.successDate;}
+  newP.propSuccessLabel=sl_label;
   if(b.parentId){newP.buyFrom=b.parentName||"";}
   sl.graduated=true;
   sl.plantId=null;
