@@ -24,6 +24,8 @@ input,select,textarea{box-sizing:border-box;max-width:100%;width:100%;}input[typ
 </head>
 <body>
 <div id="root"></div>
+
+<div id="root"></div>
 <script>
 var APPNAME="植物志";
 var W={loc:"Surrey, BC",upd:"加载中",temp:16,hum:83,pre:0,cond:"多云",emo:"⛅",rain:false,
@@ -623,7 +625,7 @@ function buildMiniCal(){
   // Use per-month nav state when expanded
   var yr=exp?S.miniCalYr:new Date().getFullYear();
   var mo=exp?S.miniCalMo:new Date().getMonth();
-  var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440',skip_water:'#5a8edc',skip_fert:'#4aaa58'};
+  var dotColor={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440',skip_water:'#5a8edc',skip_fert:'#4aaa58',note:'#d08030'};
 
   // Build dot map: past=logged(solid)/skipped(hollow), future=plan(semi-hollow)
   var dotMap={};
@@ -651,6 +653,8 @@ function buildMiniCal(){
         addLogDot(r.date,type,r.skip);
       });
     });
+    // Mark note dots
+    (p.noteLog||[]).forEach(function(r){addLogDot(r.date,'note',false);});
 
     // 2. Mark future plan dots based on interval from last log
     function addPlanDots(lastDate,interval,type){
@@ -697,7 +701,7 @@ function buildMiniCal(){
       }
     });
     var html='';
-    var types=['water','fert','med'];
+    var types=['water','fert','med','note'];
     types.forEach(function(t){
       if(!seen[t])return;
       var e=seen[t];
@@ -811,7 +815,7 @@ function buildMiniCal(){
     '<span style="font-size:13px;font-weight:700;color:#2e4a22">'+(exp?'月历':'本周')+'</span>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
     '<div style="display:flex;gap:6px">'+
-    [{t:'water',l:'浇水'},{t:'fert',l:'施肥'},{t:'med',l:'给药'},{t:'skip',l:'跳过'}].map(function(x){
+    [{t:'water',l:'浇水'},{t:'fert',l:'施肥'},{t:'med',l:'给药'},{t:'skip',l:'跳过'},{t:'note',l:'备注'}].map(function(x){
       var isSkip=x.t==='skip';
       var col=isSkip?'#9aaa88':(dotColor[x.t]||'#888');
       var dot=isSkip?
@@ -1180,7 +1184,8 @@ function graduateBatchAsOne(batchId){
   else if(b.method==='cutting'){newP.opDate=b.date;}
   var firstSuccess=b.seedlings.filter(function(s){return s.status==='success'&&s.successDate;}).sort(function(a,c){return a.successDate.localeCompare(c.successDate);})[0];
   if(firstSuccess){
-    if(b.method==='seed')newP.germDate=firstSuccess.successDate;
+    var bl=getSuccessLabel(b);
+    if(bl==="发芽")newP.germDate=firstSuccess.successDate;
     else newP.rootDate=firstSuccess.successDate;
   }
   S.plants.push(newP);
@@ -2099,11 +2104,11 @@ function buildCalPage(){
 function buildCalModal(){
   var p=null;for(var i=0;i<S.plants.length;i++){if(S.plants[i].id===S.calPlantId){p=S.plants[i];break;}}
   if(!p)return "";
-  var TC={water:"#5090d0",fert:"#5a9848",med:"#d07050",milestone:"#8060a0"};
-  var TL={water:"💧浇水",fert:"🌿施肥",med:"💊给药",milestone:"📌里程碑"};
+  var TC={water:"#5090d0",fert:"#5a9848",med:"#d07050",milestone:"#8060a0",note:"#d08030"};
+  var TL={water:"💧浇水",fert:"🌿施肥",med:"💊给药",milestone:"📌里程碑",note:"📝备注"};
   var evMap={};
   function addEv(type,log){(log||[]).forEach(function(r){if(!evMap[r.date])evMap[r.date]=[];evMap[r.date].push(Object.assign({type:type},r));});}
-  addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);
+  addEv("water",p.waterLog);addEv("fert",p.fertLog);addEv("med",p.medLog);addEv("note",p.noteLog||[]);
   [[p.sowDate,"🌱播种"],[p.germDate,"🌿发芽"],[p.buyDate,"🛒购入"],[p.opDate,"✂️扦插/嫁接"],[p.rootDate,"🌱生根"],[p.hardeningDate,"🌤️炼苗"],[p.prePlantDate,"🪴假植"],[p.transplantDate,"🔄移栽"],[p.finalPlantDate,"📍定植"]].forEach(function(x){if(x[0]){if(!evMap[x[0]])evMap[x[0]]=[];evMap[x[0]].push({type:"milestone",label:x[1],date:x[0]});}});
   var fd=new Date(S.calYr,S.calMo,1).getDay();
   var dm=new Date(S.calYr,S.calMo+1,0).getDate();
@@ -2372,23 +2377,30 @@ var PROP_METHODS=[
   {key:"division",icon:"🌾",label:"分株/分根"},
   {key:"graft",icon:"🔗",label:"嫁接"},
   {key:"layering",icon:"🌿",label:"压条"},
+  {key:"bulb",icon:"🧅",label:"种球/宿根"},
   {key:"other",icon:"🔬",label:"其他"}
 ];
 var PROP_STATUS={waiting:{icon:"⏳",label:"等待中",color:"#7a6010"},success:{icon:"✅",label:"已成活",color:"#2a6a35"},fail:{icon:"❌",label:"失败",color:"#8a2818"}};
 
 
-var propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:""};
+var propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:"",successLabel:""};
 
 function setPropField(k,v){propForm[k]=v;if(k==="parentId"){var p=S.plants.find(function(x){return x.id===v;});propForm.parentName=p?p.name:"";}render();}
 // ── No-render updates for prop form (prevents input overlap on mobile) ──
+function getDefaultSuccessLabel(method){
+  if(method==="seed")return "发芽";
+  if(method==="cutting"||method==="layering")return "生根";
+  if(method==="graft")return "萌芽/破土";
+  if(method==="bulb")return "发芽";
+  if(method==="division")return "展叶";
+  return "自定义";
+}
 function setPropMethod(key){
   propForm.method=key;
-  document.querySelectorAll('[data-pmethod]').forEach(function(b){
-    var sel=b.getAttribute('data-pmethod')===key;
-    b.style.background=sel?'rgba(140,185,110,0.4)':'rgba(180,210,160,0.15)';
-    b.style.borderColor=sel?'rgba(120,165,90,0.6)':'rgba(150,185,130,0.25)';
-    b.style.color=sel?'#2e4a22':'#6a8858';
-  });
+  // Reset successLabel to new default when method changes
+  propForm.successLabel="";
+  propForm.customSuccessLabel="";
+  render();
 }
 function setPropParent(id){
   propForm.parentId=id;
@@ -2400,24 +2412,31 @@ function setPropParent(id){
   }
 }
 
+function getSuccessLabel(b){
+  if(!b.successLabel||b.successLabel==="自定义")return b.customSuccessLabel||getDefaultSuccessLabel(b.method);
+  return b.successLabel;
+}
+
 function savePropBatch(){
   if(!propForm.date){alert("请填写操作日期");return;}
+  var finalLabel=propForm.successLabel==="自定义"?(propForm.customSuccessLabel||getDefaultSuccessLabel(propForm.method)):
+    (propForm.successLabel||getDefaultSuccessLabel(propForm.method));
   if(S.propEditId){
     var eb=PROP.find(function(x){return x.id===S.propEditId;});
-    if(eb){eb.method=propForm.method;eb.parentId=propForm.parentId;eb.parentName=propForm.parentName;eb.date=propForm.date;eb.total=parseInt(propForm.total)||eb.total;eb.medium=propForm.medium;eb.note=propForm.note;}
+    if(eb){eb.method=propForm.method;eb.parentId=propForm.parentId;eb.parentName=propForm.parentName;eb.date=propForm.date;eb.total=parseInt(propForm.total)||eb.total;eb.medium=propForm.medium;eb.note=propForm.note;eb.successLabel=finalLabel;}
     var eid=S.propEditId;S.propEditId=null;S.propAdding=false;S.propBatchId=eid;
-    propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:""};
+    propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:"",successLabel:"",customSuccessLabel:""};
     saveProp();render();return;
   }
   if(!propForm.total||propForm.total<1){alert("请填写数量");return;}
   var n=parseInt(propForm.total)||1;
   var seedlings=[];
   for(var i=1;i<=n;i++){seedlings.push({id:Date.now().toString(36)+i,label:i+"号苗",status:"waiting",successDate:"",note:"",graduated:false,plantId:null});}
-  var batch={id:Date.now().toString(),method:propForm.method,parentId:propForm.parentId,parentName:propForm.parentName,date:propForm.date,total:n,medium:propForm.medium,note:propForm.note,seedlings:seedlings};
+  var batch={id:Date.now().toString(),method:propForm.method,parentId:propForm.parentId,parentName:propForm.parentName,date:propForm.date,total:n,medium:propForm.medium,note:propForm.note,successLabel:finalLabel,seedlings:seedlings};
   PROP.push(batch);
   saveProp();
   S.propAdding=false;S.propBatchId=batch.id;
-  propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:""};
+  propForm={method:"cutting",parentId:"",parentName:"",date:"",total:1,medium:"",note:"",successLabel:"",customSuccessLabel:""};
   render();
 }
 
@@ -2431,7 +2450,11 @@ function startPropEdit(id){
   var b=PROP.find(function(x){return x.id===id;});
   if(!b)return;
   S.propEditId=id;S.propAdding=true;
-  propForm={method:b.method,parentId:b.parentId||"",parentName:b.parentName||"",date:b.date,total:b.total,medium:b.medium||"",note:b.note||""};
+  var sl=b.successLabel||"";
+  var presets=["发芽","生根","萌芽/破土","展叶"];
+  var isCustom=sl&&presets.indexOf(sl)<0;
+  propForm={method:b.method,parentId:b.parentId||"",parentName:b.parentName||"",date:b.date,total:b.total,medium:b.medium||"",note:b.note||"",
+    successLabel:isCustom?"自定义":(sl||""),customSuccessLabel:isCustom?sl:""};
   render();
 }
 
@@ -2484,7 +2507,8 @@ function graduateSeedling(batchId,sIdx){
   newP.source=b.method==="seed"?"seed":b.method==="division"?"division":b.method==="graft"?"graft":"cutting";
   if(b.method==="seed"){newP.sowDate=b.date;}
   else{newP.opDate=b.date;}
-  if(b.method==="seed"&&sl.successDate){newP.germDate=sl.successDate;}
+  var sl_label=getSuccessLabel(b);
+  if(sl_label==="发芽"&&sl.successDate){newP.germDate=sl.successDate;}
   else if(sl.successDate){newP.rootDate=sl.successDate;}
   if(b.parentId){newP.buyFrom=b.parentName||"";}
   sl.graduated=true;
@@ -2531,6 +2555,17 @@ function buildPropAddForm(){
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">操作日期 *</div><input type="date" value="'+propForm.date+'" onchange="propForm.date=this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/></div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">数量 *</div><input type="number" min="1" max="999" value="'+propForm.total+'" onchange="propForm.total=+this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/></div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">基质 / 环境</div><input value="'+q(propForm.medium)+'" placeholder="珍珠岩+椰糠、温室…" onchange="propForm.medium=this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030"/></div>'+
+    '<div><div style="font-size:11px;color:#6a8858;margin-bottom:5px">成活判断标准</div><div style="display:flex;flex-wrap:wrap;gap:5px">'+
+    [["发芽","🌿"],["生根","🌱"],["萌芽/破土","🪴"],["展叶","🍃"],["自定义","✏️"]].map(function(o){
+      var def=getDefaultSuccessLabel(propForm.method);
+      var curVal=propForm.successLabel||def;
+      var sel=curVal===o[0];
+      return '<button onclick="propForm.successLabel=\''+o[0]+'\';render()" style="padding:5px 10px;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11px;background:'+(sel?"rgba(140,185,110,0.4)":"rgba(180,210,160,0.15)")+';border:1px solid '+(sel?"rgba(120,165,90,0.6)":"rgba(150,185,130,0.25)")+';color:'+(sel?"#2e4a22":"#6a8858")+'">'+o[1]+' '+o[0]+'</button>';
+    }).join("")+
+    '</div>'+
+    ((propForm.successLabel==="自定义"||(!propForm.successLabel&&getDefaultSuccessLabel(propForm.method)==="自定义"))?
+      '<input value="'+q(propForm.customSuccessLabel||"")+'" placeholder="请输入成活判断方式…" onchange="propForm.customSuccessLabel=this.value" style="width:100%;margin-top:5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030;box-sizing:border-box"/>':"")+
+    '</div>'+
     '<div><div style="font-size:11px;color:#6a8858;margin-bottom:4px">备注</div><input value="'+q(propForm.note)+'" placeholder="其他信息…" onchange="propForm.note=this.value" style="width:100%;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,0.6);border:1px solid rgba(150,185,130,0.35);font-family:inherit;font-size:13px;color:#3a5030"/></div>'+
     '<div style="display:flex;gap:7px;margin-top:4px">'+
     '<button onclick="savePropBatch()" style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;background:rgba(140,185,110,0.4);border:1px solid rgba(120,165,90,0.6);color:#2e4a22">✓ '+(S.propEditId?"保存修改":"创建批次")+'</button>'+
@@ -2607,7 +2642,7 @@ function buildPropBatchDetail(b){
     '</div>'+
     '</div>';
 
-  var labelKey=(b.method==="seed")?"发芽":((b.method==="graft")?"愈合确认":"生根/成活");
+  var labelKey=getSuccessLabel(b);
   var rows=b.seedlings.map(function(sl,idx){
     var st=PROP_STATUS[sl.status]||PROP_STATUS.waiting;
     var sdDays=sl.status==="success"&&sl.successDate?(propDaysSince(b.date)-propDaysSince(sl.successDate)):null;
