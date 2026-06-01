@@ -11,6 +11,9 @@
 <meta name="apple-mobile-web-app-title" content="植物志"/>
 <meta name="theme-color" content="#7a9e7e"/>
 <title>植物志</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'Noto Sans SC',sans-serif;min-height:100vh;background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc);color:#3a5030}
@@ -988,11 +991,17 @@ function buildCalendarTab(){
 
   // App header
   var plantCount=S.plants.length;
-  var appHeaderHtml='<div style="background:rgba(220,232,216,0.95);border-bottom:1px solid rgba(150,185,130,0.3);position:sticky;top:0;z-index:10;margin:-16px -16px 16px -16px"><div style="max-width:460px;margin:0 auto;padding:16px 18px 12px"><div style="display:flex;align-items:center;justify-content:space-between">'+
-    '<div><div style="font-size:28px;font-weight:900;color:#1e3a14;letter-spacing:-0.5px;line-height:1">植物志</div><div style="font-size:12px;color:#7a9868;margin-top:4px;letter-spacing:0.2px">🌿 我的植物</div></div>'+
-    '<div style="background:rgba(90,160,60,0.12);border:1.5px solid rgba(90,160,60,0.25);border-radius:20px;padding:6px 14px;display:flex;align-items:baseline;gap:4px">'+
-    '<span style="font-size:22px;font-weight:900;color:#2e6a18;line-height:1">'+plantCount+'</span>'+
-    '<span style="font-size:11px;color:#6a9050;font-weight:500">株</span>'+
+  var appHeaderHtml='<div style="background:rgba(220,232,216,0.95);border-bottom:1px solid rgba(150,185,130,0.3);position:sticky;top:0;z-index:10;margin:-16px -16px 16px -16px"><div style="max-width:460px;margin:0 auto;padding:14px 18px 12px"><div style="position:relative;height:56px">'+
+    '<div style="position:absolute;left:0;top:0;display:flex;align-items:center;gap:8px">'+
+    '<span style="font-size:28px;line-height:1">🌿</span>'+
+    '<span style="font-family:\'Noto Serif SC\',\'Source Han Serif SC\',\'STSong\',Georgia,serif;font-size:34px;font-weight:900;color:#1e3a14;letter-spacing:5px;line-height:1">植物志</span>'+
+    '</div>'+
+    '<div style="position:absolute;right:0;bottom:0;display:flex;align-items:center;gap:6px">'+
+    '<span style="font-size:12px;color:#7a9868;letter-spacing:0.5px">我的植物</span>'+
+    '<span style="background:rgba(90,160,60,0.15);border:1.5px solid rgba(90,160,60,0.35);border-radius:14px;padding:3px 12px;display:flex;align-items:baseline;gap:3px">'+
+    '<span style="font-size:20px;font-weight:900;color:#2e6a18;line-height:1">'+plantCount+'</span>'+
+    '<span style="font-size:11px;color:#6a9050;font-weight:600">株</span>'+
+    '</span>'+
     '</div>'+
     '</div></div></div>';
 
