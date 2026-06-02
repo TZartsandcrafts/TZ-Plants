@@ -1556,7 +1556,13 @@ function render(){
 
   // Modals on top
   if(S.showLib)html+=buildLibModal();
-  if(S.logPlantId){el.innerHTML=buildLogPage();window.scrollTo(0,0);return;}
+  if(S.logPlantId){
+    var logHtml=buildLogPage();
+    if(S.confirmCb)logHtml+=buildConfirmModal();
+    el.innerHTML=logHtml;
+    window.scrollTo(0,0);
+    return;
+  }
   if(S.calPlantId){
     el.innerHTML=buildCalPage();
     window.scrollTo(0,0);
