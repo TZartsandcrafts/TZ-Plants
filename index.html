@@ -1207,7 +1207,8 @@ function graduateBatchAsOne(batchId){
   newP.name=name.trim();
   newP.fromBatchId=batchId;
   newP.fromBatchLabel='来自繁育批次（'+b.date+'）';
-  if(b.method==='seed'||b.method==='bulb'){newP.sowDate=b.date;}
+  if(b.method==='seed'){newP.sowDate=b.date;}
+  else if(b.method==='bulb'){newP.finalPlantDate=b.date;}
   else if(b.method==='cutting'||b.method==='layering'||b.method==='graft'||b.method==='division'||b.method==='other'){newP.opDate=b.date;}
   var firstSuccess=b.seedlings.filter(function(s){return s.status==='success'&&s.successDate;}).sort(function(a,c){return a.successDate.localeCompare(c.successDate);})[0];
   if(firstSuccess){
@@ -2563,7 +2564,8 @@ function graduateSeedling(batchId,sIdx){
   var newP=JSON.parse(JSON.stringify(BLANK));
   newP.name=b.parentName||"";
   newP.source=b.method==="seed"?"seed":b.method==="division"?"division":b.method==="graft"?"graft":"cutting";
-  if(b.method==="seed"||b.method==="bulb"){newP.sowDate=b.date;}
+  if(b.method==="seed"){newP.sowDate=b.date;}
+  else if(b.method==="bulb"){newP.finalPlantDate=b.date;}
   else{newP.opDate=b.date;}
   var sl_label=getSuccessLabel(b);
   if(sl_label==="发芽"&&sl.successDate){newP.germDate=sl.successDate;}
