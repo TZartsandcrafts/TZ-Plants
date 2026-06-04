@@ -975,7 +975,10 @@ function PlantsTab(){
       <div className="sticky-bar">
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
           <h1>🪴 植物</h1>
-          <span style={{background:'rgba(150,200,120,.22)',color:'#3a5828',padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,border:'1px solid rgba(130,180,100,.3)',fontSize:15,fontWeight:700,padding:'3px 12px'}}>{db.plants.length} 株</span>
+          <span style={{background:'rgba(150,200,120,.22)',color:'#3a5828',padding:'4px 12px',borderRadius:20,border:'1px solid rgba(130,180,100,.3)',display:'inline-flex',alignItems:'baseline',gap:2}}>
+            <span style={{fontSize:20,fontWeight:800,lineHeight:1}}>{db.plants.length}</span>
+            <span style={{fontSize:13,fontWeight:700}}>株</span>
+          </span>
         </div>
         <input className="input" style={{marginBottom:8}} placeholder="搜索植物名称、位置…" value={search} onChange={e=>setSearch(e.target.value)}/>
         {/* 排序行 */}
@@ -994,16 +997,16 @@ function PlantsTab(){
             })}
           </div>
         </div>
-      </div>
-      {/* 分类筛选 */}
-      <div className="cat-strip">
+        {/* 分类筛选 */}
+        <div className="cat-strip" style={{padding:'6px 0 2px',margin:'0 -16px',paddingLeft:16,paddingRight:16}}>
         {[{id:'all',label:`全部 (${db.plants.length})`},
           ...allCats.filter(c=>db.plants.some(p=>p.category===c)).map(c=>({id:c,label:`${c} (${db.plants.filter(p=>p.category===c).length})`})),
           db.plants.some(p=>!p.category)?{id:'__none__',label:`未分类 (${db.plants.filter(p=>!p.category).length})`}:null,
         ].filter(Boolean).map(item=>(
           <button key={item.id} className={`cat-chip${filterCat===item.id?' active':''}`} onClick={()=>setFilter(item.id)}>{item.label}</button>
         ))}
-      </div>
+        </div>
+      </div>{/* end sticky-bar */}
       <div className="plant-list" ref={listRef}>
         {filtered.length===0
           ?<div className="placeholder">
@@ -1047,22 +1050,8 @@ function PlantsTab(){
 // 11. 其他 Tab 占位
 // ═══════════════════════════════════════════════
 function CalendarTab(){
-  const{db}=useApp();
   return(
     <div className="tab-content">
-      {/* 植物志 header */}
-      <div style={{padding:'12px 16px 10px',background:'rgba(215,230,210,0.97)',borderBottom:'1px solid rgba(140,185,120,0.2)',paddingTop:'max(14px,env(safe-area-inset-top,14px))'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:26}}>🌿</span>
-            <span style={{fontSize:24,fontWeight:800,color:'#2e4a22',letterSpacing:'-0.5px'}}>植物志</span>
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <span style={{fontSize:11,color:'#7a9868'}}>我的植物</span>
-            <span style={{background:'rgba(80,120,54,.82)',color:'white',padding:'3px 12px',borderRadius:20,fontSize:13,fontWeight:700}}>{db.plants.length} 株</span>
-          </div>
-        </div>
-      </div>
       <div className="sticky-bar"><h1>📅 日历</h1><div className="sub">护理日历与提醒</div></div>
       <div className="placeholder"><div className="placeholder-emoji">📅</div><div className="placeholder-title">日历</div><div className="placeholder-desc">即将迁移：月历视图 · 每日护理提醒 · 天气建议</div></div>
     </div>
