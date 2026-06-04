@@ -750,9 +750,9 @@ function PlantForm({initPlant,onClose}){
         <div style={secBox('rgba(255,235,150,0.25)')}><div style={{fontSize:11,fontWeight:700,color:'#8a7a30',marginBottom:4}}>🌤️ 炼苗</div>
           <DateRow label="开始炼苗日期" fkey="hardeningDate"/>
           <div><label className="field-label">计划炼苗天数</label>
-            <div style={{display:'flex',alignItems:'center',gap:10}}>
-              <input type="range" min={5} max={21} value={form.hardeningDays||7} onChange={e=>sf('hardeningDays',+e.target.value)} style={{flex:1,accentColor:'#7aaa54'}}/>
-              <span style={{fontSize:13,color:'#4a6a38',minWidth:40}}>{form.hardeningDays||7}天</span>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <input type="number" min={1} max={60} className="input" style={{width:80,textAlign:'center',fontSize:15,fontWeight:700,color:'#8a7a30'}} value={form.hardeningDays||7} onChange={e=>sf('hardeningDays',+e.target.value||7)}/>
+              <span style={{fontSize:13,color:'#6a5a28'}}>天</span>
             </div>
           </div>
           <TaRow label="炼苗备注" fkey="hardeningNotes" ph="每日室外时长…"/>
