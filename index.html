@@ -1072,11 +1072,423 @@ function PlantsTab(){
 // ═══════════════════════════════════════════════
 // 11. 其他 Tab 占位
 // ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+// 日历 Tab 工具函数
+// ═══════════════════════════════════════════════
+function parseIntervalMin(v){const n=parseInt(v);return(!n||n>900)?999:n;}
+function getN(v){return v==null?0:v;}
+
+const DOT_COLOR={water:'#5a8edc',fert:'#4aaa58',med:'#dc6440',note:'#d08030'};
+const TYPE_ICON={water:'💧',fert:'🌿',med:'💊'};
+const TYPE_LABEL={water:'浇水',fert:'施肥',med:'给药'};
+const TYPE_COLOR={water:'rgba(80,140,220,0.85)',fert:'rgba(70,160,80,0.85)',med:'rgba(200,100,70,0.85)'};
+const WK=['一','二','三','四','五','六','日'];
+
+function wmoDesc(code){
+  if(code<=1)return{cond:'晴天',emo:'☀️',rain:false};
+  if(code<=3)return{cond:'多云',emo:'⛅',rain:false};
+  if(code<=49)return{cond:'有雾',emo:'🌫️',rain:false};
+  if(code<=67)return{cond:'降雨',emo:'🌧️',rain:true};
+  if(code<=77)return{cond:'降雪',emo:'❄️',rain:false};
+  if(code<=82)return{cond:'阵雨',emo:'🌦️',rain:true};
+  return{cond:'雷雨',emo:'⛈️',rain:true};
+}
+
+// 构建 dotMap：{ 'YYYY-MM-DD': [{type,plan,skip},...] }
+function buildDotMap(plants){
+  const today=toDay();
+  const todPts=today.split('-');
+  const todObj=new Date(+todPts[0],+todPts[1]-1,+todPts[2]);
+  const map={};
+  function addLog(ds,type,skip){
+    if(!map[ds])map[ds]=[];
+    map[ds]=map[ds].filter(x=>x.type!==type);
+    map[ds].push({type,skip:!!skip,plan:false});
+  }
+  function addPlan(ds,type){
+    if(!map[ds])map[ds]=[];
+    if(!map[ds].find(x=>x.type===type))map[ds].push({type,plan:true,skip:false});
+  }
+  plants.forEach(p=>{
+    ['water','fert','med'].forEach(type=>{
+      const log=type==='water'?p.waterLog:type==='fert'?p.fertLog:p.medLog;
+      (log||[]).forEach(r=>addLog(r.date,type,r.skip));
+    });
+    (p.noteLog||[]).forEach(r=>addLog(r.date,'note',false));
+    // 计划点
+    function planDots(lastDate,interval,type){
+      if(!interval||interval>=900)return;
+      const base=lastDate?(()=>{const pts=lastDate.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todObj;
+      for(let n=1;n<=60;n++){
+        const d=new Date(base);d.setDate(base.getDate()+interval*n);
+        const dObj=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+        let ds;
+        if(dObj<=todObj){
+          const next=new Date(base);next.setDate(base.getDate()+interval*(n+1));
+          const nextObj=new Date(next.getFullYear(),next.getMonth(),next.getDate());
+          if(nextObj>todObj)ds=today; else continue;
+        } else {
+          ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        }
+        addPlan(ds,type);
+      }
+    }
+    planDots(lastLog(p.waterLog),parseIntervalMin(p.wi),'water');
+    planDots(lastLog(p.fertLog),parseIntervalMin(p.fi),'fert');
+    const mi=parseIntervalMin(p.mi);
+    if(mi<900&&(p.medLog||[]).length>0)planDots(lastLog(p.medLog),mi,'med');
+  });
+  return map;
+}
+
+// ═══════════════════════════════════════════════
+// 日历 Tab 组件
+// ═══════════════════════════════════════════════
 function CalendarTab(){
+  const{db,updateDb,toast}=useApp();
+  const today=toDay();
+  const todayD=new Date();todayD.setHours(0,0,0,0);
+
+  // 天气
+  const[weather,setWeather]=useState({temp:null,hum:null,cond:'加载中',emo:'⛅',rain:false,tip:'',fc:[],upd:''});
+  useEffect(()=>{
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=49.1042&longitude=-122.8231&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America/Vancouver&forecast_days=3')
+      .then(r=>r.json()).then(d=>{
+        const c=d.current;
+        const wi=wmoDesc(c.weather_code);
+        const tMax=d.daily?.temperature_2m_max||[];
+        const tMin=d.daily?.temperature_2m_min||[];
+        const codes=d.daily?.weather_code||[];
+        let tip='';
+        if(wi.rain||c.precipitation>3)tip='今日有降水，注意减少浇水';
+        else if(c.relative_humidity_2m>80)tip=`湿度偏高（${c.relative_humidity_2m}%），浇水适量即可`;
+        else if(Math.round(c.temperature_2m)>30)tip='气温偏高，注意防晒遮阴';
+        else if(Math.round(c.temperature_2m)<5)tip='气温偏低，注意防寒保温';
+        else tip='天气适宜，可按常规养护计划进行';
+        const now=new Date();
+        setWeather({
+          temp:Math.round(c.temperature_2m),hum:c.relative_humidity_2m,
+          cond:wi.cond,emo:wi.emo,rain:wi.rain,tip,
+          fc:codes.slice(0,3).map((code,i)=>{const fi=wmoDesc(code);return{d:['今天','明天','后天'][i],e:fi.emo,t:fi.cond,hi:tMax[i]!=null?Math.round(tMax[i]):null,lo:tMin[i]!=null?Math.round(tMin[i]):null};}),
+          upd:`${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`,
+        });
+      }).catch(()=>setWeather(w=>({...w,cond:'获取失败',upd:''})));
+  },[]);
+
+  // 日历展开/折叠
+  const[calExp,setCalExp]=useState(false);
+  const[calYr,setCalYr]=useState(()=>new Date().getFullYear());
+  const[calMo,setCalMo]=useState(()=>new Date().getMonth());
+  const[calSel,setCalSel]=useState(null);
+
+  // 月份导航
+  function navMo(dir){
+    let m=calMo+dir,y=calYr;
+    if(m<0){m=11;y--;}else if(m>11){m=0;y++;}
+    setCalMo(m);setCalYr(y);
+  }
+
+  const dotMap=buildDotMap(db.plants);
+
+  // 渲染小圆点
+  function DotRow({ds}){
+    const entries=dotMap[ds]||[];
+    if(!entries.length)return null;
+    const seen={};
+    entries.forEach(e=>{
+      if(!seen[e.type])seen[e.type]=e;
+      else{const rank=x=>x.plan?0:x.skip?1:2;if(rank(e)>rank(seen[e.type]))seen[e.type]=e;}
+    });
+    return <div style={{display:'flex',gap:2,justifyContent:'center',marginTop:2}}>
+      {['water','fert','med','note'].map(t=>{
+        const e=seen[t];if(!e)return null;
+        const col=DOT_COLOR[t];
+        return <div key={t} style={{width:5,height:5,borderRadius:'50%',
+          background:e.plan||e.skip?'transparent':col,
+          border:e.plan||e.skip?`1.5px solid ${col}`:'none',
+          opacity:e.plan?0.55:1}}/>;
+      })}
+    </div>;
+  }
+
+  // 本周行（折叠时）
+  function WeekRow(){
+    const todayObj=new Date(todayD);
+    const ws=new Date(todayObj);ws.setDate(todayObj.getDate()-((todayObj.getDay()+6)%7));
+    return <div style={{display:'flex',gap:4}}>
+      {Array.from({length:7},(_,i)=>{
+        const d=new Date(ws);d.setDate(ws.getDate()+i);
+        const ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        const isT=ds===today;
+        return <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+          <div style={{fontSize:10,color:isT?'#2e7a1e':'#9aaa88'}}>{WK[(d.getDay()+6)%7]}</div>
+          <div style={{width:30,height:30,borderRadius:'50%',background:isT?'rgba(70,160,70,0.85)':'transparent',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:isT?15:13,fontWeight:isT?800:400,color:isT?'white':'#2e4a22',lineHeight:1}}>
+            {d.getDate()}
+          </div>
+          <DotRow ds={ds}/>
+        </div>;
+      })}
+    </div>;
+  }
+
+  // 月历格（展开时）
+  function MonthGrid(){
+    const first=new Date(calYr,calMo,1);
+    const startOff=(first.getDay()+6)%7;
+    const daysInMonth=new Date(calYr,calMo+1,0).getDate();
+    const MN=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+    return <>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={()=>navMo(-1)}>‹</button>
+        <span style={{fontSize:14,fontWeight:700,color:'#2e4a22'}}>{calYr}年 {MN[calMo]}</span>
+        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={()=>navMo(1)}>›</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
+        {WK.map(w=><div key={w} style={{textAlign:'center',fontSize:10,color:'#9aaa88',padding:'2px 0'}}>{w}</div>)}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:10}}>
+        {Array.from({length:startOff},(_,i)=><div key={'e'+i}/>)}
+        {Array.from({length:daysInMonth},(_,i)=>{
+          const day=i+1;
+          const ds=calYr+'-'+String(calMo+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+          const isT=ds===today,isSel=calSel===ds;
+          const hasDots=(dotMap[ds]||[]).length>0;
+          return <div key={day}
+            style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'2px 0',
+              cursor:hasDots?'pointer':'default',borderRadius:8,
+              background:isSel?'rgba(140,185,110,0.4)':'transparent'}}
+            onClick={()=>hasDots&&setCalSel(s=>s===ds?null:ds)}>
+            <div style={{width:28,height:28,borderRadius:'50%',
+              background:isT?'rgba(70,160,70,0.85)':'transparent',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:isT?14:12,fontWeight:isT?800:400,color:isT?'white':'#2e4a22'}}>
+              {day}
+            </div>
+            <DotRow ds={ds}/>
+          </div>;
+        })}
+      </div>
+      {calSel&&<SelDayDetail ds={calSel}/>}
+    </>;
+  }
+
+  // 选中日详情
+  function SelDayDetail({ds}){
+    const entries=dotMap[ds]||[];
+    const plantLines=[];
+    entries.forEach(e=>{
+      if(e.type==='note')return;
+      db.plants.forEach(p=>{
+        const log=e.type==='water'?p.waterLog:e.type==='fert'?p.fertLog:p.medLog;
+        if(e.plan){
+          const interval=e.type==='water'?parseIntervalMin(p.wi):e.type==='fert'?parseIntervalMin(p.fi):parseIntervalMin(p.mi);
+          const llog=lastLog(log);if(!interval||interval>=900)return;
+          const base=llog?(()=>{const pts=llog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todayD;
+          const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
+          const diff=Math.round((selT-base)/86400000);
+          if(diff>0&&diff%interval===0)plantLines.push({name:p.name,type:e.type,plan:true});
+        } else {
+          (log||[]).forEach(r=>{if(r.date===ds)plantLines.push({name:p.name,type:e.type,skip:r.skip});});
+        }
+      });
+    });
+    const noteLines=[];
+    db.plants.forEach(p=>(p.noteLog||[]).forEach(n=>{if(n.date===ds)noteLines.push({name:p.name,text:n.text});}));
+    const seen={};
+    const deduped=plantLines.filter(l=>{const k=l.name+'|'+l.type;if(seen[k])return false;seen[k]=true;return true;});
+    const total=deduped.length+noteLines.length;
+    return <div style={{background:'rgba(240,248,235,0.8)',borderRadius:10,padding:'10px 12px',border:'1px solid rgba(140,180,110,0.3)'}}>
+      <div style={{fontSize:12,fontWeight:700,color:'#2e4a22',marginBottom:6}}>
+        {ds.slice(5).replace('-','/')}　{total>0?`共${total}项`:''}
+      </div>
+      {deduped.map((l,i)=>{
+        const col=DOT_COLOR[l.type]||'#888';
+        const suffix=l.skip?' (跳过)':l.plan?' (计划)':'';
+        return <div key={i} style={{fontSize:12,color:'#3a6028',display:'flex',alignItems:'center',gap:6,padding:'2px 0'}}>
+          <span style={{color:col}}>{TYPE_ICON[l.type]||'●'}</span>
+          <span>{l.name}<span style={{color:'#9aaa88',fontSize:11}}>{suffix}</span></span>
+        </div>;
+      })}
+      {noteLines.map((n,i)=><div key={'n'+i} style={{fontSize:12,color:'#7a4a10',display:'flex',alignItems:'flex-start',gap:6,padding:'3px 0',borderTop:'1px solid rgba(208,128,48,0.15)',marginTop:2}}>
+        <span style={{color:'#d08030',flexShrink:0}}>📝</span>
+        <span><span style={{color:'#9aaa88',fontSize:11}}>{n.name}　</span>{n.text}</span>
+      </div>)}
+      {!total&&<div style={{fontSize:11,color:'#9aaa88'}}>暂无匹配记录</div>}
+    </div>;
+  }
+
+  // 任务列表
+  function buildTasks(){
+    const overdue=[],todayT=[],soon1=[],soon2=[],soon3=[],unlogged=[];
+    db.plants.forEach(p=>{
+      ['water','fert'].forEach(type=>{
+        const log=type==='water'?p.waterLog:p.fertLog;
+        const interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
+        if(interval>=900)return;
+        const ld=lastLog(log);
+        const ds=ld!=null?daysSince(ld):null;
+        if(ds===null){unlogged.push({type,plant:p});return;}
+        const due=interval-ds;
+        if(due<0)overdue.push({type,plant:p,overdueDays:-due});
+        else if(due===0)todayT.push({type,plant:p});
+        else if(due===1)soon1.push({type,plant:p});
+        else if(due===2)soon2.push({type,plant:p});
+        else if(due===3)soon3.push({type,plant:p});
+      });
+    });
+    overdue.sort((a,b)=>b.overdueDays-a.overdueDays);
+    return{overdue,todayT,soon1,soon2,soon3,unlogged};
+  }
+
+  function skipTask(pid,type){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==pid)return p;
+      const key=type==='water'?'waterLog':'fertLog';
+      return{...p,[key]:[...(p[key]||[]),{date:toDay(),skip:true,note:'跳过'}]};
+    })}));
+    toast.show('⏭ 已跳过');
+  }
+
+  // 快捷记录（直接记今天，不打开日志页）
+  function quickRecord(pid,type){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==pid)return p;
+      const key=type==='water'?'waterLog':'fertLog';
+      const arr=[...(p[key]||[]),{date:toDay(),note:''}];
+      arr.sort((a,b)=>a.date.localeCompare(b.date));
+      return{...p,[key]:arr};
+    })}));
+    toast.show(`${TYPE_ICON[type]} 已记录${TYPE_LABEL[type]}`);
+  }
+
+  function TaskChip({t,showOverdue}){
+    return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,0.3)'}}>
+      <span style={{fontSize:18}}>{TYPE_ICON[t.type]}</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.plant.name}</div>
+        {showOverdue&&t.overdueDays>0
+          ?<div style={{fontSize:11,color:'#c05020',fontWeight:600}}>逾期 {t.overdueDays} 天</div>
+          :<div style={{fontSize:11,color:'#7a9060'}}>{TYPE_LABEL[t.type]}</div>
+        }
+      </div>
+      <div style={{display:'flex',gap:5}}>
+        <button onClick={()=>skipTask(t.plant.id,t.type)}
+          style={{padding:'5px 10px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,background:'rgba(180,180,170,0.25)',border:'1px solid rgba(160,160,150,0.4)',color:'#7a8870',whiteSpace:'nowrap'}}>跳过</button>
+        <button onClick={()=>quickRecord(t.plant.id,t.type)}
+          style={{padding:'5px 12px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:TYPE_COLOR[t.type],border:'none',color:'white',whiteSpace:'nowrap'}}>记录</button>
+      </div>
+    </div>;
+  }
+
+  function DaySection({label,tasks,urgent}){
+    if(!tasks.length)return null;
+    return <div style={{marginBottom:16}}>
+      <div style={{fontSize:12,fontWeight:700,color:urgent?'#b04010':'#5a8040',marginBottom:8}}>
+        {urgent
+          ?<span style={{background:'rgba(220,80,40,0.15)',borderRadius:20,padding:'3px 10px',color:'#c04010'}}>⚠️ {label}</span>
+          :<span>{label}</span>
+        }
+        <span style={{fontWeight:400,color:'#9aaa88',marginLeft:6}}>（{tasks.length}项）</span>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:7}}>
+        {tasks.map((t,i)=><TaskChip key={i} t={t} showOverdue={urgent}/>)}
+      </div>
+    </div>;
+  }
+
+  const{overdue,todayT,soon1,soon2,soon3,unlogged}=buildTasks();
+  const d1=new Date(todayD);d1.setDate(d1.getDate()+1);
+  const d2=new Date(todayD);d2.setDate(d2.getDate()+2);
+  const d3=new Date(todayD);d3.setDate(d3.getDate()+3);
+  function fmtShort(d){return `${d.getMonth()+1}月${d.getDate()}日`;}
+
   return(
     <div className="tab-content">
-      <div className="sticky-bar"><h1>📅 日历</h1><div className="sub">护理日历与提醒</div></div>
-      <div className="placeholder"><div className="placeholder-emoji">📅</div><div className="placeholder-title">日历</div><div className="placeholder-desc">即将迁移：月历视图 · 每日护理提醒 · 天气建议</div></div>
+      {/* 顶栏 */}
+      <div className="sticky-bar">
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:24}}>🌿</span>
+              <span className="header-title" style={{fontSize:22}}>植物志</span>
+            </div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{fontSize:11,color:'#7a9868'}}>我的植物</span>
+            <span style={{background:'rgba(80,120,54,.82)',color:'white',padding:'3px 12px',borderRadius:20,display:'inline-flex',alignItems:'baseline',gap:2}}>
+              <span style={{fontSize:18,fontWeight:800,lineHeight:1}}>{db.plants.length}</span>
+              <span style={{fontSize:12,fontWeight:700}}>株</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
+
+        {/* 天气 */}
+        <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <span style={{fontSize:32}}>{weather.emo}</span>
+            <div style={{flex:1}}>
+              <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+                <span style={{fontSize:28,fontWeight:800,color:'#2e4a22',lineHeight:1}}>{weather.temp!=null?`${weather.temp}°C`:'—'}</span>
+                <span style={{fontSize:13,color:'#6a8858'}}>{weather.cond}</span>
+              </div>
+              <div style={{fontSize:11,color:'#7a9868',marginTop:2}}>📍 Surrey, BC</div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:12,color:'#5a8040'}}>💧 {weather.hum!=null?`${weather.hum}%`:'—'}</div>
+              <div style={{fontSize:11,color:'#7a9868',marginTop:2}}>{weather.rain?'☔ 有降水':'☀️ 无降水'}</div>
+            </div>
+          </div>
+          {weather.tip&&<div style={{fontSize:11,color:'#5a7848',marginTop:8,padding:'5px 8px',background:'rgba(150,200,100,0.15)',borderRadius:8}}>💡 {weather.tip}</div>}
+          {/* 三日预报 */}
+          {weather.fc.length>0&&<div style={{display:'flex',gap:6,marginTop:8}}>
+            {weather.fc.map((f,i)=><div key={i} style={{flex:1,textAlign:'center',padding:'5px 4px',background:'rgba(200,225,190,0.2)',borderRadius:8}}>
+              <div style={{fontSize:10,color:'#8aaa78'}}>{f.d}</div>
+              <div style={{fontSize:18,margin:'2px 0'}}>{f.e}</div>
+              <div style={{fontSize:10,color:'#5a7848'}}>{f.hi!=null?`${f.hi}°`:''}{f.lo!=null?`/${f.lo}°`:''}</div>
+            </div>)}
+          </div>}
+        </div>
+
+        {/* 迷你日历 */}
+        <div className="card">
+          {/* 标题行 */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',marginBottom:calExp?4:8}}
+            onClick={()=>{setCalExp(e=>!e);if(calExp)setCalSel(null);}}>
+            <span style={{fontSize:13,fontWeight:700,color:'#2e4a22'}}>{calExp?'月历':'本周'}</span>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{display:'flex',gap:6}}>
+                {[{t:'water',l:'浇水'},{t:'fert',l:'施肥'},{t:'med',l:'给药'},{t:'skip',l:'跳过'},{t:'note',l:'备注'}].map(x=>{
+                  const isSkip=x.t==='skip';
+                  const col=isSkip?'#9aaa88':(DOT_COLOR[x.t]||'#888');
+                  return <div key={x.t} style={{display:'flex',alignItems:'center',gap:3}}>
+                    <div style={{width:6,height:6,borderRadius:'50%',background:isSkip?'transparent':col,border:isSkip?`1.5px solid ${col}`:'none'}}/>
+                    <span style={{fontSize:10,color:'#7a9060'}}>{x.l}</span>
+                  </div>;
+                })}
+              </div>
+              <span style={{fontSize:12,color:'#8aaa78',marginLeft:4}}>{calExp?'▲':'▽'}</span>
+            </div>
+          </div>
+          {calExp?<MonthGrid/>:<WeekRow/>}
+        </div>
+
+        {/* 任务列表 */}
+        <DaySection label="逾期未做" tasks={overdue} urgent={true}/>
+        <DaySection label={`今天 ${(todayD.getMonth()+1)}月${todayD.getDate()}日`} tasks={todayT} urgent={false}/>
+        <DaySection label={`明天 ${fmtShort(d1)}`} tasks={soon1} urgent={false}/>
+        <DaySection label={fmtShort(d2)} tasks={soon2} urgent={false}/>
+        <DaySection label={fmtShort(d3)} tasks={soon3} urgent={false}/>
+        <DaySection label="从未记录" tasks={unlogged} urgent={false}/>
+
+        {overdue.length===0&&todayT.length===0&&soon1.length===0&&unlogged.length===0&&(
+          <div style={{textAlign:'center',padding:'24px 0',color:'#7a9868',fontSize:13}}>🎉 近期无待办，植物状态良好！</div>
+        )}
+      </div>
     </div>
   );
 }
