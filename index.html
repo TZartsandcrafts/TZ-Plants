@@ -928,7 +928,7 @@ function PlantForm({initPlant,onClose}){
 // ═══════════════════════════════════════════════
 // 10. 植物 Tab
 // ═══════════════════════════════════════════════
-function PlantsTab(){
+function PlantsTab({jumpPlantId,onJumpDone}){
   const{db,updateDb,toast}=useApp();
   const[search,setSearch]=useState('');
   const[filterCat,setFilter]=useState('all');
@@ -937,6 +937,11 @@ function PlantsTab(){
   const[view,setView]=useState(null);
   const listRef=useRef(null);
   const savedScroll=useRef(0);
+
+  // 从日历跳转过来时自动打开详情
+  useEffect(()=>{
+    if(jumpPlantId){setView({type:'detail',id:jumpPlantId});onJumpDone?.();}
+  },[jumpPlantId]);
 
   // 打开详情时保存滚动位置
   function openDetail(id){
@@ -1175,6 +1180,12 @@ function CalendarTab(){
       }).catch(()=>setWeather(w=>({...w,cond:'获取失败',upd:''})));
   },[]);
 
+  // 天气展开
+  const[weatherExp,setWeatherExp]=useState(false);
+
+  // 跳转到植物详情（切换到植物 Tab）
+  const{navToPlant}=useApp();
+
   // 日历展开/折叠
   const[calExp,setCalExp]=useState(false);
   const[calYr,setCalYr]=useState(()=>new Date().getFullYear());
@@ -1366,7 +1377,7 @@ function CalendarTab(){
   function TaskChip({t,showOverdue}){
     return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,0.3)'}}>
       <span style={{fontSize:18}}>{TYPE_ICON[t.type]}</span>
-      <div style={{flex:1,minWidth:0}}>
+      <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>navToPlant(t.plant.id)}>
         <div style={{fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.plant.name}</div>
         {showOverdue&&t.overdueDays>0
           ?<div style={{fontSize:11,color:'#c05020',fontWeight:600}}>逾期 {t.overdueDays} 天</div>
@@ -1428,7 +1439,7 @@ function CalendarTab(){
       <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
 
         {/* 天气 */}
-        <div className="card">
+        <div className="card" style={{cursor:'pointer'}} onClick={()=>setWeatherExp(e=>!e)}>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:32}}>{weather.emo}</span>
             <div style={{flex:1}}>
@@ -1441,11 +1452,12 @@ function CalendarTab(){
             <div style={{textAlign:'right'}}>
               <div style={{fontSize:12,color:'#5a8040'}}>💧 {weather.hum!=null?`${weather.hum}%`:'—'}</div>
               <div style={{fontSize:11,color:'#7a9868',marginTop:2}}>{weather.rain?'☔ 有降水':'☀️ 无降水'}</div>
+              <div style={{fontSize:11,color:'#9aaa88',marginTop:4}}>{weatherExp?'▲':'▽'}</div>
             </div>
           </div>
           {weather.tip&&<div style={{fontSize:11,color:'#5a7848',marginTop:8,padding:'5px 8px',background:'rgba(150,200,100,0.15)',borderRadius:8}}>💡 {weather.tip}</div>}
-          {/* 三日预报 */}
-          {weather.fc.length>0&&<div style={{display:'flex',gap:6,marginTop:8}}>
+          {/* 三日预报（展开时） */}
+          {weatherExp&&weather.fc.length>0&&<div style={{display:'flex',gap:6,marginTop:8}}>
             {weather.fc.map((f,i)=><div key={i} style={{flex:1,textAlign:'center',padding:'5px 4px',background:'rgba(200,225,190,0.2)',borderRadius:8}}>
               <div style={{fontSize:10,color:'#8aaa78'}}>{f.d}</div>
               <div style={{fontSize:18,margin:'2px 0'}}>{f.e}</div>
@@ -1553,15 +1565,18 @@ function App(){
     setDb(prev=>{const next=typeof updater==='function'?updater(prev):updater;saveAll(next);return next});
   },[]);
   const[tab,setTab]=useState('calendar');
+  const[jumpPlantId,setJumpPlantId]=useState(null);
   const toast=useToast();
 
+  function navToPlant(id){setJumpPlantId(id);setTab('plants');}
+
   const badge=db.plants.filter(p=>careAlerts(p).length>0).length;
-  const ctx={db,updateDb,toast};
+  const ctx={db,updateDb,toast,navToPlant};
 
   const renderTab=()=>{
     switch(tab){
       case 'calendar':  return<CalendarTab/>;
-      case 'plants':    return<PlantsTab/>;
+      case 'plants':    return<PlantsTab jumpPlantId={jumpPlantId} onJumpDone={()=>setJumpPlantId(null)}/>;
       case 'breeding':  return<BreedingTab/>;
       case 'inventory': return<InventoryTab/>;
       default:          return<CalendarTab/>;
