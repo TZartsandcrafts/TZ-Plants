@@ -1504,12 +1504,321 @@ function CalendarTab(){
     </div>
   );
 }
+// ═══════════════════════════════════════════════
+// 繁育 Tab
+// ═══════════════════════════════════════════════
+const PROP_METHODS=[
+  {key:'cutting', icon:'✂️', label:'扦插'},
+  {key:'seed',    icon:'🌱', label:'播种'},
+  {key:'division',icon:'🌾', label:'分株/分根'},
+  {key:'graft',   icon:'🔗', label:'嫁接'},
+  {key:'layering',icon:'🌿', label:'压条'},
+  {key:'bulb',    icon:'🧅', label:'种球/宿根'},
+  {key:'other',   icon:'🔬', label:'其他'},
+];
+const PROP_STATUS={
+  waiting:{icon:'⏳',label:'等待中',color:'#7a6010'},
+  success:{icon:'✅',label:'已成活',color:'#2a6a35'},
+  fail:   {icon:'❌',label:'失败',  color:'#8a2818'},
+};
+function getDefaultSuccessLabel(method){
+  if(method==='seed'||method==='bulb')return '发芽';
+  if(method==='cutting'||method==='layering')return '生根';
+  if(method==='graft')return '萌芽/破土';
+  if(method==='division')return '展叶';
+  return '成活';
+}
+function getSuccessLabel(b){
+  return b.successLabel||getDefaultSuccessLabel(b.method);
+}
+
+// ── 新建/编辑批次表单（全屏）──
+function PropForm({initBatch,onClose}){
+  const{db,updateDb,toast}=useApp();
+  const isEdit=!!initBatch?.id;
+  const[form,setForm]=useState(()=>isEdit?{...initBatch}:{
+    method:'cutting',parentId:'',parentName:'',date:'',total:1,medium:'',note:'',successLabel:'',
+  });
+  useEffect(()=>{window.scrollTo(0,0)},[]);
+  useSwipeBack(onClose);
+  const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  function handleParent(id){
+    const p=db.plants.find(x=>x.id===id);
+    setForm(f=>({...f,parentId:id,parentName:p?p.name:f.parentName}));
+  }
+
+  function save(){
+    if(!form.date){toast.show('⚠️ 请填写操作日期');return;}
+    if(!isEdit&&(!form.total||form.total<1)){toast.show('⚠️ 请填写数量');return;}
+    const finalLabel=form.successLabel||getDefaultSuccessLabel(form.method);
+    updateDb(prev=>{
+      let prop=[...prev.prop];
+      if(isEdit){
+        prop=prop.map(b=>b.id===form.id?{...b,...form,successLabel:finalLabel}:b);
+      } else {
+        const n=parseInt(form.total)||1;
+        const seedlings=Array.from({length:n},(_,i)=>({
+          id:Date.now().toString(36)+i,label:`${i+1}号苗`,
+          status:'waiting',successDate:'',note:'',graduated:false,plantId:null,
+        }));
+        prop=[...prop,{...form,id:uid(),total:n,seedlings,successLabel:finalLabel}];
+      }
+      return{...prev,prop};
+    });
+    toast.show(isEdit?'✅ 已更新':'🌱 批次已创建');
+    onClose();
+  }
+
+  const methodBtns=PROP_METHODS.map(m=>(
+    <button key={m.key}
+      style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:10,cursor:'pointer',fontFamily:'inherit',textAlign:'left',
+        background:form.method===m.key?'rgba(155,195,125,0.35)':'rgba(180,210,160,0.1)',
+        border:`1px solid ${form.method===m.key?'rgba(130,175,100,0.6)':'rgba(150,185,130,0.25)'}`}}
+      onClick={()=>{sf('method',m.key);sf('successLabel','');}}>
+      <span style={{fontSize:18}}>{m.icon}</span>
+      <span style={{fontSize:13,color:'#2e4a22',fontWeight:form.method===m.key?700:400}}>{m.label}</span>
+      {form.method===m.key&&<span style={{marginLeft:'auto',color:'#5a8040'}}>✓</span>}
+    </button>
+  ));
+
+  const successLabels=['发芽','生根','萌芽/破土','展叶','成活','自定义'];
+
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onClose}>‹</button>
+        <div className="page-header-title">{isEdit?'✏️ 编辑批次':'🌱 新建繁育批次'}</div>
+      </div>
+      <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:11}}>
+        <div><label className="field-label">繁育方式</label>
+          <div style={{display:'flex',flexDirection:'column',gap:5}}>{methodBtns}</div>
+        </div>
+        <div><label className="field-label">母株（可选）</label>
+          <select className="input" value={form.parentId} onChange={e=>handleParent(e.target.value)}
+            style={{marginBottom:form.parentId?0:0}}>
+            <option value="">— 选择或手填 —</option>
+            {db.plants.map(p=><option key={p.id} value={p.id}>{p.name}{p.variety?' '+p.variety:''}</option>)}
+          </select>
+          {!form.parentId&&<input className="input" style={{marginTop:6}} placeholder="或手填母株名称…"
+            defaultValue={form.parentName} onBlur={e=>sf('parentName',e.target.value)}/>}
+        </div>
+        <div><label className="field-label">操作日期 *</label>
+          <input type="date" className="input" value={form.date} onChange={e=>sf('date',e.target.value)}/>
+        </div>
+        {!isEdit&&<div><label className="field-label">数量（株/粒/芽）</label>
+          <input type="number" min={1} max={999} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700}}
+            defaultValue={form.total} onBlur={e=>sf('total',+e.target.value||1)}/>
+        </div>}
+        <div><label className="field-label">基质/介质</label>
+          <input className="input" placeholder="珍珠岩、水苔、泥炭…"
+            defaultValue={form.medium} onBlur={e=>sf('medium',e.target.value)}/>
+        </div>
+        <div><label className="field-label">成活判断标准</label>
+          <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:6}}>
+            {successLabels.map(l=>(
+              <button key={l} style={{padding:'4px 12px',borderRadius:16,cursor:'pointer',fontFamily:'inherit',fontSize:12,
+                background:(form.successLabel||getDefaultSuccessLabel(form.method))===l?'rgba(155,195,125,0.45)':'rgba(180,210,160,0.12)',
+                border:`1px solid ${(form.successLabel||getDefaultSuccessLabel(form.method))===l?'rgba(130,175,100,0.6)':'rgba(150,185,130,0.3)'}`,
+                color:(form.successLabel||getDefaultSuccessLabel(form.method))===l?'#2e4a22':'#6a8858'}}
+                onClick={()=>sf('successLabel',l)}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div><label className="field-label">备注</label>
+          <textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6}} placeholder="特殊说明…"
+            defaultValue={form.note} onBlur={e=>sf('note',e.target.value)}/>
+        </div>
+        <div style={{display:'flex',gap:8,paddingBottom:20}}>
+          <button className="btn btn-green" style={{flex:1}} onClick={save}>✓ 保存</button>
+          <button className="btn btn-gray" style={{flex:1}} onClick={onClose}>取消</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 批次详情页（全屏）──
+function PropBatchDetail({batchId,onClose,onEdit}){
+  const{db,updateDb,toast}=useApp();
+  const batch=db.prop.find(b=>b.id===batchId);
+  const[delConfirm,setDelConfirm]=useState(false);
+  useEffect(()=>{window.scrollTo(0,0)},[]);
+  useSwipeBack(onClose);
+
+  if(!batch)return null;
+  const method=PROP_METHODS.find(m=>m.key===batch.method)||PROP_METHODS[0];
+  const seedlings=batch.seedlings||[];
+  const succ=seedlings.filter(s=>s.status==='success').length;
+  const rate=batch.total>0?Math.round((succ/batch.total)*100):0;
+
+  function setSeedlingStatus(idx,status){
+    updateDb(prev=>({...prev,prop:prev.prop.map(b=>{
+      if(b.id!==batchId)return b;
+      const sl=[...b.seedlings];
+      sl[idx]={...sl[idx],status,successDate:status==='success'?toDay():sl[idx].successDate};
+      return{...b,seedlings:sl};
+    })}));
+  }
+  function setSeedlingNote(idx,note){
+    updateDb(prev=>({...prev,prop:prev.prop.map(b=>{
+      if(b.id!==batchId)return b;
+      const sl=[...b.seedlings];sl[idx]={...sl[idx],note};return{...b,seedlings:sl};
+    })}));
+  }
+  function archiveBatch(){
+    updateDb(prev=>({
+      ...prev,
+      prop:prev.prop.filter(b=>b.id!==batchId),
+      archive:{...prev.archive,batches:[...prev.archive.batches,{...batch,archivedAt:toDay(),archived:true}]},
+    }));
+    toast.show('📦 已归档');onClose();
+  }
+  function deleteBatch(){
+    updateDb(prev=>({...prev,prop:prev.prop.filter(b=>b.id!==batchId)}));
+    toast.show('🗑 已删除');onClose();
+  }
+  function graduateAsPlant(){
+    const name=prompt(`植物卡名称：`,batch.parentName||'');
+    if(!name?.trim())return;
+    const newP={...BLANK_PLANT(),id:uid(),name:name.trim(),fromBatchId:batchId,fromBatchLabel:`来自繁育批次（${batch.date}）`};
+    if(batch.method==='seed')newP.sowDate=batch.date;
+    else if(batch.method==='bulb')newP.finalPlantDate=batch.date;
+    else newP.opDate=batch.date;
+    const firstSucc=seedlings.filter(s=>s.status==='success'&&s.successDate).sort((a,b)=>a.successDate.localeCompare(b.successDate))[0];
+    if(firstSucc){
+      const bl=getSuccessLabel(batch);
+      if(bl==='发芽')newP.germDate=firstSucc.successDate;else newP.rootDate=firstSucc.successDate;
+    }
+    updateDb(prev=>({
+      ...prev,
+      plants:[...prev.plants,newP],
+      prop:prev.prop.map(b=>b.id!==batchId?b:{...b,batchPlantIds:[...(b.batchPlantIds||[]),newP.id]}),
+    }));
+    toast.show('🪴 已创建植物卡');
+  }
+
+  const linkedPlants=(batch.batchPlantIds||[batch.batchPlantId].filter(Boolean)).map(pid=>db.plants.find(p=>p.id===pid)||db.archive.plants.find(p=>p.id===pid)).filter(Boolean);
+
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onClose}>‹</button>
+        <div className="page-header-title">{method.icon} {batch.parentName||'未命名'} · {method.label}</div>
+        <button className="btn btn-gray" style={{padding:'5px 10px',fontSize:12}} onClick={()=>onEdit(batch)}>✏️</button>
+      </div>
+      <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
+        {/* 概览 */}
+        <div className="card">
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+            <span style={{background:'rgba(80,180,80,0.15)',color:'#2a6a35',borderRadius:10,padding:'3px 10px',fontSize:12,fontWeight:600}}>✅ {succ}/{batch.total} ({rate}%)</span>
+            <span style={{fontSize:12,color:'#7a9060'}}>📅 {fmtDate(batch.date)}</span>
+            {batch.medium&&<span style={{fontSize:12,color:'#7a9060'}}>🪨 {batch.medium}</span>}
+          </div>
+          <div style={{fontSize:12,color:'#5a7848'}}>成活判断：{getSuccessLabel(batch)}</div>
+          {batch.note&&<div style={{fontSize:12,color:'#7a9060',marginTop:4}}>📝 {batch.note}</div>}
+          {linkedPlants.length>0&&<div style={{marginTop:8,display:'flex',gap:5,flexWrap:'wrap'}}>
+            {linkedPlants.map(p=><span key={p.id} style={{fontSize:11,background:'rgba(165,195,220,0.25)',color:'#384a68',borderRadius:8,padding:'2px 8px'}}>🪴 {p.name}</span>)}
+          </div>}
+        </div>
+
+        {/* 幼苗列表 */}
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:8}}>幼苗状态</div>
+          {seedlings.map((s,idx)=>{
+            const st=PROP_STATUS[s.status]||PROP_STATUS.waiting;
+            return<div key={s.id} className="card" style={{marginBottom:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:s.note?6:0}}>
+                <span style={{fontSize:13,fontWeight:600,color:'#2e4a22',flex:1}}>{s.label}</span>
+                {s.successDate&&<span style={{fontSize:11,color:'#7a9868'}}>{fmtDate(s.successDate)}</span>}
+                <div style={{display:'flex',gap:5}}>
+                  {Object.entries(PROP_STATUS).map(([k,v])=>(
+                    <button key={k} style={{padding:'4px 8px',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:11,
+                      background:s.status===k?v.color+'33':'rgba(180,210,160,0.1)',
+                      border:`1px solid ${s.status===k?v.color+'88':'rgba(150,185,130,0.25)'}`,
+                      color:s.status===k?v.color:'#6a8858'}}
+                      onClick={()=>setSeedlingStatus(idx,k)}>{v.icon}</button>
+                  ))}
+                </div>
+              </div>
+              <input className="input" style={{fontSize:12,padding:'6px 10px',marginTop:4}} placeholder="备注…"
+                defaultValue={s.note} onBlur={e=>setSeedlingNote(idx,e.target.value)}/>
+            </div>;
+          })}
+        </div>
+
+        {/* 操作按钮 */}
+        <button className="btn btn-green" style={{width:'100%'}} onClick={graduateAsPlant}>🪴 创建植物卡</button>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-gray" style={{flex:1}} onClick={archiveBatch}>📦 归档批次</button>
+          <button className="btn btn-red" style={{flex:1}} onClick={()=>setDelConfirm(true)}>🗑 删除</button>
+        </div>
+      </div>
+
+      {delConfirm&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setDelConfirm(false)}>
+          <div style={{background:'#f5f8f2',borderRadius:18,padding:'24px 20px',width:'100%',maxWidth:320,textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:28,marginBottom:10}}>⚠️</div>
+            <div style={{fontSize:15,fontWeight:600,color:'#2e4a22',marginBottom:18}}>确认删除此批次？</div>
+            <div style={{display:'flex',gap:10}}>
+              <button className="btn btn-gray" style={{flex:1}} onClick={()=>setDelConfirm(false)}>取消</button>
+              <button className="btn btn-red" style={{flex:1}} onClick={deleteBatch}>确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 繁育 Tab 主视图 ──
 function BreedingTab(){
   const{db}=useApp();
+  const[view,setView]=useState(null); // null | {type:'form',batch} | {type:'detail',id}
+
+  if(view?.type==='form')
+    return<PropForm initBatch={view.batch||null} onClose={()=>setView(null)}/>;
+  if(view?.type==='detail')
+    return<PropBatchDetail batchId={view.id} onClose={()=>setView(null)} onEdit={b=>setView({type:'form',batch:b})}/>;
+
   return(
     <div className="tab-content">
-      <div className="sticky-bar"><h1>🌱 繁育</h1><div className="sub">{db.prop.length} 个批次</div></div>
-      <div className="placeholder"><div className="placeholder-emoji">🌱</div><div className="placeholder-title">繁育管理</div><div className="placeholder-desc">{db.prop.length?`已加载 ${db.prop.length} 个批次，迁移中…`:'即将迁移：扦插 · 播种 · 分株批次管理'}</div></div>
+      <div className="sticky-bar">
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <h1>🌱 繁育</h1>
+          <button className="btn btn-green" style={{padding:'7px 14px',fontSize:13}} onClick={()=>setView({type:'form',batch:null})}>＋ 新建批次</button>
+        </div>
+      </div>
+      <div style={{padding:'12px 16px'}}>
+        {db.prop.length===0
+          ?<div className="placeholder">
+            <div className="placeholder-emoji">🌱</div>
+            <div className="placeholder-title">暂无繁育批次</div>
+            <div className="placeholder-desc">点击右上角「＋ 新建批次」<br/>记录扦插、播种、分株等繁育过程</div>
+          </div>
+          :db.prop.slice().reverse().map(b=>{
+            const method=PROP_METHODS.find(m=>m.key===b.method)||PROP_METHODS[0];
+            const succ=(b.seedlings||[]).filter(s=>s.status==='success').length;
+            const total=b.total||0;
+            const rate=total>0?Math.round((succ/total)*100):0;
+            const waiting=(b.seedlings||[]).filter(s=>s.status==='waiting').length;
+            return<div key={b.id} className="card" style={{marginBottom:10,cursor:'pointer'}} onClick={()=>setView({type:'detail',id:b.id})}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+                <div>
+                  <span style={{fontSize:16,fontWeight:700,color:'#2e4a22'}}>{method.icon} {b.parentName||'未命名'}</span>
+                  <span style={{fontSize:12,color:'#7a9060',marginLeft:8}}>{method.label}</span>
+                </div>
+                <span style={{fontSize:11,color:'#7a9868'}}>{fmtDate(b.date)}</span>
+              </div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                <span style={{fontSize:11,background:'rgba(80,180,80,0.12)',color:'#2a6a35',borderRadius:8,padding:'2px 8px'}}>✅ {succ}/{total} ({rate}%)</span>
+                {waiting>0&&<span style={{fontSize:11,background:'rgba(220,185,60,0.15)',color:'#7a6010',borderRadius:8,padding:'2px 8px'}}>⏳ {waiting}株等待中</span>}
+                {b.medium&&<span style={{fontSize:11,background:'rgba(180,210,160,0.2)',color:'#5a7848',borderRadius:8,padding:'2px 8px'}}>🪨 {b.medium}</span>}
+              </div>
+            </div>;
+          })
+        }
+      </div>
     </div>
   );
 }
