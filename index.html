@@ -896,11 +896,14 @@ function useSwipeMonth(onPrev, onNext){
       const dx=e.changedTouches[0].clientX-sx;
       const dy=Math.abs(e.changedTouches[0].clientY-sy);
       if(Math.abs(dx)>50 && Math.abs(dx)>dy*1.5){
+        // 阻止冒泡，防止 useTabSwipe 同时响应
+        e.stopPropagation();
         if(dx<0) onNext(); else onPrev();
       }
     };
     el.addEventListener('touchstart',ts,{passive:true});
-    el.addEventListener('touchend',  te,{passive:true});
+    // touchend 不能 passive，才能 stopPropagation
+    el.addEventListener('touchend',te);
     return()=>{el.removeEventListener('touchstart',ts); el.removeEventListener('touchend',te);};
   },[onPrev,onNext]);
   return ref;
