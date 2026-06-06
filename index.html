@@ -91,7 +91,7 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
 /* 分类筛选条 */
 .cat-strip{display:flex;gap:6px;overflow-x:auto;padding:8px 16px 10px;scrollbar-width:none}
 .cat-strip::-webkit-scrollbar{display:none}
-.cat-chip{white-space:nowrap;flex-shrink:0;padding:5px 13px;border-radius:20px;font-size:12px;cursor:pointer;background:rgba(180,210,160,.2);border:1px solid rgba(150,185,130,.3);color:#5a7848;font-family:inherit}
+.cat-chip{white-space:nowrap;flex-shrink:0;padding:5px 13px;border-radius:20px;font-size:12px;cursor:pointer;background:rgba(180,210,160,.2);border:1px solid rgba(150,185,130,.3);color:#5a7848;font-family:inherit;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .cat-chip.active{background:rgba(80,120,54,.82);border-color:rgba(60,100,34,.8);color:white;font-weight:700}
 
 /* 植物列表 */
@@ -1213,9 +1213,14 @@ function PlantForm({initPlant,onClose}){
 // 分类筛选 Chip（长按可编辑，定义在外部避免 iOS 重建）
 function CatChip({item,active,onTap,onLongPress}){
   const timerRef=useRef(null);
-  function handleTouchStart(){
+  function handleTouchStart(e){
     if(!onLongPress)return;
-    timerRef.current=setTimeout(()=>{timerRef.current=null;onLongPress();},600);
+    timerRef.current=setTimeout(()=>{
+      timerRef.current=null;
+      // 清除系统文字选区
+      window.getSelection?.()?.removeAllRanges();
+      onLongPress();
+    },600);
   }
   function handleTouchEnd(){
     if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null;}
@@ -1223,6 +1228,7 @@ function CatChip({item,active,onTap,onLongPress}){
   return(
     <button
       className={`cat-chip${active?' active':''}`}
+      style={{WebkitUserSelect:'none',userSelect:'none',WebkitTouchCallout:'none'}}
       onClick={onTap}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -2942,6 +2948,10 @@ function InventoryTab(){
   const[fabOpen,setFabOpen]=useState(false);
   if(view?.type==='fert'||view?.type==='med'||view?.type==='soil')return<LibListPage type={view.type} onClose={()=>setView(null)}/>;
   if(view?.type==='recipe')return<RecipeListPage onClose={()=>setView(null)}/>;
+  if(view?.type==='add_fert')return<FertMedForm type="fert" initItem={null} onClose={()=>setView(null)}/>;
+  if(view?.type==='add_med') return<FertMedForm type="med"  initItem={null} onClose={()=>setView(null)}/>;
+  if(view?.type==='add_soil')return<SoilForm initItem={null} onClose={()=>setView(null)}/>;
+  if(view?.type==='add_recipe')return<RecipeForm initItem={null} onClose={()=>setView(null)}/>;
   if(view?.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
   function exportData(){
     const data={plants:db.plants,fert:db.lib.fert,med:db.lib.med,soil:db.lib.soil,recipe:db.lib.recipe||[],prop:db.prop,archive:db.archive,exportTime:new Date().toISOString()};
@@ -2993,10 +3003,10 @@ function InventoryTab(){
       {fabOpen&&<div style={{position:'fixed',inset:0,zIndex:59}} onClick={()=>setFabOpen(false)}/>}
       {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
         {[
-          {icon:'🌿',label:'肥料',type:'fert'},
-          {icon:'💊',label:'药品',type:'med'},
-          {icon:'🪨',label:'盆土',type:'soil'},
-          {icon:'🧪',label:'配方',type:'recipe'},
+          {icon:'🌿',label:'肥料',type:'add_fert'},
+          {icon:'💊',label:'药品',type:'add_med'},
+          {icon:'🪨',label:'盆土',type:'add_soil'},
+          {icon:'🧪',label:'配方',type:'add_recipe'},
         ].map(opt=>(
           <button key={opt.type} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 14px',borderRadius:20,background:'#f5f8f2',border:'1px solid rgba(140,180,110,0.5)',boxShadow:'0 2px 10px rgba(40,70,20,.18)',cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap'}}
             onClick={()=>{setView({type:opt.type});setFabOpen(false);}}>
