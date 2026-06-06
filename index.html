@@ -1364,7 +1364,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
         ))}
         </div>
         {/* 分类编辑弹窗 */}
-        {catEdit&&<div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setCatEdit(null)}>
+        {catEdit&&<div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'24px',paddingTop:'calc(env(safe-area-inset-top, 0px) + 100px)'}} onClick={()=>setCatEdit(null)}>
           <div style={{background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'100%',maxWidth:320}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:15,fontWeight:700,color:'#2e4a22',marginBottom:14}}>✏️ 编辑分类「{catEdit.id}」</div>
             <input className="input" style={{marginBottom:14}} defaultValue={catEdit.id}
