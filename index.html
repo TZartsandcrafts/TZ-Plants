@@ -1209,6 +1209,29 @@ function PlantForm({initPlant,onClose}){
 // ═══════════════════════════════════════════════
 // 10. 植物 Tab
 // ═══════════════════════════════════════════════
+
+// 分类筛选 Chip（长按可编辑，定义在外部避免 iOS 重建）
+function CatChip({item,active,onTap,onLongPress}){
+  const timerRef=useRef(null);
+  function handleTouchStart(){
+    if(!onLongPress)return;
+    timerRef.current=setTimeout(()=>{timerRef.current=null;onLongPress();},600);
+  }
+  function handleTouchEnd(){
+    if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null;}
+  }
+  return(
+    <button
+      className={`cat-chip${active?' active':''}`}
+      onClick={onTap}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}>
+      {item.label}
+    </button>
+  );
+}
+
 function PlantsTab({jumpPlantId,onJumpDone}){
   const{db,updateDb,toast,setTab}=useApp();
   const[search,setSearch]=useState('');
@@ -1216,6 +1239,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   const[sortBy,setSortBy]=useState('entry');
   const[sortDir,setSortDir]=useState(1); // 1=正序 -1=倒序
   const[view,setView]=useState(null);
+  const[catEdit,setCatEdit]=useState(null); // {id,newName} 分类编辑弹窗
   const listRef=useRef(null);
   const savedScroll=useRef(0);
   const returnTabRef=useRef(null);
@@ -1324,13 +1348,47 @@ function PlantsTab({jumpPlantId,onJumpDone}){
         </div>
         {/* 分类筛选 */}
         <div className="cat-strip" style={{padding:'6px 0 2px',margin:'0 -16px',paddingLeft:16,paddingRight:16}}>
-        {[{id:'all',label:`全部 (${db.plants.length})`},
-          ...allCats.filter(c=>db.plants.some(p=>p.category===c)).map(c=>({id:c,label:`${c} (${db.plants.filter(p=>p.category===c).length})`})),
-          db.plants.some(p=>!p.category)?{id:'__none__',label:`未分类 (${db.plants.filter(p=>!p.category).length})`}:null,
+        {[{id:'all',label:`全部 (${db.plants.length})`,sys:true},
+          ...allCats.filter(c=>db.plants.some(p=>p.category===c)).map(c=>({id:c,label:`${c} (${db.plants.filter(p=>p.category===c).length})`,sys:false})),
+          db.plants.some(p=>!p.category)?{id:'__none__',label:`未分类 (${db.plants.filter(p=>!p.category).length})`,sys:true}:null,
         ].filter(Boolean).map(item=>(
-          <button key={item.id} className={`cat-chip${filterCat===item.id?' active':''}`} onClick={()=>setFilter(item.id)}>{item.label}</button>
+          <CatChip key={item.id} item={item} active={filterCat===item.id}
+            onTap={()=>setFilter(item.id)}
+            onLongPress={item.sys?null:()=>setCatEdit({id:item.id,name:item.id,newName:item.id})}/>
         ))}
         </div>
+        {/* 分类编辑弹窗 */}
+        {catEdit&&<div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setCatEdit(null)}>
+          <div style={{background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'100%',maxWidth:320}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:15,fontWeight:700,color:'#2e4a22',marginBottom:14}}>✏️ 编辑分类「{catEdit.id}」</div>
+            <input className="input" style={{marginBottom:14}} defaultValue={catEdit.id}
+              onBlur={e=>setCatEdit(v=>({...v,newName:e.target.value.trim()||v.id}))}/>
+            <div style={{display:'flex',gap:8,marginBottom:8}}>
+              <button className="btn btn-green" style={{flex:1}} onClick={()=>{
+                const nn=catEdit.newName;
+                if(nn&&nn!==catEdit.id){
+                  updateDb(prev=>({...prev,
+                    cats:prev.cats.map(c=>c===catEdit.id?nn:c),
+                    plants:prev.plants.map(p=>p.category===catEdit.id?{...p,category:nn}:p),
+                  }));
+                  if(filterCat===catEdit.id)setFilter(nn);
+                  toast.show('✅ 分类已重命名');
+                }
+                setCatEdit(null);
+              }}>✓ 重命名</button>
+              <button className="btn btn-gray" style={{flex:1}} onClick={()=>setCatEdit(null)}>取消</button>
+            </div>
+            <button className="btn btn-red" style={{width:'100%'}} onClick={()=>{
+              if(!window.confirm(`删除分类「${catEdit.id}」？植物会变为未分类。`))return;
+              updateDb(prev=>({...prev,
+                cats:prev.cats.filter(c=>c!==catEdit.id),
+                plants:prev.plants.map(p=>p.category===catEdit.id?{...p,category:''}:p),
+              }));
+              if(filterCat===catEdit.id)setFilter('all');
+              toast.show('🗑 分类已删除');setCatEdit(null);
+            }}>🗑 删除此分类</button>
+          </div>
+        </div>}
       </div>{/* end sticky-bar */}
       <div className="plant-list" ref={listRef}>
         {filtered.length===0
@@ -1454,23 +1512,37 @@ function CalendarTab(){
   // 天气
   const[weather,setWeather]=useState({temp:null,hum:null,cond:'加载中',emo:'⛅',rain:false,tip:'',fc:[],upd:''});
   useEffect(()=>{
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=49.1042&longitude=-122.8231&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America/Vancouver&forecast_days=3')
+    // 加入 hourly 降水量，用当前小时段数据判断实际是否在下雨，比 current.precipitation 更及时
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=49.1042&longitude=-122.8231&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&hourly=precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America/Vancouver&forecast_days=3')
       .then(r=>r.json()).then(d=>{
         const c=d.current;
         const wi=wmoDesc(c.weather_code);
         const tMax=d.daily?.temperature_2m_max||[];
         const tMin=d.daily?.temperature_2m_min||[];
         const codes=d.daily?.weather_code||[];
+        // 用 hourly 降水量判断当前是否真的在下雨（取当前时间对应的整点）
+        const now=new Date();
+        const hrTimes=d.hourly?.time||[];
+        const hrPrec=d.hourly?.precipitation||[];
+        const nowHrStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:00`;
+        const hrIdx=hrTimes.indexOf(nowHrStr);
+        // 取当前和后1小时的降水量，任一>0.1mm 视为有降水
+        const curPrec=hrIdx>=0?hrPrec[hrIdx]||0:c.precipitation||0;
+        const nextPrec=hrIdx>=0&&hrIdx+1<hrPrec.length?hrPrec[hrIdx+1]||0:0;
+        const actualRain=curPrec>0.1||nextPrec>0.1;
+        // 用实际降水而非 weather_code 判断是否在下雨
+        const isRaining=actualRain;
+        const condLabel=actualRain?'降雨':wi.cond;
+        const condEmo=actualRain?'🌧️':wi.emo;
         let tip='';
-        if(wi.rain||c.precipitation>3)tip='今日有降水，注意减少浇水';
+        if(isRaining||c.precipitation>1)tip='今日有降水，注意减少浇水';
         else if(c.relative_humidity_2m>80)tip=`湿度偏高（${c.relative_humidity_2m}%），浇水适量即可`;
         else if(Math.round(c.temperature_2m)>30)tip='气温偏高，注意防晒遮阴';
         else if(Math.round(c.temperature_2m)<5)tip='气温偏低，注意防寒保温';
         else tip='天气适宜，可按常规养护计划进行';
-        const now=new Date();
         setWeather({
           temp:Math.round(c.temperature_2m),hum:c.relative_humidity_2m,
-          cond:wi.cond,emo:wi.emo,rain:wi.rain,tip,
+          cond:condLabel,emo:condEmo,rain:isRaining,tip,
           fc:codes.slice(0,3).map((code,i)=>{const fi=wmoDesc(code);return{d:['今天','明天','后天'][i],e:fi.emo,t:fi.cond,hi:tMax[i]!=null?Math.round(tMax[i]):null,lo:tMin[i]!=null?Math.round(tMin[i]):null};}),
           upd:`${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`,
         });
@@ -2333,18 +2405,13 @@ function BreedingTab(){
 
   return(
     <div className="tab-content">
-      <div className="sticky-bar">
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <h1>🌱 繁育</h1>
-          <button className="btn btn-green" style={{padding:'7px 14px',fontSize:13}} onClick={()=>setView({type:'form',batch:null})}>＋ 新建批次</button>
-        </div>
-      </div>
+      <div className="sticky-bar"><h1>🌱 繁育</h1></div>
       <div style={{padding:'12px 16px'}}>
         {db.prop.length===0
           ?<div className="placeholder">
             <div className="placeholder-emoji">🌱</div>
             <div className="placeholder-title">暂无繁育批次</div>
-            <div className="placeholder-desc">点击右上角「＋ 新建批次」<br/>记录扦插、播种、分株等繁育过程</div>
+            <div className="placeholder-desc">点击右下角 ＋<br/>记录扦插、播种、分株等繁育过程</div>
           </div>
           :db.prop.slice().reverse().map(b=>{
             const method=PROP_METHODS.find(m=>m.key===b.method)||PROP_METHODS[0];
@@ -2369,6 +2436,7 @@ function BreedingTab(){
           })
         }
       </div>
+      <button className="fab" onClick={()=>setView({type:'form',batch:null})}>＋</button>
     </div>
   );
 }
@@ -2871,6 +2939,7 @@ function RecipeListPage({onClose}){
 function InventoryTab(){
   const{db,updateDb,toast}=useApp();
   const[view,setView]=useState(null);
+  const[fabOpen,setFabOpen]=useState(false);
   if(view?.type==='fert'||view?.type==='med'||view?.type==='soil')return<LibListPage type={view.type} onClose={()=>setView(null)}/>;
   if(view?.type==='recipe')return<RecipeListPage onClose={()=>setView(null)}/>;
   if(view?.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
@@ -2920,6 +2989,22 @@ function InventoryTab(){
         <button style={{flex:1,padding:'11px 16px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:600,background:'rgba(165,195,220,0.25)',border:'1px solid rgba(140,175,210,0.4)',color:'#384a68'}} onClick={importData}>📂 恢复数据</button>
       </div>
       <input type="file" id="import-file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
+      {/* 库存 FAB */}
+      {fabOpen&&<div style={{position:'fixed',inset:0,zIndex:59}} onClick={()=>setFabOpen(false)}/>}
+      {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
+        {[
+          {icon:'🌿',label:'肥料',type:'fert'},
+          {icon:'💊',label:'药品',type:'med'},
+          {icon:'🪨',label:'盆土',type:'soil'},
+          {icon:'🧪',label:'配方',type:'recipe'},
+        ].map(opt=>(
+          <button key={opt.type} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 14px',borderRadius:20,background:'#f5f8f2',border:'1px solid rgba(140,180,110,0.5)',boxShadow:'0 2px 10px rgba(40,70,20,.18)',cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap'}}
+            onClick={()=>{setView({type:opt.type});setFabOpen(false);}}>
+            <span style={{fontSize:18}}>{opt.icon}</span>{opt.label}
+          </button>
+        ))}
+      </div>}
+      <button className="fab" style={{zIndex:62,transform:fabOpen?'rotate(45deg)':'rotate(0deg)',transition:'transform 0.2s'}} onClick={()=>setFabOpen(f=>!f)}>＋</button>
     </div>
   );
 }
