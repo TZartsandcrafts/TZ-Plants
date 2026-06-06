@@ -442,6 +442,8 @@ function PlantCareCalendar({plantId,onClose}){
   const[selDate,setSelDate]=useState(null);
   const[noteText,setNoteText]=useState('');
   const[showNoteInput,setShowNoteInput]=useState(false);
+  const[editNote,setEditNote]=useState(null); // {idx, text} for editing
+  const[editText,setEditText]=useState('');
   useEffect(()=>{window.scrollTo(0,0)},[]);
   useSwipeBack(onClose);
   if(!plant)return null;
@@ -451,6 +453,9 @@ function PlantCareCalendar({plantId,onClose}){
     if(m<0){m=11;y--;}else if(m>11){m=0;y++;}
     setMo(m);setYr(y);
   }
+  const prevMo=useCallback(()=>navMo(-1),[mo,yr]);
+  const nextMo=useCallback(()=>navMo(1),[mo,yr]);
+  const calSwRef=useSwipeMonth(prevMo,nextMo);
 
   // 构建该植物的dotMap
   const dotMap={};
@@ -506,6 +511,23 @@ function PlantCareCalendar({plantId,onClose}){
     toast.show('🗑 备注已删除');
   }
 
+  function startEditNote(n){
+    setEditNote(n);
+    setEditText(n.text);
+    setShowNoteInput(false);
+  }
+  function saveEditNote(){
+    if(!editText.trim()){toast.show('⚠️ 备注不能为空');return;}
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==plantId)return p;
+      const arr=[...(p.noteLog||[])];
+      arr[editNote.idx]={...arr[editNote.idx],text:editText.trim()};
+      return{...p,noteLog:arr};
+    })}));
+    toast.show('✅ 备注已更新');
+    setEditNote(null);setEditText('');
+  }
+
   // Selected day detail
   const selLogs=[];
   if(selDate){
@@ -527,11 +549,13 @@ function PlantCareCalendar({plantId,onClose}){
         </div>
       </div>
       <div style={{padding:'12px 16px'}}>
+        {/* 月历（支持横划翻月） */}
+        <div ref={calSwRef} style={{touchAction:'pan-y'}}>
         {/* 月份导航 */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={()=>navMo(-1)}>‹</button>
+          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={prevMo}>‹</button>
           <span style={{fontSize:15,fontWeight:700,color:'#2e4a22'}}>{yr}年 {MN[mo]}</span>
-          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={()=>navMo(1)}>›</button>
+          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={nextMo}>›</button>
         </div>
         {/* 星期头 */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
@@ -582,6 +606,7 @@ function PlantCareCalendar({plantId,onClose}){
             <span style={{fontSize:10,color:'#7a9060'}}>里程碑</span>
           </div>
         </div>
+        </div>{/* end swipe wrapper */}
         {/* 日期详情 */}
         {selDate&&(
           <div style={{background:'rgba(240,248,235,0.9)',borderRadius:12,padding:'12px 14px',border:'1px solid rgba(140,185,110,0.35)'}}>
@@ -594,10 +619,24 @@ function PlantCareCalendar({plantId,onClose}){
               </div>
             ))}
             {selNotes.map((n,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'flex-start',gap:6,padding:'4px 0',borderTop:'1px solid rgba(200,140,50,0.15)',marginTop:3}}>
-                <span style={{color:'#d08030',fontSize:13}}>📝</span>
-                <span style={{fontSize:12,color:'#7a4a10',flex:1,lineHeight:1.6}}>{n.text}</span>
-                <button style={{background:'none',border:'none',cursor:'pointer',fontSize:14,color:'#9a8878',padding:'0 2px',flexShrink:0}} onClick={()=>deleteNote(n.idx)}>🗑️</button>
+              <div key={i} style={{padding:'6px 0',borderTop:'1px solid rgba(200,140,50,0.15)',marginTop:3}}>
+                {editNote&&editNote.idx===n.idx
+                  ?<div>
+                    <textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:6,fontSize:12}} value={editText} onChange={e=>setEditText(e.target.value)}/>
+                    <div style={{display:'flex',gap:6}}>
+                      <button className="btn btn-green" style={{flex:1,padding:'7px',fontSize:12}} onClick={saveEditNote}>✓ 保存</button>
+                      <button className="btn btn-gray" style={{flex:1,padding:'7px',fontSize:12}} onClick={()=>{setEditNote(null);setEditText('');}}>取消</button>
+                    </div>
+                  </div>
+                  :<div style={{display:'flex',alignItems:'flex-start',gap:6}}>
+                    <span style={{color:'#d08030',fontSize:13,flexShrink:0}}>📝</span>
+                    <span style={{fontSize:12,color:'#7a4a10',flex:1,lineHeight:1.7}}>{n.text}</span>
+                    <div style={{display:'flex',gap:3,flexShrink:0}}>
+                      <button style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#7a9060',padding:'0 3px'}} onClick={()=>startEditNote(n)}>✏️</button>
+                      <button style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#9a8878',padding:'0 3px'}} onClick={()=>deleteNote(n.idx)}>🗑️</button>
+                    </div>
+                  </div>
+                }
               </div>
             ))}
             {selLogs.length===0&&selNotes.length===0&&!selMilestone&&<div style={{fontSize:11,color:'#9aaa88',marginBottom:6}}>暂无记录</div>}
@@ -844,6 +883,52 @@ function useSwipeBack(onBack){
   },[onBack]);
   return ref;
 }
+
+// 月历容器横划翻月 hook
+function useSwipeMonth(onPrev, onNext){
+  const ref = useRef(null);
+  useEffect(()=>{
+    const el = ref.current;
+    if(!el) return;
+    let sx=0, sy=0;
+    const ts = e=>{sx=e.touches[0].clientX; sy=e.touches[0].clientY;};
+    const te = e=>{
+      const dx=e.changedTouches[0].clientX-sx;
+      const dy=Math.abs(e.changedTouches[0].clientY-sy);
+      if(Math.abs(dx)>50 && Math.abs(dx)>dy*1.5){
+        if(dx<0) onNext(); else onPrev();
+      }
+    };
+    el.addEventListener('touchstart',ts,{passive:true});
+    el.addEventListener('touchend',  te,{passive:true});
+    return()=>{el.removeEventListener('touchstart',ts); el.removeEventListener('touchend',te);};
+  },[onPrev,onNext]);
+  return ref;
+}
+
+// 四个主 Tab 横划切换 hook
+function useTabSwipe(tabs,currentTab,setTab){
+  useEffect(()=>{
+    let sx=0,sy=0;
+    const ts=e=>{
+      if(document.querySelector('.fullpage'))return;
+      sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+    };
+    const te=e=>{
+      if(document.querySelector('.fullpage'))return;
+      const dx=e.changedTouches[0].clientX-sx;
+      const dy=Math.abs(e.changedTouches[0].clientY-sy);
+      if(Math.abs(dx)<60||dy>Math.abs(dx)*0.8)return;
+      const idx=tabs.indexOf(currentTab);
+      if(dx<0&&idx<tabs.length-1)setTab(tabs[idx+1]);
+      if(dx>0&&idx>0)setTab(tabs[idx-1]);
+    };
+    document.addEventListener('touchstart',ts,{passive:true});
+    document.addEventListener('touchend',  te,{passive:true});
+    return()=>{document.removeEventListener('touchstart',ts); document.removeEventListener('touchend',te);};
+  },[currentTab,tabs,setTab]);
+}
+
 
 function GrowthTabContent({form,sf,secBox}){
   const src=form.source;
@@ -1459,11 +1544,15 @@ function CalendarTab(){
     const startOff=(first.getDay()+6)%7;
     const daysInMonth=new Date(calYr,calMo+1,0).getDate();
     const MN=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+    const prev=useCallback(()=>navMo(-1),[calMo,calYr]);
+    const next=useCallback(()=>navMo(1),[calMo,calYr]);
+    const swRef=useSwipeMonth(prev,next);
     return <>
+      <div ref={swRef} style={{touchAction:'pan-y'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={()=>navMo(-1)}>‹</button>
+        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={prev}>‹</button>
         <span style={{fontSize:14,fontWeight:700,color:'#2e4a22'}}>{calYr}年 {MN[calMo]}</span>
-        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={()=>navMo(1)}>›</button>
+        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={next}>›</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
         {WK.map(w=><div key={w} style={{textAlign:'center',fontSize:10,color:'#9aaa88',padding:'2px 0'}}>{w}</div>)}
@@ -1491,6 +1580,7 @@ function CalendarTab(){
         })}
       </div>
       {calSel&&<SelDayDetail ds={calSel}/>}
+      </div>
     </>;
   }
 
@@ -2834,6 +2924,8 @@ function InventoryTab(){
 // ═══════════════════════════════════════════════
 // 12. App Root
 // ═══════════════════════════════════════════════
+const TAB_ORDER=['calendar','plants','breeding','inventory'];
+
 function App(){
   const[db,setDb]=useState(()=>loadAll());
   const updateDb=useCallback(updater=>{
@@ -2847,6 +2939,9 @@ function App(){
 
   const badge=db.plants.filter(p=>careAlerts(p).length>0).length;
   const ctx={db,updateDb,toast,navToPlant,setTab};
+
+  // 四个主 Tab 横划切换
+  useTabSwipe(TAB_ORDER,tab,setTab);
 
   const renderTab=()=>{
     switch(tab){
