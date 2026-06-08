@@ -662,7 +662,7 @@ function PlantCareCalendar({plantId,onClose}){
 // ═══════════════════════════════════════════════
 // 8. 植物详情页（全屏）
 // ═══════════════════════════════════════════════
-function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal}){
+function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDelete}){
   const{db,updateDb,toast}=useApp();
   const plant=db.plants.find(p=>p.id===plantId);
   useEffect(()=>{window.scrollTo(0,0)},[]);
@@ -804,9 +804,10 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal}){
 
         {/* 操作按钮 */}
         <button className="btn" style={{width:'100%',background:'rgba(165,195,220,0.3)',border:'1px solid rgba(140,175,210,0.4)',color:'#2a3a68',marginBottom:8,padding:'11px'}} onClick={()=>onOpenCal(plant.id)}>📅 查看护理日历</button>
-        <div style={{display:'flex',gap:8}}>
-          <button className="btn btn-green" style={{flex:1}} onClick={()=>onEdit(plant)}>✏️ 编辑</button>
-          <button className="btn btn-gray" style={{flex:1}} onClick={onClose}>关闭</button>
+        <div style={{display:'flex',gap:8,marginBottom:8}}>
+          <button className="btn btn-green" style={{flex:2}} onClick={()=>onEdit(plant)}>✏️ 编辑信息</button>
+          <button className="btn btn-gray" style={{padding:'11px 14px',flexShrink:0}} onClick={()=>onArchive(plant.id)}>📦</button>
+          <button className="btn btn-red" style={{padding:'11px 14px',flexShrink:0}} onClick={()=>onDelete(plant.id)}>🗑</button>
         </div>
       </div>
     </div>
@@ -1286,14 +1287,27 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   if(view?.type==='log')
     return<LogPage plantId={view.plantId} logType={view.logType} onClose={()=>setView({type:'detail',id:view.plantId})}/>;
   if(view?.type==='cal')
-    return<PlantCareCalendar plantId={view.id} onClose={()=>setView({type:'detail',id:view.id})}/>;
+    return<PlantCareCalendar plantId={view.id} onClose={()=>{returnTabRef.current=null;setView({type:'detail',id:view.id});}}/>;
   if(view?.type==='detail')
     return<PlantDetail
       plantId={view.id}
       onClose={closeDetail}
       onEdit={p=>setView({type:'form',plant:p})}
       onOpenLog={(pid,lt)=>setView({type:'log',plantId:pid,logType:lt})}
-      onOpenCal={(pid)=>setView({type:'cal',id:pid})}/>;
+      onOpenCal={(pid)=>setView({type:'cal',id:pid})}
+      onArchive={(pid)=>{
+        if(!window.confirm('将此植物移入档案库？'))return;
+        updateDb(prev=>({...prev,
+          plants:prev.plants.filter(p=>p.id!==pid),
+          archive:{...prev.archive,plants:[...(prev.archive.plants||[]),{...prev.plants.find(p=>p.id===pid),archivedAt:toDay()}]}
+        }));
+        toast.show('📦 已归档');closeDetail();
+      }}
+      onDelete={(pid)=>{
+        if(!window.confirm('确认删除此植物？此操作不可撤销。'))return;
+        updateDb(prev=>({...prev,plants:prev.plants.filter(p=>p.id!==pid)}));
+        toast.show('🗑 已删除');closeDetail();
+      }}/>;
   if(view?.type==='form')
     return<PlantForm initPlant={view.plant||null} onClose={()=>{
       // 编辑完成后回到详情或列表
@@ -1353,7 +1367,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
           </div>
         </div>
         {/* 分类筛选 */}
-        <div className="cat-strip" style={{padding:'6px 0 2px',margin:'0 -16px',paddingLeft:16,paddingRight:16}}>
+        <div className="cat-strip" style={{padding:'6px 0 2px',margin:'0 -16px',paddingLeft:16,paddingRight:16}} onTouchStart={e=>e.stopPropagation()} onTouchEnd={e=>e.stopPropagation()}>
         {[{id:'all',label:`全部 (${db.plants.length})`,sys:true},
           ...allCats.filter(c=>db.plants.some(p=>p.category===c)).map(c=>({id:c,label:`${c} (${db.plants.filter(p=>p.category===c).length})`,sys:false})),
           db.plants.some(p=>!p.category)?{id:'__none__',label:`未分类 (${db.plants.filter(p=>!p.category).length})`,sys:true}:null,
@@ -1364,7 +1378,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
         ))}
         </div>
         {/* 分类编辑弹窗 */}
-        {catEdit&&<div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'24px',paddingTop:'calc(env(safe-area-inset-top, 0px) + 100px)'}} onClick={()=>setCatEdit(null)}>
+        {catEdit&&<div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.55)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:'24px',paddingTop:'calc(env(safe-area-inset-top, 0px) + 60px)'}} onClick={()=>setCatEdit(null)}>
           <div style={{background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'100%',maxWidth:320}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:15,fontWeight:700,color:'#2e4a22',marginBottom:14}}>✏️ 编辑分类「{catEdit.id}」</div>
             <input className="input" style={{marginBottom:14}} defaultValue={catEdit.id}
@@ -3052,11 +3066,11 @@ function App(){
 
   const renderTab=()=>{
     switch(tab){
-      case 'calendar':  return<CalendarTab/>;
-      case 'plants':    return<PlantsTab jumpPlantId={jumpPlantId} onJumpDone={()=>setJumpPlantId(null)}/>;
-      case 'breeding':  return<BreedingTab/>;
-      case 'inventory': return<InventoryTab/>;
-      default:          return<CalendarTab/>;
+      case 'calendar':  return<CalendarTab key="calendar"/>;
+      case 'plants':    return<PlantsTab key="plants" jumpPlantId={jumpPlantId} onJumpDone={()=>setJumpPlantId(null)}/>;
+      case 'breeding':  return<BreedingTab key="breeding"/>;
+      case 'inventory': return<InventoryTab key="inventory"/>;
+      default:          return<CalendarTab key="calendar"/>;
     }
   };
 
