@@ -285,7 +285,7 @@ function BottomNav({tab,onNav,badge}){
   return(
     <nav className="bottom-nav">
       {NAV.map(n=>(
-        <button key={n.id} className={`nav-btn${tab===n.id?' active':''}`} onClick={()=>onNav(n.id)}>
+        <button key={n.id} className={`nav-btn${tab===n.id?' active':''}`} onClick={()=>{onNav(n.id);window.dispatchEvent(new CustomEvent('tabReset',{detail:n.id}));}}>
           <span className="nav-icon" style={{position:'relative'}}>
             {n.icon}
             {n.id==='plants'&&badge>0&&<span style={{position:'absolute',top:-4,right:-8,background:'#e05030',color:'white',fontSize:9,fontWeight:700,borderRadius:8,padding:'1px 4px',minWidth:16,textAlign:'center',lineHeight:'14px'}}>{badge>9?'9+':badge}</span>}
@@ -1258,9 +1258,15 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       const rt=jumpPlantId.returnTab||null;
       returnTabRef.current=rt;
       setView({type:'detail',id});
-      onJumpDone?.();
+      if(onJumpDone)onJumpDone();
     }
   },[jumpPlantId]);
+  // 点底部 tab 图标时重置到列表
+  useEffect(()=>{
+    function onTabReset(e){if(e.detail==='plants'){returnTabRef.current=null;setView(null);window.scrollTo(0,0);}}
+    window.addEventListener('tabReset',onTabReset);
+    return()=>window.removeEventListener('tabReset',onTabReset);
+  },[]);
 
   // 打开详情时保存滚动位置
   function openDetail(id){
@@ -1374,41 +1380,29 @@ function PlantsTab({jumpPlantId,onJumpDone}){
         ].filter(Boolean).map(item=>(
           <CatChip key={item.id} item={item} active={filterCat===item.id}
             onTap={()=>setFilter(item.id)}
-            onLongPress={item.sys?null:()=>setCatEdit({id:item.id,name:item.id,newName:item.id})}/>
+            onLongPress={item.sys?null:()=>window.__showCatEdit(
+              item.id, item.id,
+              (catId, newName)=>{
+                updateDb(prev=>({...prev,
+                  cats:prev.cats.map(c=>c===catId?newName:c),
+                  plants:prev.plants.map(p=>p.category===catId?{...p,category:newName}:p),
+                }));
+                if(filterCat===catId)setFilter(newName);
+                toast.show('✅ 分类已重命名');
+              },
+              (catId)=>{
+                updateDb(prev=>({...prev,
+                  cats:prev.cats.filter(c=>c!==catId),
+                  plants:prev.plants.map(p=>p.category===catId?{...p,category:''}:p),
+                }));
+                if(filterCat===catId)setFilter('all');
+                toast.show('🗑 分类已删除');
+              }
+            )}/>
         ))}
         </div>
         {/* 分类编辑弹窗 */}
-        {catEdit&&<div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.55)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:'24px',paddingTop:'calc(env(safe-area-inset-top, 0px) + 60px)'}} onClick={()=>setCatEdit(null)}>
-          <div style={{background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'100%',maxWidth:320}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:15,fontWeight:700,color:'#2e4a22',marginBottom:14}}>✏️ 编辑分类「{catEdit.id}」</div>
-            <input className="input" style={{marginBottom:14}} defaultValue={catEdit.id}
-              onBlur={e=>setCatEdit(v=>({...v,newName:e.target.value.trim()||v.id}))}/>
-            <div style={{display:'flex',gap:8,marginBottom:8}}>
-              <button className="btn btn-green" style={{flex:1}} onClick={()=>{
-                const nn=catEdit.newName;
-                if(nn&&nn!==catEdit.id){
-                  updateDb(prev=>({...prev,
-                    cats:prev.cats.map(c=>c===catEdit.id?nn:c),
-                    plants:prev.plants.map(p=>p.category===catEdit.id?{...p,category:nn}:p),
-                  }));
-                  if(filterCat===catEdit.id)setFilter(nn);
-                  toast.show('✅ 分类已重命名');
-                }
-                setCatEdit(null);
-              }}>✓ 重命名</button>
-              <button className="btn btn-gray" style={{flex:1}} onClick={()=>setCatEdit(null)}>取消</button>
-            </div>
-            <button className="btn btn-red" style={{width:'100%'}} onClick={()=>{
-              if(!window.confirm(`删除分类「${catEdit.id}」？植物会变为未分类。`))return;
-              updateDb(prev=>({...prev,
-                cats:prev.cats.filter(c=>c!==catEdit.id),
-                plants:prev.plants.map(p=>p.category===catEdit.id?{...p,category:''}:p),
-              }));
-              if(filterCat===catEdit.id)setFilter('all');
-              toast.show('🗑 分类已删除');setCatEdit(null);
-            }}>🗑 删除此分类</button>
-          </div>
-        </div>}
+        
       </div>{/* end sticky-bar */}
       <div className="plant-list" ref={listRef}>
         {filtered.length===0
@@ -1571,6 +1565,16 @@ function CalendarTab(){
 
   // 天气展开
   const[weatherExp,setWeatherExp]=useState(false);
+  useEffect(()=>{
+    function onTabReset(e){
+      if(e.detail==='calendar'){
+        var ol=document.getElementById('__ql_overlay');
+        if(ol&&ol.parentNode)ol.parentNode.removeChild(ol);
+      }
+    }
+    window.addEventListener('tabReset',onTabReset);
+    return()=>window.removeEventListener('tabReset',onTabReset);
+  },[]);
 
   // 跳转到植物详情（切换到植物 Tab）
   const{navToPlant}=useApp();
@@ -2395,6 +2399,11 @@ function PlantFormBreeding({initPlant,onSaved,onClose}){
 function BreedingTab(){
   const{db,updateDb,toast}=useApp();
   const[view,setView]=useState(null);
+  useEffect(()=>{
+    function onTabReset(e){if(e.detail==='breeding')setView(null);}
+    window.addEventListener('tabReset',onTabReset);
+    return()=>window.removeEventListener('tabReset',onTabReset);
+  },[]);
 
   function handleGraduate({mode,batch,seedlingIdx,initData}){
     // 跳转到植物表单，保存后关联回批次
@@ -2968,6 +2977,11 @@ function InventoryTab(){
   const{db,updateDb,toast}=useApp();
   const[view,setView]=useState(null);
   const[fabOpen,setFabOpen]=useState(false);
+  useEffect(()=>{
+    function onTabReset(e){if(e.detail==='inventory'){setView(null);setFabOpen(false);}}
+    window.addEventListener('tabReset',onTabReset);
+    return()=>window.removeEventListener('tabReset',onTabReset);
+  },[]);
   if(view?.type==='fert'||view?.type==='med'||view?.type==='soil')return<LibListPage type={view.type} onClose={()=>setView(null)}/>;
   if(view?.type==='recipe')return<RecipeListPage onClose={()=>setView(null)}/>;
   if(view?.type==='add_fert')return<FertMedForm type="fert" initItem={null} onClose={()=>setView(null)}/>;
@@ -3295,6 +3309,63 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     document.body.appendChild(overlay);
     render();
   }
+
+  // 分类编辑弹窗（挂到 body，避免被 #root max-width 截断）
+  window.__showCatEdit = function(catId, catName, onRename, onDelete) {
+    var existing = document.getElementById('__cat_edit_overlay');
+    if (existing) document.body.removeChild(existing);
+
+    var overlay = document.createElement('div');
+    overlay.id = '__cat_edit_overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(40,65,25,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;';
+    overlay.onclick = function(e) { if(e.target===overlay) document.body.removeChild(overlay); };
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#f5f8f2;border-radius:18px;padding:24px 20px;width:100%;max-width:320px;box-sizing:border-box;';
+    box.onclick = function(e){e.stopPropagation();};
+
+    var title = document.createElement('div');
+    title.textContent = '✏️ 编辑分类「'+catName+'」';
+    title.style.cssText = 'font-size:15px;font-weight:700;color:#2e4a22;margin-bottom:14px;';
+
+    var input = document.createElement('input');
+    input.value = catName;
+    input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px 14px;border-radius:12px;border:1.5px solid rgba(150,185,130,0.5);font-size:15px;font-family:inherit;background:rgba(240,248,235,0.8);color:#2e4a22;margin-bottom:14px;outline:none;';
+
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
+
+    var renameBtn = document.createElement('button');
+    renameBtn.textContent = '✓ 重命名';
+    renameBtn.style.cssText = 'flex:1;padding:12px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;background:rgba(100,160,70,0.85);color:white;';
+    renameBtn.onclick = function() {
+      var newName = input.value.trim();
+      if(newName && newName !== catName) onRename(catId, newName);
+      document.body.removeChild(overlay);
+    };
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '取消';
+    cancelBtn.style.cssText = 'flex:1;padding:12px;border-radius:12px;border:1.5px solid rgba(150,185,130,0.4);cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;background:rgba(180,210,160,0.15);color:#5a7848;';
+    cancelBtn.onclick = function() { document.body.removeChild(overlay); };
+
+    var delBtn = document.createElement('button');
+    delBtn.textContent = '🗑 删除此分类';
+    delBtn.style.cssText = 'width:100%;padding:12px;border-radius:12px;border:1px solid rgba(200,120,100,0.4);cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;background:rgba(250,220,210,0.6);color:#8a3020;';
+    delBtn.onclick = function() {
+      if(window.confirm('删除分类「'+catName+'」？植物会变为未分类。')) {
+        onDelete(catId);
+        document.body.removeChild(overlay);
+      }
+    };
+
+    btnRow.appendChild(renameBtn); btnRow.appendChild(cancelBtn);
+    box.appendChild(title); box.appendChild(input); box.appendChild(btnRow); box.appendChild(delBtn);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(function(){ input.focus(); }, 100);
+  };
+
 })();
 </script>
 </body>
