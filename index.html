@@ -366,18 +366,44 @@ function LogPage({plantId,logType,onClose}){
           <label className="field-label">日期</label>
           <input type="date" className="input" style={{marginBottom:8}} defaultValue={form.date} max={toDay()} onBlur={e=>sf('date',e.target.value)}/>
           {logType==='fert'&&<>
+            {(db.lib.fert||[]).length>0&&<>
+              <label className="field-label">从肥料库选择（可选）</label>
+              <select className="input" style={{marginBottom:8,color:form.name?'#2e4a22':'#9aaa88'}}
+                value={form.name||''}
+                onChange={e=>{
+                  const f=(db.lib.fert||[]).find(x=>x.name===e.target.value);
+                  if(f){setForm(prev=>({...prev,name:f.name,amount:f.dosage||prev.amount}));}
+                  else{setForm(prev=>({...prev,name:''}));}
+                }}>
+                <option value="">— 不从库存选择 —</option>
+                {(db.lib.fert||[]).map(f=><option key={f.id||f.name} value={f.name}>{f.name}{f.npk?` (${f.npk})`:''}</option>)}
+              </select>
+            </>}
             <label className="field-label">肥料名称</label>
-            <input className="input" style={{marginBottom:8}} placeholder="复合肥、磷酸二氢钾…" defaultValue={form.name} onBlur={e=>sf('name',e.target.value)}/>
+            <input key={'fn-'+form.name} className="input" style={{marginBottom:8}} placeholder="复合肥、磷酸二氢钾…" defaultValue={form.name} onBlur={e=>sf('name',e.target.value)}/>
             <label className="field-label">用量/浓度</label>
-            <input className="input" style={{marginBottom:8}} placeholder="5g/L…" defaultValue={form.amount} onBlur={e=>sf('amount',e.target.value)}/>
+            <input key={'fa-'+form.amount} className="input" style={{marginBottom:8}} placeholder="5g/L…" defaultValue={form.amount} onBlur={e=>sf('amount',e.target.value)}/>
           </>}
           {logType==='med'&&<>
+            {(db.lib.med||[]).length>0&&<>
+              <label className="field-label">从药品库选择（可选）</label>
+              <select className="input" style={{marginBottom:8,color:form.name?'#2e4a22':'#9aaa88'}}
+                value={form.name||''}
+                onChange={e=>{
+                  const m=(db.lib.med||[]).find(x=>x.name===e.target.value);
+                  if(m){setForm(prev=>({...prev,name:m.name,amount:m.dosage||prev.amount,reason:m.target||prev.reason}));}
+                  else{setForm(prev=>({...prev,name:''}));}
+                }}>
+                <option value="">— 不从库存选择 —</option>
+                {(db.lib.med||[]).map(m=><option key={m.id||m.name} value={m.name}>{m.name}</option>)}
+              </select>
+            </>}
             <label className="field-label">药品名称</label>
-            <input className="input" style={{marginBottom:8}} placeholder="多菌灵、吡虫啉…" defaultValue={form.name} onBlur={e=>sf('name',e.target.value)}/>
+            <input key={'mn-'+form.name} className="input" style={{marginBottom:8}} placeholder="多菌灵、吡虫啉…" defaultValue={form.name} onBlur={e=>sf('name',e.target.value)}/>
             <label className="field-label">病症/原因</label>
-            <input className="input" style={{marginBottom:8}} placeholder="白粉病、蚜虫…" defaultValue={form.reason} onBlur={e=>sf('reason',e.target.value)}/>
+            <input key={'mr-'+form.reason} className="input" style={{marginBottom:8}} placeholder="白粉病、蚜虫…" defaultValue={form.reason} onBlur={e=>sf('reason',e.target.value)}/>
             <label className="field-label">用量/浓度</label>
-            <input className="input" style={{marginBottom:8}} placeholder="稀释800倍…" defaultValue={form.amount} onBlur={e=>sf('amount',e.target.value)}/>
+            <input key={'ma-'+form.amount} className="input" style={{marginBottom:8}} placeholder="稀释800倍…" defaultValue={form.amount} onBlur={e=>sf('amount',e.target.value)}/>
           </>}
           <label className="field-label">{logType==='water'?'备注（可选）':'备注'}</label>
           <textarea className="input" rows={2} style={{marginBottom:10,resize:'vertical',lineHeight:1.6}} placeholder={meta.ph} defaultValue={form.note} onBlur={e=>sf('note',e.target.value)}/>
@@ -737,12 +763,19 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
               </label>
             }
           </div>
-          {/* 信息栏（1/3宽） */}
-          <div className="card" style={{flex:'0 0 calc(34% - 5px)',minWidth:0,display:'flex',flexDirection:'column',gap:6,justifyContent:'center',padding:'10px 10px'}}>
-            {plant.category&&<span style={{background:'rgba(150,200,120,.22)',color:'#3a5828',padding:'2px 8px',borderRadius:16,fontSize:11,fontWeight:600,border:'1px solid rgba(130,180,100,.3)',display:'inline-block'}}>{plant.category}</span>}
-            {plant.type&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>{plant.type}</span>}
-            {src&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>{src.icon} {src.label}</span>}
-            {plant.finalPlantLocation&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>📍 {plant.finalPlantLocation}</span>}
+          {/* 信息栏（1/3宽）：信息居上，操作按钮在下 */}
+          <div style={{flex:'0 0 calc(34% - 5px)',minWidth:0,display:'flex',flexDirection:'column',gap:6}}>
+            <div className="card" style={{flex:1,display:'flex',flexDirection:'column',gap:6,alignItems:'flex-start',padding:'10px 10px'}}>
+              {plant.category&&<span style={{background:'rgba(150,200,120,.22)',color:'#3a5828',padding:'2px 8px',borderRadius:16,fontSize:11,fontWeight:600,border:'1px solid rgba(130,180,100,.3)',display:'inline-block'}}>{plant.category}</span>}
+              {plant.type&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>🌿 {plant.type}</span>}
+              {src&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>{src.icon} {src.label}</span>}
+              {plant.finalPlantLocation&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>📍 {plant.finalPlantLocation}</span>}
+            </div>
+            <button className="btn btn-green" style={{width:'100%',padding:'9px 6px',fontSize:12}} onClick={()=>onEdit(plant)}>✏️ 编辑</button>
+            <div style={{display:'flex',gap:6}}>
+              <button className="btn btn-gray" style={{flex:1,padding:'8px 4px',fontSize:12}} onClick={()=>onArchive(plant.id)}>📦</button>
+              <button className="btn btn-red" style={{flex:1,padding:'8px 4px',fontSize:12}} onClick={()=>onDelete(plant.id)}>🗑</button>
+            </div>
           </div>
         </div>
 
@@ -754,7 +787,7 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           </div>
         )}
 
-        {/* 护理按钮 */}
+        {/* 护理记录 */}
         <div className="card">
           <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:10}}>📋 护理记录</div>
           <div style={{display:'flex',gap:6}}>
@@ -779,7 +812,18 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           </div>
         </div>
 
-        {/* 生长档案 */}
+        {/* 查看护理日历 */}
+        <button className="btn" style={{width:'100%',background:'rgba(165,195,220,0.3)',border:'1px solid rgba(140,175,210,0.4)',color:'#2a3a68',padding:'11px'}} onClick={()=>onOpenCal(plant.id)}>📅 查看护理日历</button>
+
+        {/* 备注 */}
+        {plant.notes&&(
+          <div className="card">
+            <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:6}}>📝 备注</div>
+            <div style={{fontSize:13,color:'#5a7040',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{plant.notes}</div>
+          </div>
+        )}
+
+        {/* 生长档案（最底部） */}
         {tl.length>0&&(
           <div className="card">
             <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:8}}>📋 生长档案</div>
@@ -797,22 +841,6 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
             ))}
           </div>
         )}
-
-        {/* 备注 */}
-        {plant.notes&&(
-          <div className="card">
-            <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:6}}>📝 备注</div>
-            <div style={{fontSize:13,color:'#5a7040',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{plant.notes}</div>
-          </div>
-        )}
-
-        {/* 操作按钮 */}
-        <button className="btn" style={{width:'100%',background:'rgba(165,195,220,0.3)',border:'1px solid rgba(140,175,210,0.4)',color:'#2a3a68',marginBottom:8,padding:'11px'}} onClick={()=>onOpenCal(plant.id)}>📅 查看护理日历</button>
-        <div style={{display:'flex',gap:8,marginBottom:8}}>
-          <button className="btn btn-green" style={{flex:2}} onClick={()=>onEdit(plant)}>✏️ 编辑信息</button>
-          <button className="btn btn-gray" style={{padding:'11px 14px',flexShrink:0}} onClick={()=>onArchive(plant.id)}>📦</button>
-          <button className="btn btn-red" style={{padding:'11px 14px',flexShrink:0}} onClick={()=>onDelete(plant.id)}>🗑</button>
-        </div>
       </div>
     </div>
   );
@@ -880,10 +908,15 @@ function useSwipeBack(onBack){
     const te=e=>{
       const dx=e.changedTouches[0].clientX-sx;
       const dy=Math.abs(e.changedTouches[0].clientY-sy);
-      if(dx>60&&dy<80&&sx<30)onBack();
+      if(dx>60&&dy<80&&sx<30){
+        // 阻止冒泡，防止 useTabSwipe 同时响应
+        e.stopPropagation();
+        onBack();
+      }
     };
     el.addEventListener('touchstart',ts,{passive:true});
-    el.addEventListener('touchend',te,{passive:true});
+    // touchend 不能 passive 才能 stopPropagation
+    el.addEventListener('touchend',te);
     return()=>{el.removeEventListener('touchstart',ts);el.removeEventListener('touchend',te);};
   },[onBack]);
   return ref;
