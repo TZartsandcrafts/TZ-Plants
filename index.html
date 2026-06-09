@@ -2166,29 +2166,39 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
 
   // 建卡：跳转到植物表单页
   function graduateBatch(){
+    const isCutting=['cutting','graft','division','layering'].includes(batch.method);
     onGraduate({
       mode:'batch', batch,
       initData:{
         name:batch.parentName||'',
         source:batch.method==='seed'?'seed':batch.method==='bulb'?'bulb':batch.method==='cutting'?'cutting':batch.method==='graft'?'graft':batch.method==='division'?'division':'other',
         sowDate:batch.method==='seed'?batch.date:'',
-        opDate:['cutting','graft','division','layering'].includes(batch.method)?batch.date:'',
+        opDate:isCutting?batch.date:'',
         buyDate:batch.method==='bulb'?batch.date:'',
+        // 批次信息同步到植物卡
+        buyFrom:isCutting?(batch.parentName||''):'',   // 插穗/接穗/母株来源
+        opNotes:isCutting?(batch.note||''):'',          // 扦插/嫁接/分株备注
+        sowMethod:batch.method==='seed'?(batch.note||''):'', // 播种备注
       }
     });
   }
   function graduateSingle(idx){
     const s=seedlings[idx];
+    const isCutting=['cutting','graft','division','layering'].includes(batch.method);
     onGraduate({
       mode:'single', batch, seedlingIdx:idx,
       initData:{
         name:batch.parentName||'',
         source:batch.method==='seed'?'seed':batch.method==='bulb'?'bulb':batch.method==='cutting'?'cutting':batch.method==='graft'?'graft':batch.method==='division'?'division':'other',
         sowDate:batch.method==='seed'?batch.date:'',
-        opDate:['cutting','graft','division','layering'].includes(batch.method)?batch.date:'',
+        opDate:isCutting?batch.date:'',
         buyDate:batch.method==='bulb'?batch.date:'',
         germDate:batch.method==='seed'&&s.successDate?s.successDate:'',
         rootDate:['cutting','graft','layering'].includes(batch.method)&&s.successDate?s.successDate:'',
+        // 批次信息同步到植物卡
+        buyFrom:isCutting?(batch.parentName||''):'',
+        opNotes:isCutting?(batch.note||''):'',
+        sowMethod:batch.method==='seed'?(batch.note||''):'',
       }
     });
   }
