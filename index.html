@@ -976,6 +976,21 @@ function GrowthTabContent({form,sf,secBox}){
   const DR=({label,fkey})=><DateRow label={label} fkey={fkey} form={form} sf={sf}/>;
   const TR=({label,fkey,ph})=><TaRow label={label} fkey={fkey} ph={ph} form={form} sf={sf}/>;
   const TX=({label,fkey,ph})=><TxtRow label={label} fkey={fkey} ph={ph} form={form} sf={sf}/>;
+  // 带植物下拉的来源选择器（供插穗/砧木/母株来源使用）
+  function SourcePicker({label,fkey,ph}){
+    const plantOpts=db.plants.map(p=>p.name+(p.variety?' '+p.variety:''));
+    return <div>
+      <label className="field-label">{label}</label>
+      {plantOpts.length>0&&<select className="input" style={{marginBottom:4}}
+        value={plantOpts.includes(form[fkey])?form[fkey]:''}
+        onChange={e=>{if(e.target.value)sf(fkey,e.target.value);}}>
+        <option value="">— 从植物列表选择 —</option>
+        {plantOpts.map((n,i)=><option key={i} value={n}>{n}</option>)}
+      </select>}
+      <input key={fkey+'-'+form[fkey]} className="input" style={{marginBottom:8}} placeholder={ph}
+        defaultValue={form[fkey]} onBlur={e=>sf(fkey,e.target.value)}/>
+    </div>;
+  }
   const envBtns=<div style={{display:'flex',gap:7}}>
     {['indoor','outdoor'].map(ev=>(
       <button key={ev} style={{flex:1,padding:'7px',borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:12,
@@ -1018,21 +1033,21 @@ function GrowthTabContent({form,sf,secBox}){
     }
     {src==='cutting'&&<div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>✂️ 扦插信息</div>
       <DR label="扦插日期" fkey="opDate"/>
-      <TX label="插穗来源" fkey="buyFrom" ph="母株来源…"/>
+      <SourcePicker label="插穗来源" fkey="buyFrom" ph="或手填母株名称…"/>
       <TR label="扦插备注" fkey="opNotes" ph="基质、处理方式…"/>
       <DR label="生根/成活日期" fkey="rootDate"/>
       <div><label className="field-label">种植环境</label>{envBtns}</div>
     </div>}
     {src==='graft'&&<div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>🔗 嫁接信息</div>
       <DR label="嫁接日期" fkey="opDate"/>
-      <TX label="砧木来源" fkey="buyFrom" ph="砧木品种…"/>
+      <SourcePicker label="砧木来源" fkey="buyFrom" ph="或手填砧木来源…"/>
       <TR label="嫁接备注" fkey="opNotes" ph="接穗品种、方法…"/>
       <DR label="成活确认日期" fkey="rootDate"/>
       <div><label className="field-label">种植环境</label>{envBtns}</div>
     </div>}
     {src==='division'&&<div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>🌾 分株信息</div>
       <DR label="分株日期" fkey="opDate"/>
-      <TX label="母株来源" fkey="buyFrom" ph="母株品种…"/>
+      <SourcePicker label="母株来源" fkey="buyFrom" ph="或手填母株来源…"/>
       <TR label="分株备注" fkey="opNotes" ph="数量、处理…"/>
     </div>}
     {['seed','cutting','graft'].includes(src)&&form.indoorStart==='indoor'&&
@@ -1974,7 +1989,7 @@ function PropForm({initBatch,onClose}){
 
   function handleParent(id){
     const p=db.plants.find(x=>x.id===id);
-    setForm(f=>({...f,parentId:id,parentName:p?p.name:f.parentName}));
+    setForm(f=>({...f,parentId:id,parentName:p?(p.name+(p.variety?' '+p.variety:'')):f.parentName}));
   }
 
   function save(){
