@@ -230,6 +230,75 @@ function plantEmoji(p){
 function rLS(k,fb){try{const r=localStorage.getItem(k);return r?JSON.parse(r):fb}catch{return fb}}
 function wLS(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 
+// ─── IndexedDB 照片存储（防止 localStorage 超限丢数据）───
+const PHOTO_IDB={
+  _db:null,
+  async db(){
+    if(this._db)return this._db;
+    this._db=await new Promise((res,rej)=>{
+      const r=indexedDB.open('plant_photodb',1);
+      r.onupgradeneeded=e=>e.target.result.createObjectStore('photos');
+      r.onsuccess=e=>res(e.target.result);
+      r.onerror=e=>rej(e.target.error);
+    });
+    return this._db;
+  },
+  async get(id){
+    const db=await this.db();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction('photos','readonly');
+      const r=tx.objectStore('photos').get(id);
+      r.onsuccess=e=>res(e.target.result||null);
+      r.onerror=e=>rej(e.target.error);
+    });
+  },
+  async put(id,data){
+    const db=await this.db();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction('photos','readwrite');
+      const r=tx.objectStore('photos').put(data,id);
+      r.onsuccess=()=>res(id);
+      r.onerror=e=>rej(e.target.error);
+    });
+  },
+  async del(id){
+    if(!id)return;
+    const db=await this.db();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction('photos','readwrite');
+      const r=tx.objectStore('photos').delete(id);
+      r.onsuccess=()=>res();
+      r.onerror=e=>rej(e.target.error);
+    });
+  },
+  isRef(s){return!!(s&&s.startsWith('photo:'));},
+};
+// 从图片文件生成压缩后的 base64（最大边 640px, jpeg 0.75）
+function compressPhoto(file,cb){
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      const maxSize=640,w=img.width,h=img.height;
+      let nw=w,nh=h;
+      if(w>h){if(w>maxSize){nh=Math.round(h*maxSize/w);nw=maxSize;}}
+      else{if(h>maxSize){nw=Math.round(w*maxSize/h);nh=maxSize;}}
+      const canvas=document.createElement('canvas');
+      canvas.width=nw;canvas.height=nh;
+      canvas.getContext('2d').drawImage(img,0,0,nw,nh);
+      cb(canvas.toDataURL('image/jpeg',0.75));
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+// 保存照片到 IndexedDB，返回引用 ID（photo:xxx）
+async function savePhotoToIDB(base64){
+  const id='photo:'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+  await PHOTO_IDB.put(id.slice(6),base64);
+  return id;
+}
+
 function loadAll(){
   const arc=rLS('plant_archive',{plants:[],batches:[]});
   return{
@@ -241,13 +310,18 @@ function loadAll(){
   };
 }
 function saveAll(db){
-  wLS(SK,db.plants);
+  // 照片以 IndexedDB 引用 ID 存储，base64 不写入 localStorage（防超限丢数据）
+  const stripPhoto=p=>({...p,photo:PHOTO_IDB.isRef(p.photo)?p.photo:''});
+  wLS(SK,db.plants.map(stripPhoto));
   wLS('plant_cats',db.cats);
   wLS('lib_fert',db.lib.fert);
   wLS('lib_med',db.lib.med);
   wLS('lib_soil',db.lib.soil);
   wLS('lib_recipe',db.lib.recipe||[]);
-  wLS('plant_archive',db.archive);
+  wLS('plant_archive',{
+    plants:(db.archive?.plants||[]).map(stripPhoto),
+    batches:db.archive?.batches||[],
+  });
   wLS('lib_prop',db.prop);
 }
 
@@ -256,6 +330,20 @@ function saveAll(db){
 // ═══════════════════════════════════════════════
 const Ctx=createContext(null);
 function useApp(){return useContext(Ctx)}
+
+// 异步加载 IndexedDB 中的植物照片
+function PlantPhoto({src:rawSrc,style,className}){
+  const[src,setSrc]=useState(()=>rawSrc&&!PHOTO_IDB.isRef(rawSrc)?rawSrc:null);
+  useEffect(()=>{
+    if(!rawSrc){setSrc(null);return;}
+    if(!PHOTO_IDB.isRef(rawSrc)){setSrc(rawSrc);return;}
+    let cancelled=false;
+    PHOTO_IDB.get(rawSrc.slice(6)).then(d=>{if(!cancelled)setSrc(d||null);}).catch(()=>{});
+    return()=>{cancelled=true;};
+  },[rawSrc]);
+  if(!src)return null;
+  return<img src={src} style={style} className={className} alt=""/>;
+}
 
 // ═══════════════════════════════════════════════
 // 5. Toast
@@ -728,9 +816,11 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
   function handlePhoto(e){
     const file=e.target.files?.[0];if(!file)return;
     if(file.size>5*1024*1024){toast.show('⚠️ 图片超过5MB');return}
-    const reader=new FileReader();
-    reader.onload=ev=>updateDb(prev=>({...prev,plants:prev.plants.map(p=>p.id===plantId?{...p,photo:ev.target.result}:p)}));
-    reader.readAsDataURL(file);
+    compressPhoto(file,function(base64){
+      savePhotoToIDB(base64).then(function(id){
+        updateDb(function(prev){return{...prev,plants:prev.plants.map(function(p){return p.id===plantId?{...p,photo:id}:p;})};});
+      });
+    });
   }
 
   const wd=daysSince(lastLog(plant.waterLog));
@@ -751,7 +841,7 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           <div style={{flex:'0 0 calc(66% - 5px)',minWidth:0}}>
             {plant.photo
               ?<div style={{position:'relative',height:'100%',minHeight:120}}>
-                <img src={plant.photo} style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:12,display:'block'}} alt={plant.name}/>
+                <PlantPhoto src={plant.photo} style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:12,display:'block'}}/>
                 <label style={{position:'absolute',bottom:6,right:6,background:'rgba(0,0,0,.45)',borderRadius:'50%',width:26,height:26,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'white'}}>
                   📷<input type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
                 </label>
@@ -883,16 +973,6 @@ function TxtRow({label,fkey,ph,form,sf}){
       onChange={e=>setV(e.target.value)}
       onBlur={e=>sf(fkey,e.target.value)}/>
   </div>;
-}
-const GENUS_DB={'玫瑰':'蔷薇科 蔷薇属','月季':'蔷薇科 蔷薇属','蔷薇':'蔷薇科 蔷薇属','苹果':'蔷薇科 苹果属','梨':'蔷薇科 梨属','桃':'蔷薇科 桃属','李':'蔷薇科 李属','樱桃':'蔷薇科 李属','草莓':'蔷薇科 草莓属','枇杷':'蔷薇科 枇杷属','牡丹':'芍药科 芍药属','芍药':'芍药科 芍药属','山茶':'山茶科 山茶属','茶花':'山茶科 山茶属','杜鹃':'杜鹃花科 杜鹃属','蓝莓':'杜鹃花科 越橘属','绣球':'虎耳草科 绣球属','薰衣草':'唇形科 薰衣草属','薄荷':'唇形科 薄荷属','罗勒':'唇形科 罗勒属','迷迭香':'唇形科 迷迭香属','鼠尾草':'唇形科 鼠尾草属','百里香':'唇形科 百里香属','桂花':'木犀科 木犀属','茉莉':'木犀科 素馨属','绿萝':'天南星科 麒麟叶属','龟背竹':'天南星科 龟背竹属','吊兰':'天门冬科 吊兰属','虎皮兰':'天门冬科 虎尾兰属','橡皮树':'桑科 榕属','无花果':'桑科 榕属','蝴蝶兰':'兰科 蝴蝶兰属','石斛':'兰科 石斛属','多肉':'景天科（多科）','仙人掌':'仙人掌科','芦荟':'阿福花科 芦荟属','番茄':'茄科 番茄属','辣椒':'茄科 辣椒属','茄子':'茄科 茄属','黄瓜':'葫芦科 黄瓜属','南瓜':'葫芦科 南瓜属','西瓜':'葫芦科 西瓜属','生菜':'菊科 莴苣属','菊花':'菊科 菊属','向日葵':'菊科 向日葵属','大丽花':'菊科 大丽花属','韭菜':'石蒜科 葱属','葱':'石蒜科 葱属','大蒜':'石蒜科 葱属','水仙':'石蒜科 水仙属','柠檬':'芸香科 柑橘属','橙':'芸香科 柑橘属','金桔':'芸香科 金柑属','葡萄':'葡萄科 葡萄属','核桃':'胡桃科 胡桃属','竹':'禾本科 竹亚科','百合':'百合科 百合属','郁金香':'百合科 郁金香属','风信子':'百合科 风信子属','鸢尾':'鸢尾科 鸢尾属','芹菜':'伞形科 芹属','胡萝卜':'伞形科 胡萝卜属','豌豆':'豆科 豌豆属','大豆':'豆科 大豆属','菜豆':'豆科 菜豆属','菠菜':'苋科 菠菜属','芦笋':'天门冬科 天门冬属','马蹄金':'旋花科 马蹄金属','樱桃萝卜':'十字花科 萝卜属','萝卜':'十字花科 萝卜属','白菜':'十字花科 芸薹属','卷心菜':'十字花科 芸薹属'};
-function lookupGenus(name){
-  if(!name)return '';
-  const nl=name.trim().toLowerCase();
-  const keys=Object.keys(GENUS_DB);
-  for(const k of keys)if(k.toLowerCase()===nl)return GENUS_DB[k];
-  const sorted=keys.slice().sort((a,b)=>b.length-a.length);
-  for(const k of sorted){const kl=k.toLowerCase();if(nl.includes(kl)||kl.includes(nl))return GENUS_DB[k];}
-  return '';
 }
 const SMETHODS=['直播','穴盘育苗','营养钵','水培发芽','其他'];
 
@@ -1094,22 +1174,9 @@ function PlantForm({initPlant,onClose}){
 
   function handlePhoto(e){
     const file=e.target.files?.[0];if(!file)return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const img=new Image();
-      img.onload=()=>{
-        const canvas=document.createElement('canvas');
-        const maxSize=640,w=img.width,h=img.height;
-        let nw=w,nh=h;
-        if(w>h){if(w>maxSize){nh=Math.round(h*maxSize/w);nw=maxSize;}}
-        else{if(h>maxSize){nw=Math.round(w*maxSize/h);nh=maxSize;}}
-        canvas.width=nw;canvas.height=nh;
-        canvas.getContext('2d').drawImage(img,0,0,nw,nh);
-        sf('photo',canvas.toDataURL('image/jpeg',0.75));
-      };
-      img.src=ev.target.result;
-    };
-    reader.readAsDataURL(file);
+    compressPhoto(file,function(base64){
+      savePhotoToIDB(base64).then(function(id){sf('photo',id);});
+    });
   }
 
   function save(){
@@ -1124,7 +1191,6 @@ function PlantForm({initPlant,onClose}){
   }
 
   const allCats=[...new Set([...db.cats,...db.plants.map(p=>p.category).filter(Boolean)])];
-  const genusHint=lookupGenus(form.name);
   const secBox=(bg='rgba(185,215,165,0.25)')=>({background:bg,borderRadius:12,padding:'12px 13px',display:'flex',flexDirection:'column',gap:8});
   const tabStyle=(active)=>({flex:1,padding:'6px',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:11,
     background:active?'rgba(160,200,130,0.4)':'rgba(180,210,160,0.15)',
@@ -1153,8 +1219,7 @@ function PlantForm({initPlant,onClose}){
           {formTab==='basic'&&<div style={{display:'flex',flexDirection:'column',gap:10}}>
             <div>
               <label className="field-label">植物名称 *</label>
-              <input className="input" placeholder="填写后自动推荐护理周期和科属" defaultValue={form.name} onBlur={e=>handleName(e.target.value)}/>
-              {genusHint&&<div style={{fontSize:11,color:'#5a8040',padding:'4px 8px',background:'rgba(150,200,100,0.15)',borderRadius:6,marginTop:4}}>🌿 科属参考：{genusHint}</div>}
+              <input className="input" placeholder="填写后自动推荐护理周期" defaultValue={form.name} onBlur={e=>handleName(e.target.value)}/>
             </div>
             <div>
               <label className="field-label">品种</label>
@@ -1176,11 +1241,11 @@ function PlantForm({initPlant,onClose}){
               <label className="field-label">植物照片</label>
               {form.photo
                 ?<div style={{display:'flex',alignItems:'center',gap:10}}>
-                  <img src={form.photo} style={{width:64,height:64,objectFit:'cover',borderRadius:9,border:'1px solid rgba(150,185,130,0.4)'}}/>
+                  <PlantPhoto src={form.photo} style={{width:64,height:64,objectFit:'cover',borderRadius:9,border:'1px solid rgba(150,185,130,0.4)'}}/>
                   <label style={{flex:1,padding:8,borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(180,210,160,0.2)',border:'1px solid rgba(150,185,130,0.4)',color:'#4a7040',textAlign:'center'}}>
                     重新拍摄 / 选择<input type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
                   </label>
-                  <button style={{padding:'8px 10px',borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(220,180,160,0.2)',border:'1px solid rgba(190,140,120,0.4)',color:'#7a4030'}} onClick={()=>sf('photo','')}>删除</button>
+                  <button style={{padding:'8px 10px',borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(220,180,160,0.2)',border:'1px solid rgba(190,140,120,0.4)',color:'#7a4030'}} onClick={()=>{if(PHOTO_IDB.isRef(form.photo))PHOTO_IDB.del(form.photo.slice(6));sf('photo','');}}>删除</button>
                 </div>
                 :<label style={{width:'100%',padding:10,borderRadius:10,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(180,210,160,0.15)',border:'1.5px dashed rgba(150,185,130,0.5)',color:'#6a8858',display:'block',textAlign:'center'}}>
                   📷 上传照片（自动压缩）<input type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
@@ -1471,7 +1536,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
             return(
               <div key={p.id} className="plant-card-row" onClick={()=>openDetail(p.id)}>
                 {p.photo
-                  ?<img src={p.photo} style={{width:52,height:52,borderRadius:10,objectFit:'cover',flexShrink:0,border:'1px solid rgba(150,185,130,.3)'}}/>
+                  ?<PlantPhoto src={p.photo} style={{width:52,height:52,borderRadius:10,objectFit:'cover',flexShrink:0,border:'1px solid rgba(150,185,130,.3)'}}/>
                   :<div style={{width:52,height:52,borderRadius:10,flexShrink:0,background:'rgba(180,210,160,.2)',border:'1px solid rgba(150,185,130,.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>{plantEmoji(p)}</div>
                 }
                 <div style={{flex:1,minWidth:0}}>
@@ -2182,38 +2247,54 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
   // 建卡：跳转到植物表单页
   function graduateBatch(){
     const isCutting=['cutting','graft','division','layering'].includes(batch.method);
+    // 从母株植物卡获取名称和品种（如有关联）
+    const parentPlant=batch.parentId?db.plants.find(function(p){return p.id===batch.parentId;}):null;
+    const pName=parentPlant?parentPlant.name:(batch.parentName||'');
+    const pVariety=parentPlant?(parentPlant.variety||''):'';
+    // 合并基质和备注
+    const medPart=batch.medium?('基质：'+batch.medium):'';
+    const notePart=batch.note||'';
+    const combinedNotes=[medPart,notePart].filter(Boolean).join('\n');
     onGraduate({
       mode:'batch', batch,
       initData:{
-        name:batch.parentName||'',
+        name:pName,
+        variety:pVariety,
         source:batch.method==='seed'?'seed':batch.method==='bulb'?'bulb':batch.method==='cutting'?'cutting':batch.method==='graft'?'graft':batch.method==='division'?'division':'other',
         sowDate:batch.method==='seed'?batch.date:'',
         opDate:isCutting?batch.date:'',
         buyDate:batch.method==='bulb'?batch.date:'',
-        // 批次信息同步到植物卡
-        buyFrom:isCutting?(batch.parentName||''):'',   // 插穗/接穗/母株来源
-        opNotes:isCutting?(batch.note||''):'',          // 扦插/嫁接/分株备注
-        sowMethod:batch.method==='seed'?(batch.note||''):'', // 播种备注
+        buyFrom:isCutting?(batch.parentName||''):'',
+        opNotes:isCutting?combinedNotes:'',
+        sowMethod:batch.method==='seed'?combinedNotes:'',
+        prePlantNotes:batch.method==='bulb'&&medPart?medPart:'',
       }
     });
   }
   function graduateSingle(idx){
     const s=seedlings[idx];
     const isCutting=['cutting','graft','division','layering'].includes(batch.method);
+    const parentPlant=batch.parentId?db.plants.find(function(p){return p.id===batch.parentId;}):null;
+    const pName=parentPlant?parentPlant.name:(batch.parentName||'');
+    const pVariety=parentPlant?(parentPlant.variety||''):'';
+    const medPart=batch.medium?('基质：'+batch.medium):'';
+    const notePart=batch.note||'';
+    const combinedNotes=[medPart,notePart].filter(Boolean).join('\n');
     onGraduate({
       mode:'single', batch, seedlingIdx:idx,
       initData:{
-        name:batch.parentName||'',
+        name:pName,
+        variety:pVariety,
         source:batch.method==='seed'?'seed':batch.method==='bulb'?'bulb':batch.method==='cutting'?'cutting':batch.method==='graft'?'graft':batch.method==='division'?'division':'other',
         sowDate:batch.method==='seed'?batch.date:'',
         opDate:isCutting?batch.date:'',
         buyDate:batch.method==='bulb'?batch.date:'',
         germDate:batch.method==='seed'&&s.successDate?s.successDate:'',
         rootDate:['cutting','graft','layering'].includes(batch.method)&&s.successDate?s.successDate:'',
-        // 批次信息同步到植物卡
         buyFrom:isCutting?(batch.parentName||''):'',
-        opNotes:isCutting?(batch.note||''):'',
-        sowMethod:batch.method==='seed'?(batch.note||''):'',
+        opNotes:isCutting?combinedNotes:'',
+        sowMethod:batch.method==='seed'?combinedNotes:'',
+        prePlantNotes:batch.method==='bulb'&&medPart?medPart:'',
       }
     });
   }
@@ -2357,29 +2438,15 @@ function PlantFormBreeding({initPlant,onSaved,onClose}){
   function handleName(v){setForm(f=>({...f,name:v,...autoInt(v)}));}
   function handlePhoto(e){
     const file=e.target.files?.[0];if(!file)return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const img=new Image();
-      img.onload=()=>{
-        const canvas=document.createElement('canvas');
-        const maxSize=640,w=img.width,h=img.height;
-        let nw=w,nh=h;
-        if(w>h){if(w>maxSize){nh=Math.round(h*maxSize/w);nw=maxSize;}}
-        else{if(h>maxSize){nw=Math.round(w*maxSize/h);nh=maxSize;}}
-        canvas.width=nw;canvas.height=nh;
-        canvas.getContext('2d').drawImage(img,0,0,nw,nh);
-        sf('photo',canvas.toDataURL('image/jpeg',0.75));
-      };
-      img.src=ev.target.result;
-    };
-    reader.readAsDataURL(file);
+    compressPhoto(file,function(base64){
+      savePhotoToIDB(base64).then(function(id){sf('photo',id);});
+    });
   }
   function save(){
     if(!form.name.trim()){toast.show('⚠️ 请填写植物名称');return;}
     onSaved({...form});
   }
   const allCats=[...new Set([...db.cats,...db.plants.map(p=>p.category).filter(Boolean)])];
-  const genusHint=lookupGenus(form.name);
   const secBox=(bg='rgba(185,215,165,0.25)')=>({background:bg,borderRadius:12,padding:'12px 13px',display:'flex',flexDirection:'column',gap:8});
   const tabStyle=(active)=>({flex:1,padding:'6px',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:11,
     background:active?'rgba(160,200,130,0.4)':'rgba(180,210,160,0.15)',
@@ -2403,7 +2470,6 @@ function PlantFormBreeding({initPlant,onSaved,onClose}){
             <div>
               <label className="field-label">植物名称 *</label>
               <input className="input" placeholder="如：玫瑰、番茄…" defaultValue={form.name} onBlur={e=>handleName(e.target.value)}/>
-              {genusHint&&<div style={{fontSize:11,color:'#5a8040',padding:'4px 8px',background:'rgba(150,200,100,0.15)',borderRadius:6,marginTop:4}}>🌿 科属参考：{genusHint}</div>}
             </div>
             <div><label className="field-label">品种</label>
               <input className="input" placeholder="品种名…" defaultValue={form.variety} onBlur={e=>sf('variety',e.target.value)}/></div>
@@ -2421,11 +2487,11 @@ function PlantFormBreeding({initPlant,onSaved,onClose}){
             <div><label className="field-label">植物照片</label>
               {form.photo
                 ?<div style={{display:'flex',alignItems:'center',gap:10}}>
-                  <img src={form.photo} style={{width:64,height:64,objectFit:'cover',borderRadius:9,border:'1px solid rgba(150,185,130,0.4)'}}/>
+                  <PlantPhoto src={form.photo} style={{width:64,height:64,objectFit:'cover',borderRadius:9,border:'1px solid rgba(150,185,130,0.4)'}}/>
                   <label style={{flex:1,padding:8,borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(180,210,160,0.2)',border:'1px solid rgba(150,185,130,0.4)',color:'#4a7040',textAlign:'center'}}>
                     更换照片<input type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
                   </label>
-                  <button style={{padding:'8px 10px',borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(220,180,160,0.2)',border:'1px solid rgba(190,140,120,0.4)',color:'#7a4030'}} onClick={()=>sf('photo','')}>删除</button>
+                  <button style={{padding:'8px 10px',borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(220,180,160,0.2)',border:'1px solid rgba(190,140,120,0.4)',color:'#7a4030'}} onClick={()=>{if(PHOTO_IDB.isRef(form.photo))PHOTO_IDB.del(form.photo.slice(6));sf('photo','');}}>删除</button>
                 </div>
                 :<label style={{width:'100%',padding:10,borderRadius:10,cursor:'pointer',fontFamily:'inherit',fontSize:11,background:'rgba(180,210,160,0.15)',border:'1.5px dashed rgba(150,185,130,0.5)',color:'#6a8858',display:'block',textAlign:'center'}}>
                   📷 上传照片（自动压缩）<input type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
@@ -2799,7 +2865,7 @@ function ArchivePage({onClose}){
             :arc.plants.slice().reverse().map(p=>(
               <div key={p.id} className="card" style={{marginBottom:10}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-                  {p.photo?<img src={p.photo} style={{width:44,height:44,objectFit:'cover',borderRadius:8,flexShrink:0}}/>
+                  {p.photo?<PlantPhoto src={p.photo} style={{width:44,height:44,objectFit:'cover',borderRadius:8,flexShrink:0}}/>
                     :<div style={{width:44,height:44,borderRadius:8,background:'rgba(180,210,160,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0}}>🪴</div>}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:15,fontWeight:700,color:'#2e4a22'}}>{p.name}{p.variety&&<span style={{fontSize:12,fontWeight:400,color:'#5a7848',marginLeft:6}}>{p.variety}</span>}</div>
@@ -3051,8 +3117,23 @@ function InventoryTab(){
   if(view?.type==='add_soil')return<SoilForm initItem={null} onClose={()=>setView(null)}/>;
   if(view?.type==='add_recipe')return<RecipeForm initItem={null} onClose={()=>setView(null)}/>;
   if(view?.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
-  function exportData(){
-    const data={plants:db.plants,fert:db.lib.fert,med:db.lib.med,soil:db.lib.soil,recipe:db.lib.recipe||[],prop:db.prop,archive:db.archive,exportTime:new Date().toISOString()};
+  async function exportData(){
+    // 导出前从 IndexedDB 取回照片，并入 JSON（下载文件不受 localStorage 大小限制）
+    async function withPhotos(plants){
+      return Promise.all((plants||[]).map(async function(p){
+        if(!p.photo||!PHOTO_IDB.isRef(p.photo))return p;
+        const data=await PHOTO_IDB.get(p.photo.slice(6));
+        return data?{...p,photo:data}:p;
+      }));
+    }
+    const plantsOut=await withPhotos(db.plants);
+    const archivePlantsOut=await withPhotos((db.archive||{}).plants);
+    const data={
+      plants:plantsOut,fert:db.lib.fert,med:db.lib.med,soil:db.lib.soil,
+      recipe:db.lib.recipe||[],prop:db.prop,
+      archive:{...db.archive,plants:archivePlantsOut},
+      exportTime:new Date().toISOString()
+    };
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download='植物志备份_'+toDay()+'.json';a.click();
@@ -3062,13 +3143,31 @@ function InventoryTab(){
   function handleImport(e){
     const file=e.target.files?.[0];if(!file)return;
     const reader=new FileReader();
-    reader.onload=ev=>{
+    reader.onload=function(ev){
       try{
         const data=JSON.parse(ev.target.result);
         if(!Array.isArray(data.plants))throw new Error('格式不正确');
         if(!confirm('将恢复 '+data.plants.length+' 株植物数据，现有数据将被覆盖。确认？'))return;
-        updateDb(()=>({plants:data.plants||[],cats:data.cats||DEFAULT_CATS,lib:{fert:data.fert||[],med:data.med||[],soil:data.soil||[],recipe:data.recipe||[]},archive:data.archive||{plants:[],batches:[]},prop:data.prop||[]}));
-        toast.show('✅ 数据恢复成功');
+        // 将备份中的 base64 照片迁移到 IndexedDB
+        async function migrateAndLoad(plants){
+          return Promise.all((plants||[]).map(async function(p){
+            if(!p.photo||PHOTO_IDB.isRef(p.photo)||!p.photo.startsWith('data:'))return p;
+            const id=await savePhotoToIDB(p.photo);
+            return{...p,photo:id};
+          }));
+        }
+        Promise.all([migrateAndLoad(data.plants),migrateAndLoad((data.archive||{}).plants)]).then(function(res){
+          const migratedPlants=res[0];
+          const migratedArchivePlants=res[1];
+          updateDb(function(){return{
+            plants:migratedPlants,
+            cats:data.cats||DEFAULT_CATS,
+            lib:{fert:data.fert||[],med:data.med||[],soil:data.soil||[],recipe:data.recipe||[]},
+            archive:{...(data.archive||{plants:[],batches:[]}),plants:migratedArchivePlants},
+            prop:data.prop||[]
+          };});
+          toast.show('✅ 数据恢复成功');
+        });
       }catch(err){alert('导入失败：'+err.message);}
     };
     reader.readAsText(file);e.target.value='';
