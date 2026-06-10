@@ -1051,31 +1051,29 @@ function useTabSwipe(tabs,currentTab,setTab){
 }
 
 
+// SourcePicker 提升到模块顶层，避免在 GrowthTabContent 内定义子组件导致 iOS 崩溃
+function SourcePicker({label,fkey,ph,form,sf}){
+  const{db}=useApp();
+  const plantOpts=db.plants.map(function(p){return p.name+(p.variety?' '+p.variety:'');});
+  return<div>
+    <label className="field-label">{label}</label>
+    {plantOpts.length>0&&<select className="input" style={{marginBottom:4}}
+      value={plantOpts.includes(form[fkey])?form[fkey]:''}
+      onChange={function(e){if(e.target.value)sf(fkey,e.target.value);}}>
+      <option value="">— 从植物列表选择 —</option>
+      {plantOpts.map(function(n,i){return<option key={i} value={n}>{n}</option>;})}
+    </select>}
+    <input key={fkey+'-'+form[fkey]} className="input" style={{marginBottom:8}} placeholder={ph}
+      defaultValue={form[fkey]} onBlur={function(e){sf(fkey,e.target.value);}}/>
+  </div>;
+}
 function GrowthTabContent({form,sf,secBox}){
   const src=form.source;
-  const DR=({label,fkey})=><DateRow label={label} fkey={fkey} form={form} sf={sf}/>;
-  const TR=({label,fkey,ph})=><TaRow label={label} fkey={fkey} ph={ph} form={form} sf={sf}/>;
-  const TX=({label,fkey,ph})=><TxtRow label={label} fkey={fkey} ph={ph} form={form} sf={sf}/>;
-  // 带植物下拉的来源选择器（供插穗/砧木/母株来源使用）
-  function SourcePicker({label,fkey,ph}){
-    const plantOpts=db.plants.map(p=>p.name+(p.variety?' '+p.variety:''));
-    return <div>
-      <label className="field-label">{label}</label>
-      {plantOpts.length>0&&<select className="input" style={{marginBottom:4}}
-        value={plantOpts.includes(form[fkey])?form[fkey]:''}
-        onChange={e=>{if(e.target.value)sf(fkey,e.target.value);}}>
-        <option value="">— 从植物列表选择 —</option>
-        {plantOpts.map((n,i)=><option key={i} value={n}>{n}</option>)}
-      </select>}
-      <input key={fkey+'-'+form[fkey]} className="input" style={{marginBottom:8}} placeholder={ph}
-        defaultValue={form[fkey]} onBlur={e=>sf(fkey,e.target.value)}/>
-    </div>;
-  }
   const envBtns=<div style={{display:'flex',gap:7}}>
     {['indoor','outdoor'].map(ev=>(
       <button key={ev} style={{flex:1,padding:'7px',borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:12,
         background:form.indoorStart===ev?'rgba(155,195,125,0.45)':'rgba(180,210,160,0.12)',
-        border:`1px solid ${form.indoorStart===ev?'rgba(130,175,100,0.6)':'rgba(150,185,130,0.3)'}`,
+        border:`1px solid ${form.indoorStart===ev?'rgba(130,175,100,0.6)':'rgba(150,185,130,0.3)'}`  ,
         color:form.indoorStart===ev?'#2e4a22':'#6a8858'}}
         onClick={()=>sf('indoorStart',ev)}>{ev==='indoor'?'🏠 室内':'🌿 室外'}</button>
     ))}
@@ -1083,8 +1081,8 @@ function GrowthTabContent({form,sf,secBox}){
   return<div style={{display:'flex',flexDirection:'column',gap:10}}>
     {src==='seed'&&<>
       <div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>🌱 播种</div>
-        <DR label="播种日期" fkey="sowDate"/>
-        <TX label="种子来源" fkey="seedSource" ph="自留种/购自…"/>
+        <DateRow label="播种日期" fkey="sowDate" form={form} sf={sf}/>
+        <TxtRow label="种子来源" fkey="seedSource" ph="自留种/购自…" form={form} sf={sf}/>
         <div><label className="field-label">播种方式</label>
           <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
             {SMETHODS.map(m=><button key={m} style={{padding:'4px 10px',borderRadius:16,cursor:'pointer',fontFamily:'inherit',fontSize:11,
@@ -1097,65 +1095,65 @@ function GrowthTabContent({form,sf,secBox}){
         <div><label className="field-label">种植环境</label>{envBtns}</div>
       </div>
       <div style={secBox('rgba(200,225,170,0.3)')}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>🌿 发芽</div>
-        <DR label="发芽日期" fkey="germDate"/>
-        <TR label="发芽备注" fkey="germNotes" ph="发芽率、情况…"/>
+        <DateRow label="发芽日期" fkey="germDate" form={form} sf={sf}/>
+        <TaRow label="发芽备注" fkey="germNotes" ph="发芽率、情况…" form={form} sf={sf}/>
       </div>
     </>}
     {['sapling','mature','bulb','other'].includes(src)&&
       <div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>
         {src==='sapling'?'🛒 购入苗木':src==='mature'?'🛒 购入成株':src==='bulb'?'🧅 购入球根/种球':'🛒 来源信息'}
       </div>
-        <DR label="购入日期" fkey="buyDate"/>
-        <TX label="购入来源" fkey="buyFrom" ph="苗圃、平台…"/>
-        <TX label="规格描述" fkey="buySpec" ph="苗高、地径…"/>
-        <TX label="购入价格" fkey="buyPrice" ph="如：¥88…"/>
+        <DateRow label="购入日期" fkey="buyDate" form={form} sf={sf}/>
+        <TxtRow label="购入来源" fkey="buyFrom" ph="苗圃、平台…" form={form} sf={sf}/>
+        <TxtRow label="规格描述" fkey="buySpec" ph="苗高、地径…" form={form} sf={sf}/>
+        <TxtRow label="购入价格" fkey="buyPrice" ph="如：¥88…" form={form} sf={sf}/>
       </div>
     }
     {src==='cutting'&&<div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>✂️ 扦插信息</div>
-      <DR label="扦插日期" fkey="opDate"/>
-      <SourcePicker label="插穗来源" fkey="buyFrom" ph="或手填母株名称…"/>
-      <TR label="扦插备注" fkey="opNotes" ph="基质、处理方式…"/>
-      <DR label="生根/成活日期" fkey="rootDate"/>
+      <DateRow label="扦插日期" fkey="opDate" form={form} sf={sf}/>
+      <SourcePicker label="插穗来源" fkey="buyFrom" ph="或手填母株名称…" form={form} sf={sf}/>
+      <TaRow label="扦插备注" fkey="opNotes" ph="基质、处理方式…" form={form} sf={sf}/>
+      <DateRow label="生根/成活日期" fkey="rootDate" form={form} sf={sf}/>
       <div><label className="field-label">种植环境</label>{envBtns}</div>
     </div>}
     {src==='graft'&&<div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>🔗 嫁接信息</div>
-      <DR label="嫁接日期" fkey="opDate"/>
-      <SourcePicker label="砧木来源" fkey="buyFrom" ph="或手填砧木来源…"/>
-      <TR label="嫁接备注" fkey="opNotes" ph="接穗品种、方法…"/>
-      <DR label="成活确认日期" fkey="rootDate"/>
+      <DateRow label="嫁接日期" fkey="opDate" form={form} sf={sf}/>
+      <SourcePicker label="砧木来源" fkey="buyFrom" ph="或手填砧木来源…" form={form} sf={sf}/>
+      <TaRow label="嫁接备注" fkey="opNotes" ph="接穗品种、方法…" form={form} sf={sf}/>
+      <DateRow label="成活确认日期" fkey="rootDate" form={form} sf={sf}/>
       <div><label className="field-label">种植环境</label>{envBtns}</div>
     </div>}
     {src==='division'&&<div style={secBox()}><div style={{fontSize:11,fontWeight:700,color:'#5a7848',marginBottom:4}}>🌾 分株信息</div>
-      <DR label="分株日期" fkey="opDate"/>
-      <SourcePicker label="母株来源" fkey="buyFrom" ph="或手填母株来源…"/>
-      <TR label="分株备注" fkey="opNotes" ph="数量、处理…"/>
+      <DateRow label="分株日期" fkey="opDate" form={form} sf={sf}/>
+      <SourcePicker label="母株来源" fkey="buyFrom" ph="或手填母株来源…" form={form} sf={sf}/>
+      <TaRow label="分株备注" fkey="opNotes" ph="数量、处理…" form={form} sf={sf}/>
     </div>}
     {['seed','cutting','graft'].includes(src)&&form.indoorStart==='indoor'&&
       <div style={secBox('rgba(255,235,150,0.25)')}><div style={{fontSize:11,fontWeight:700,color:'#8a7a30',marginBottom:4}}>🌤️ 炼苗</div>
-        <DR label="开始炼苗日期" fkey="hardeningDate"/>
+        <DateRow label="开始炼苗日期" fkey="hardeningDate" form={form} sf={sf}/>
         <div><label className="field-label">计划炼苗天数</label>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <input type="number" min={1} max={60} className="input" style={{width:80,textAlign:'center',fontSize:15,fontWeight:700,color:'#8a7a30'}} defaultValue={form.hardeningDays||7} onBlur={e=>sf('hardeningDays',+e.target.value||7)}/>
             <span style={{fontSize:13,color:'#6a5a28'}}>天</span>
           </div>
         </div>
-        <TR label="炼苗备注" fkey="hardeningNotes" ph="每日室外时长…"/>
+        <TaRow label="炼苗备注" fkey="hardeningNotes" ph="每日室外时长…" form={form} sf={sf}/>
       </div>
     }
     {['seed','sapling','cutting','division','graft'].includes(src)&&
       <div style={secBox('rgba(175,215,185,0.3)')}><div style={{fontSize:11,fontWeight:700,color:'#5a9068',marginBottom:4}}>🪴 假植（临时上盆）</div>
-        <DR label="假植日期" fkey="prePlantDate"/>
-        <TR label="假植备注" fkey="prePlantNotes" ph="容器、基质…"/>
+        <DateRow label="假植日期" fkey="prePlantDate" form={form} sf={sf}/>
+        <TaRow label="假植备注" fkey="prePlantNotes" ph="容器、基质…" form={form} sf={sf}/>
       </div>
     }
     <div style={secBox('rgba(165,210,200,0.3)')}><div style={{fontSize:11,fontWeight:700,color:'#5a9888',marginBottom:4}}>🔄 移栽</div>
-      <DR label="移栽日期" fkey="transplantDate"/>
-      <TR label="移栽备注" fkey="transplantNotes" ph="换盆、换土…"/>
+      <DateRow label="移栽日期" fkey="transplantDate" form={form} sf={sf}/>
+      <TaRow label="移栽备注" fkey="transplantNotes" ph="换盆、换土…" form={form} sf={sf}/>
     </div>
     <div style={secBox('rgba(165,195,220,0.25)')}><div style={{fontSize:11,fontWeight:700,color:'#5a7898',marginBottom:4}}>📍 定植（最终位置）</div>
-      <DR label="定植日期" fkey="finalPlantDate"/>
-      <TX label="定植位置" fkey="finalPlantLocation" ph="后院东侧、阳台南面…"/>
-      <TR label="定植备注" fkey="finalPlantNotes" ph="盆号、土壤配方…"/>
+      <DateRow label="定植日期" fkey="finalPlantDate" form={form} sf={sf}/>
+      <TxtRow label="定植位置" fkey="finalPlantLocation" ph="后院东侧、阳台南面…" form={form} sf={sf}/>
+      <TaRow label="定植备注" fkey="finalPlantNotes" ph="盆号、土壤配方…" form={form} sf={sf}/>
     </div>
   </div>;
 }
