@@ -857,12 +857,9 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
     updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
       if(p.id!==pid)return p;
       const pauseKey=type==='water'?'waterPause':'fertPause';
-      const logKey=type==='water'?'waterLog':'fertLog';
-      const arr=[...(p[logKey]||[]),{date:toDay(),skip:true,note:'暂停结束'}];
-      arr.sort((a,b)=>a.date.localeCompare(b.date));
-      return{...p,[pauseKey]:null,[logKey]:arr};
+      return{...p,[pauseKey]:null};
     })}));
-    toast.show('▶ 已恢复护理，周期从今天重新计算');
+    toast.show('▶ 已恢复护理');
   }
 
   return(
@@ -1991,12 +1988,9 @@ function CalendarTab(){
     updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
       if(p.id!==pid)return p;
       const pauseKey=type==='water'?'waterPause':'fertPause';
-      const logKey=type==='water'?'waterLog':'fertLog';
-      const arr=[...(p[logKey]||[]),{date:toDay(),skip:true,note:'暂停结束'}];
-      arr.sort((a,b)=>a.date.localeCompare(b.date));
-      return{...p,[pauseKey]:null,[logKey]:arr};
+      return{...p,[pauseKey]:null};
     })}));
-    toast.show('▶ 已恢复，周期从今天重新计算');
+    toast.show('▶ 已恢复护理');
   }
 
   function PausedChip({t}){
