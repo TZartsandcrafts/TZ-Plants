@@ -1926,12 +1926,16 @@ function CalendarTab(){
 
   // 任务列表
   function buildTasks(){
-    const overdue=[],todayT=[],soon1=[],soon2=[],soon3=[],unlogged=[];
+    const overdue=[],todayT=[],soon1=[],soon2=[],soon3=[],unlogged=[],paused=[];
     db.plants.forEach(p=>{
       ['water','fert'].forEach(type=>{
         const interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
         if(interval>=900)return;
-        if(getIsPaused(p,type))return; // 暂停中：不生成任务
+        if(getIsPaused(p,type)){
+          const pause=type==='water'?p.waterPause:p.fertPause;
+          paused.push({type,plant:p,pause});
+          return;
+        }
         const ld=getEffLogDate(p,type);
         const ds=ld!=null?daysSince(ld):null;
         if(ds===null){unlogged.push({type,plant:p});return;}
@@ -1944,7 +1948,7 @@ function CalendarTab(){
       });
     });
     overdue.sort((a,b)=>b.overdueDays-a.overdueDays);
-    return{overdue,todayT,soon1,soon2,soon3,unlogged};
+    return{overdue,todayT,soon1,soon2,soon3,unlogged,paused};
   }
 
   function skipTask(pid,type){
@@ -1982,6 +1986,32 @@ function CalendarTab(){
   };
   window.__skipTask=function(pid,type){skipTask(pid,type);};
 
+  // 从任务页恢复暂停：清除 pause 并写入 skip 日志作为新周期起点
+  function resumePauseInTask(pid,type){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==pid)return p;
+      const pauseKey=type==='water'?'waterPause':'fertPause';
+      const logKey=type==='water'?'waterLog':'fertLog';
+      const arr=[...(p[logKey]||[]),{date:toDay(),skip:true,note:'暂停结束'}];
+      arr.sort((a,b)=>a.date.localeCompare(b.date));
+      return{...p,[pauseKey]:null,[logKey]:arr};
+    })}));
+    toast.show('▶ 已恢复，周期从今天重新计算');
+  }
+
+  function PausedChip({t}){
+    const endLabel=t.pause&&t.pause.end?('至 '+fmtDate(t.pause.end)):'无限期';
+    return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(200,215,240,0.35)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(100,140,210,0.25)'}}>
+      <span style={{fontSize:18}}>{TYPE_ICON[t.type]}</span>
+      <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>navToPlant(t.plant.id,'calendar')}>
+        <div style={{fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.plant.name}{t.plant.variety?' · '+t.plant.variety:''}</div>
+        <div style={{fontSize:11,color:'#5a78a8',marginTop:2}}>{'⏸ 暂停中  ' + endLabel}</div>
+      </div>
+      <button onClick={()=>resumePauseInTask(t.plant.id,t.type)}
+        style={{padding:'5px 10px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,background:'rgba(100,140,200,.2)',border:'1px solid rgba(100,140,200,.4)',color:'#3a5a88',whiteSpace:'nowrap'}}>恢复</button>
+    </div>;
+  }
+
   function TaskChip({t,showOverdue}){
     return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,0.3)'}}>
       <span style={{fontSize:18}}>{TYPE_ICON[t.type]}</span>
@@ -2017,7 +2047,7 @@ function CalendarTab(){
     </div>;
   }
 
-  const{overdue,todayT,soon1,soon2,soon3,unlogged}=buildTasks();
+  const{overdue,todayT,soon1,soon2,soon3,unlogged,paused}=buildTasks();
   const d1=new Date(todayD);d1.setDate(d1.getDate()+1);
   const d2=new Date(todayD);d2.setDate(d2.getDate()+2);
   const d3=new Date(todayD);d3.setDate(d3.getDate()+3);
@@ -2089,6 +2119,15 @@ function CalendarTab(){
         <DaySection label={`明天 ${fmtShort(d1)}`} tasks={soon1} urgent={false}/>
         <DaySection label={fmtShort(d2)} tasks={soon2} urgent={false}/>
         <DaySection label={fmtShort(d3)} tasks={soon3} urgent={false}/>
+        {paused.length>0&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#5a78a8',marginBottom:8,paddingLeft:2}}>
+            {'⏸ 暂停中'}
+            <span style={{fontWeight:400,color:'#9aaa88',marginLeft:6}}>{paused.length+'项'}</span>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:7}}>
+            {paused.map((t,i)=><PausedChip key={i} t={t}/>)}
+          </div>
+        </div>}
         <DaySection label="从未记录" tasks={unlogged} urgent={false}/>
 
         {overdue.length===0&&todayT.length===0&&soon1.length===0&&unlogged.length===0&&(
