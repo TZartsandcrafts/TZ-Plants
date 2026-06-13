@@ -151,6 +151,7 @@ const BLANK=()=>({
   finalPlantDate:'',finalPlantNotes:'',finalPlantLocation:'',
   wi:7,fi:14,mi:30,medMode:'symptom',
   waterLog:[],fertLog:[],medLog:[],noteLog:[],
+  waterPause:null,fertPause:null,
 });
 
 const STATUS_MAP={
@@ -195,21 +196,45 @@ function fmtDate(s){if(!s)return '—';const m=s.match(/^(\d{4})-(\d{2})-(\d{2})
 function daysSince(s){if(!s)return null;const m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return null;return Math.floor((Date.now()-new Date(+m[1],+m[2]-1,+m[3]))/86400000)}
 function lastLog(log){return log?.length?log[log.length-1].date:null}
 function autoInt(name){for(const r of AUTO_INT)if(r.k.some(k=>name.includes(k)))return{wi:r.w,fi:r.f};return{wi:7,fi:14}}
+// ── 暂停状态辅助函数 ──
+// 判断某植物的水/肥操作当前是否处于暂停期
+function getIsPaused(p,type){
+  var pause=type==='water'?p.waterPause:p.fertPause;
+  if(!pause)return false;
+  if(!pause.end)return true;
+  return toDay()<=pause.end;
+}
+// 获取有效的"上次操作"日期（暂停期内返回null；暂停到期后返回pause.end或实际日志）
+function getEffLogDate(p,type){
+  var pause=type==='water'?p.waterPause:p.fertPause;
+  var log=type==='water'?p.waterLog:p.fertLog;
+  if(!pause)return lastLog(log);
+  var today=toDay();
+  if(!pause.end||today<=pause.end)return null;
+  var ld=lastLog(log);
+  return(ld&&ld>pause.end)?ld:pause.end;
+}
+
 function careAlerts(p){
   const a=[];
-  const lw=lastLog(p.waterLog);
-  const wd=lw!=null?daysSince(lw):null;
-  const wi=parseInt(p.wi)||7;
-  // 从未记录过则不报警；记录过才检查间隔
-  if(lw!=null&&wd!=null&&wd>=wi)a.push({type:'water',icon:'💧',label:`浇水（已${wd}天）`,color:'#1a5a99'});
-  const lf=lastLog(p.fertLog);
-  const fd=lf!=null?daysSince(lf):null;
-  const fi=parseInt(p.fi)||14;
-  if(lf!=null&&fd!=null&&fd>=fi)a.push({type:'fert',icon:'🌿',label:`施肥（已${fd}天）`,color:'#2a7020'});
+  // 浇水：暂停中则不报警
+  if(!getIsPaused(p,'water')){
+    const lw=getEffLogDate(p,'water');
+    const wd=lw!=null?daysSince(lw):null;
+    const wi=parseInt(p.wi)||7;
+    if(lw!=null&&wd!=null&&wd>=wi)a.push({type:'water',icon:'💧',label:'浇水（已'+wd+'天）',color:'#1a5a99'});
+  }
+  // 施肥：暂停中则不报警
+  if(!getIsPaused(p,'fert')){
+    const lf=getEffLogDate(p,'fert');
+    const fd=lf!=null?daysSince(lf):null;
+    const fi=parseInt(p.fi)||14;
+    if(lf!=null&&fd!=null&&fd>=fi)a.push({type:'fert',icon:'🌿',label:'施肥（已'+fd+'天）',color:'#2a7020'});
+  }
   if(p.medMode==='scheduled'){
     const lm=lastLog(p.medLog);
     const md=lm!=null?daysSince(lm):null;
-    if(lm!=null&&md!=null&&md>=(parseInt(p.mi)||30))a.push({type:'med',icon:'💊',label:`给药（已${md}天）`,color:'#882010'});
+    if(lm!=null&&md!=null&&md>=(parseInt(p.mi)||30))a.push({type:'med',icon:'💊',label:'给药（已'+md+'天）',color:'#882010'});
   }
   return a;
 }
@@ -827,6 +852,19 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
   const fd=daysSince(lastLog(plant.fertLog));
   const md=daysSince(lastLog(plant.medLog));
 
+  // 恢复暂停：清除 pause 字段并写入一条 skip 日志作为新周期起点
+  function resumePause(pid,type){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==pid)return p;
+      const pauseKey=type==='water'?'waterPause':'fertPause';
+      const logKey=type==='water'?'waterLog':'fertLog';
+      const arr=[...(p[logKey]||[]),{date:toDay(),skip:true,note:'暂停结束'}];
+      arr.sort((a,b)=>a.date.localeCompare(b.date));
+      return{...p,[pauseKey]:null,[logKey]:arr};
+    })}));
+    toast.show('▶ 已恢复护理，周期从今天重新计算');
+  }
+
   return(
     <div className="fullpage">
       <div className="page-header">
@@ -869,6 +907,31 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           </div>
         </div>
 
+        {/* 暂停护理提示 */}
+        {(getIsPaused(plant,'water')||getIsPaused(plant,'fert'))&&(
+          <div className="card" style={{borderColor:'rgba(100,140,210,.35)',background:'rgba(190,210,240,.12)'}}>
+            <div style={{fontSize:12,fontWeight:700,color:'#3a5a88',marginBottom:8}}>⏸ 护理暂停中</div>
+            {getIsPaused(plant,'water')&&(
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',borderBottom:getIsPaused(plant,'fert')?'1px solid rgba(130,160,210,.2)':'none'}}>
+                <span style={{fontSize:13,color:'#4a6a99'}}>
+                  {'💧 浇水暂停'+(plant.waterPause&&plant.waterPause.end?'至 '+fmtDate(plant.waterPause.end):'（无限期）')}
+                </span>
+                <button onClick={()=>resumePause(plant.id,'water')}
+                  style={{padding:'3px 10px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',background:'rgba(100,140,200,.2)',border:'1px solid rgba(100,140,200,.4)',color:'#3a5a88',whiteSpace:'nowrap'}}>恢复</button>
+              </div>
+            )}
+            {getIsPaused(plant,'fert')&&(
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0'}}>
+                <span style={{fontSize:13,color:'#4a6a99'}}>
+                  {'🌿 施肥暂停'+(plant.fertPause&&plant.fertPause.end?'至 '+fmtDate(plant.fertPause.end):'（无限期）')}
+                </span>
+                <button onClick={()=>resumePause(plant.id,'fert')}
+                  style={{padding:'3px 10px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',background:'rgba(100,140,200,.2)',border:'1px solid rgba(100,140,200,.4)',color:'#3a5a88',whiteSpace:'nowrap'}}>恢复</button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 护理提醒 */}
         {alerts.length>0&&(
           <div className="card" style={{borderColor:'rgba(200,140,50,.4)',background:'rgba(240,200,180,.15)'}}>
@@ -882,8 +945,8 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:10}}>📋 护理记录</div>
           <div style={{display:'flex',gap:6}}>
             {[
-              {type:'water',icon:'💧',days:wd,urgent:(wd??999)>=(parseInt(plant.wi)||7),cnt:(plant.waterLog||[]).length},
-              {type:'fert', icon:'🌿',days:fd,urgent:(fd??999)>=(parseInt(plant.fi)||14),cnt:(plant.fertLog||[]).length},
+              {type:'water',icon:'💧',days:wd,urgent:!getIsPaused(plant,'water')&&(wd!=null?wd:999)>=(parseInt(plant.wi)||7),cnt:(plant.waterLog||[]).length},
+              {type:'fert', icon:'🌿',days:fd,urgent:!getIsPaused(plant,'fert')&&(fd!=null?fd:999)>=(parseInt(plant.fi)||14),cnt:(plant.fertLog||[]).length},
               {type:'med',  icon:'💊',days:md,urgent:false,cnt:(plant.medLog||[]).length},
             ].map(item=>(
               <button key={item.type}
@@ -1289,10 +1352,28 @@ function PlantForm({initPlant,onClose}){
             <div>
               <label className="field-label">💧 浇水间隔（天）</label>
               <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#2266aa'}} defaultValue={form.wi} onBlur={e=>sf('wi',+e.target.value||7)}/>
+              {form.waterPause&&getIsPaused(form,'water')&&(
+                <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,padding:'5px 10px',background:'rgba(100,140,210,.12)',borderRadius:8,border:'1px solid rgba(100,140,210,.3)'}}>
+                  <span style={{flex:1,fontSize:11,color:'#3a5888'}}>
+                    {'⏸ 已暂停'+(form.waterPause.end?'至 '+fmtDate(form.waterPause.end):'（无限期）')}
+                  </span>
+                  <button onClick={()=>sf('waterPause',null)}
+                    style={{padding:'2px 10px',borderRadius:12,fontSize:11,cursor:'pointer',fontFamily:'inherit',background:'rgba(100,140,200,.25)',border:'1px solid rgba(100,140,200,.4)',color:'#3a5888',whiteSpace:'nowrap'}}>恢复</button>
+                </div>
+              )}
             </div>
             <div>
               <label className="field-label">🌿 施肥间隔（天）</label>
               <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#3a7a28'}} defaultValue={form.fi} onBlur={e=>sf('fi',+e.target.value||14)}/>
+              {form.fertPause&&getIsPaused(form,'fert')&&(
+                <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,padding:'5px 10px',background:'rgba(100,140,210,.12)',borderRadius:8,border:'1px solid rgba(100,140,210,.3)'}}>
+                  <span style={{flex:1,fontSize:11,color:'#3a5888'}}>
+                    {'⏸ 已暂停'+(form.fertPause.end?'至 '+fmtDate(form.fertPause.end):'（无限期）')}
+                  </span>
+                  <button onClick={()=>sf('fertPause',null)}
+                    style={{padding:'2px 10px',borderRadius:12,fontSize:11,cursor:'pointer',fontFamily:'inherit',background:'rgba(100,140,200,.25)',border:'1px solid rgba(100,140,200,.4)',color:'#3a5888',whiteSpace:'nowrap'}}>恢复</button>
+                </div>
+              )}
             </div>
             <div>
               <label className="field-label">💊 给药模式</label>
@@ -1622,8 +1703,8 @@ function buildDotMap(plants){
         addPlan(ds,type);
       }
     }
-    planDots(lastLog(p.waterLog),parseIntervalMin(p.wi),'water');
-    planDots(lastLog(p.fertLog),parseIntervalMin(p.fi),'fert');
+    if(!getIsPaused(p,'water'))planDots(getEffLogDate(p,'water'),parseIntervalMin(p.wi),'water');
+    if(!getIsPaused(p,'fert'))planDots(getEffLogDate(p,'fert'),parseIntervalMin(p.fi),'fert');
     const mi=parseIntervalMin(p.mi);
     if(mi<900&&(p.medLog||[]).length>0)planDots(lastLog(p.medLog),mi,'med');
   });
@@ -1848,10 +1929,10 @@ function CalendarTab(){
     const overdue=[],todayT=[],soon1=[],soon2=[],soon3=[],unlogged=[];
     db.plants.forEach(p=>{
       ['water','fert'].forEach(type=>{
-        const log=type==='water'?p.waterLog:p.fertLog;
         const interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
         if(interval>=900)return;
-        const ld=lastLog(log);
+        if(getIsPaused(p,type))return; // 暂停中：不生成任务
+        const ld=getEffLogDate(p,type);
         const ds=ld!=null?daysSince(ld):null;
         if(ds===null){unlogged.push({type,plant:p});return;}
         const due=interval-ds;
@@ -1872,7 +1953,7 @@ function CalendarTab(){
       const key=type==='water'?'waterLog':'fertLog';
       return{...p,[key]:[...(p[key]||[]),{date:toDay(),skip:true,note:'跳过'}]};
     })}));
-    toast.show('⏭ 已跳过');
+    toast.show('⏭ 已跳过一次');
   }
 
   // 快捷记录（直接记今天，不打开日志页）
@@ -1880,12 +1961,26 @@ function CalendarTab(){
     updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
       if(p.id!==pid)return p;
       const key=type==='water'?'waterLog':'fertLog';
+      const pauseKey=type==='water'?'waterPause':'fertPause';
       const arr=[...(p[key]||[]),{date:toDay(),note:''}];
       arr.sort((a,b)=>a.date.localeCompare(b.date));
-      return{...p,[key]:arr};
+      return{...p,[key]:arr,[pauseKey]:null}; // 记录操作自动解除暂停
     })}));
-    toast.show(`${TYPE_ICON[type]} 已记录${TYPE_LABEL[type]}`);
+    toast.show(TYPE_ICON[type]+' 已记录'+TYPE_LABEL[type]);
   }
+
+  // 暂停任务（通过 window 暴露给 vanilla JS 菜单调用）
+  // 每次渲染更新引用，避免 stale closure
+  window.__pauseTask=function(pid,type,endDate){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==pid)return p;
+      const pauseKey=type==='water'?'waterPause':'fertPause';
+      return{...p,[pauseKey]:{start:toDay(),end:endDate||null}};
+    })}));
+    var msg=endDate?('⏸ 暂停至 '+endDate.slice(5).replace('-','/')):' ⏸ 已无限期暂停';
+    toast.show(msg);
+  };
+  window.__skipTask=function(pid,type){skipTask(pid,type);};
 
   function TaskChip({t,showOverdue}){
     return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,0.3)'}}>
@@ -1898,8 +1993,8 @@ function CalendarTab(){
         }
       </div>
       <div style={{display:'flex',gap:5}}>
-        <button onClick={()=>skipTask(t.plant.id,t.type)}
-          style={{padding:'5px 10px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,background:'rgba(180,180,170,0.25)',border:'1px solid rgba(160,160,150,0.4)',color:'#7a8870',whiteSpace:'nowrap'}}>跳过</button>
+        <button onClick={()=>window.__showPauseMenu(t.plant.id,t.type,t.plant.name)}
+          style={{padding:'5px 10px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,background:'rgba(180,180,170,0.25)',border:'1px solid rgba(160,160,150,0.4)',color:'#7a8870',whiteSpace:'nowrap'}}>⏸ 跳过</button>
         <button onClick={()=>quickRecord(t.plant.id,t.type)}
           style={{padding:'5px 12px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:TYPE_COLOR[t.type],border:'none',color:'white',whiteSpace:'nowrap'}}>记录</button>
       </div>
@@ -3455,7 +3550,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
           var key = type==='water'?'waterLog':type==='fert'?'fertLog':'medLog';
           var arr = (p[key]||[]).concat([{date:today}]);
           arr.sort(function(a,b){ return a.date.localeCompare(b.date); });
-          var np = Object.assign({},p); np[key]=arr; return np;
+          var np = Object.assign({},p); np[key]=arr;
+          if(type==='water')np.waterPause=null;
+          else if(type==='fert')np.fertPause=null;
+          return np;
         })});
       });
       if (_toast) _toast.show('已为 '+ids.length+' 株记录'+LABEL[type]);
@@ -3523,6 +3621,87 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
     setTimeout(function(){ input.focus(); }, 100);
+  };
+
+  // ── 暂停菜单（从任务页"⏸ 跳过"按钮触发） ──
+  window.__showPauseMenu = function(pid, type, plantName) {
+    var ICON = {water:'💧', fert:'🌿'};
+    var LABEL = {water:'浇水', fert:'施肥'};
+
+    function addDaysStr(n) {
+      var d = new Date();
+      d.setDate(d.getDate() + n);
+      return d.getFullYear() + '-' +
+        String(d.getMonth()+1).padStart(2,'0') + '-' +
+        String(d.getDate()).padStart(2,'0');
+    }
+    function fmtMD(s) {
+      var p = s.slice(5).split('-');
+      return p[0] + '月' + p[1] + '日';
+    }
+
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.38);display:flex;align-items:flex-end;justify-content:center;';
+
+    var sheet = document.createElement('div');
+    sheet.style.cssText = 'width:100%;max-width:460px;background:#f4f7f0;border-radius:20px 20px 0 0;padding:20px 16px 36px;box-sizing:border-box;';
+
+    var ttl = document.createElement('div');
+    ttl.style.cssText = 'font-size:15px;font-weight:700;color:#2e4a22;margin-bottom:16px;text-align:center;';
+    ttl.textContent = ICON[type] + ' ' + plantName + ' — ' + LABEL[type];
+    sheet.appendChild(ttl);
+
+    function makeRow(icon, label, sublabel, cb) {
+      var btn = document.createElement('button');
+      btn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.7);border:1px solid rgba(150,185,130,0.3);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-family:inherit;text-align:left;';
+      var ico = document.createElement('span');
+      ico.style.cssText = 'font-size:20px;flex-shrink:0;';
+      ico.textContent = icon;
+      var wrap = document.createElement('div');
+      var main = document.createElement('div');
+      main.style.cssText = 'font-size:14px;font-weight:600;color:#2e4a22;';
+      main.textContent = label;
+      wrap.appendChild(main);
+      if (sublabel) {
+        var sub = document.createElement('div');
+        sub.style.cssText = 'font-size:11px;color:#7a9060;margin-top:2px;';
+        sub.textContent = sublabel;
+        wrap.appendChild(sub);
+      }
+      btn.appendChild(ico); btn.appendChild(wrap);
+      btn.onclick = function() { document.body.removeChild(overlay); cb(); };
+      return btn;
+    }
+
+    var e2w = addDaysStr(14);
+    var e1m = addDaysStr(30);
+    var e3m = addDaysStr(90);
+
+    sheet.appendChild(makeRow('⏭', '跳过一次', '本次不操作，下次提醒按正常周期计算', function() {
+      if (window.__skipTask) window.__skipTask(pid, type);
+    }));
+    sheet.appendChild(makeRow('⏸', '暂停 2 周', '至 ' + fmtMD(e2w) + ' 后自动恢复提醒', function() {
+      if (window.__pauseTask) window.__pauseTask(pid, type, e2w);
+    }));
+    sheet.appendChild(makeRow('⏸', '暂停 1 个月', '至 ' + fmtMD(e1m) + ' 后自动恢复提醒', function() {
+      if (window.__pauseTask) window.__pauseTask(pid, type, e1m);
+    }));
+    sheet.appendChild(makeRow('⏸', '暂停 3 个月', '至 ' + fmtMD(e3m) + ' 后自动恢复提醒', function() {
+      if (window.__pauseTask) window.__pauseTask(pid, type, e3m);
+    }));
+    sheet.appendChild(makeRow('🔕', '无限期暂停', '在植物详情页手动恢复后才会重新提醒', function() {
+      if (window.__pauseTask) window.__pauseTask(pid, type, null);
+    }));
+
+    var cancel = document.createElement('button');
+    cancel.style.cssText = 'width:100%;padding:12px;border-radius:12px;border:none;background:rgba(160,160,150,0.2);color:#7a8870;font-size:14px;font-family:inherit;cursor:pointer;margin-top:4px;';
+    cancel.textContent = '取消';
+    cancel.onclick = function() { document.body.removeChild(overlay); };
+    sheet.appendChild(cancel);
+
+    overlay.appendChild(sheet);
+    overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
+    document.body.appendChild(overlay);
   };
 
 })();
