@@ -2016,7 +2016,7 @@ function CalendarTab(){
     return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,0.3)'}}>
       <span style={{fontSize:18}}>{TYPE_ICON[t.type]}</span>
       <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>navToPlant(t.plant.id,'calendar')}>
-        <div style={{fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.plant.name}</div>
+        <div style={{fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.plant.name}{t.plant.variety?' · '+t.plant.variety:''}</div>
         {showOverdue&&t.overdueDays>0
           ?<div style={{fontSize:11,color:'#c05020',fontWeight:600}}>逾期 {t.overdueDays} 天</div>
           :<div style={{fontSize:11,color:'#7a9060'}}>{TYPE_LABEL[t.type]}</div>
