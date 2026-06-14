@@ -1449,8 +1449,13 @@ function PlantsTab({jumpPlantId,onJumpDone}){
     if(jumpPlantId){
       const id=jumpPlantId.id||jumpPlantId;
       const rt=jumpPlantId.returnTab||null;
+      const lt=jumpPlantId.logType||null;
       returnTabRef.current=rt;
-      setView({type:'detail',id});
+      if(lt){
+        setView({type:'log',plantId:id,logType:lt,returnTab:rt});
+      } else {
+        setView({type:'detail',id});
+      }
       if(onJumpDone)onJumpDone();
     }
   },[jumpPlantId]);
@@ -1484,7 +1489,10 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   }
 
   if(view?.type==='log')
-    return<LogPage plantId={view.plantId} logType={view.logType} onClose={()=>setView({type:'detail',id:view.plantId})}/>;
+    return<LogPage plantId={view.plantId} logType={view.logType} onClose={()=>{
+      if(view.returnTab){setView(null);setTab(view.returnTab);}
+      else setView({type:'detail',id:view.plantId});
+    }}/>;
   if(view?.type==='cal')
     return<PlantCareCalendar plantId={view.id} onClose={()=>{returnTabRef.current=null;setView({type:'detail',id:view.id});}}/>;
   if(view?.type==='detail')
@@ -2019,7 +2027,7 @@ function CalendarTab(){
       <div style={{display:'flex',gap:5}}>
         <button onClick={()=>window.__showPauseMenu(t.plant.id,t.type,t.plant.name)}
           style={{padding:'5px 10px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,background:'rgba(180,180,170,0.25)',border:'1px solid rgba(160,160,150,0.4)',color:'#7a8870',whiteSpace:'nowrap'}}>⏸ 跳过</button>
-        <button onClick={()=>quickRecord(t.plant.id,t.type)}
+        <button onClick={()=>navToPlant(t.plant.id,'tasks',t.type)}
           style={{padding:'5px 12px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:TYPE_COLOR[t.type],border:'none',color:'white',whiteSpace:'nowrap'}}>记录</button>
       </div>
     </div>;
@@ -3356,7 +3364,7 @@ function App(){
   const[jumpPlantId,setJumpPlantId]=useState(null);
   const toast=useToast();
 
-  function navToPlant(id,returnTab){setJumpPlantId({id,returnTab:returnTab||null});setTab('plants');}
+  function navToPlant(id,returnTab,logType){setJumpPlantId({id,returnTab:returnTab||null,logType:logType||null});setTab('plants');}
 
   const badge=db.plants.filter(p=>careAlerts(p).length>0).length;
   const ctx={db,updateDb,toast,navToPlant,setTab};
