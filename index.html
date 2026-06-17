@@ -3235,12 +3235,41 @@ function RecipeListPage({onClose}){
   );
 }
 
+function ExportPlantPicker({onSelect,onClose}){
+  const{db}=useApp();
+  const plants=db.plants||[];
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onClose}>‹</button>
+        <div className="page-header-title">选择植物 · 单株备份</div>
+      </div>
+      <div>
+        {plants.length===0&&<div style={{padding:'40px 16px',textAlign:'center',color:'#9aaa88'}}>暂无植物数据</div>}
+        {plants.map(function(p){
+          return(
+            <div key={p.id} onClick={function(){onSelect(p);}}
+              style={{display:'flex',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid rgba(90,120,70,0.12)',cursor:'pointer',gap:10,background:'rgba(255,255,255,0.35)'}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:15,color:'#2e4a22'}}>{p.name}</div>
+                {p.variety?<div style={{fontSize:13,color:'#7a9060',marginTop:2}}>{p.variety}</div>:null}
+              </div>
+              <div style={{fontSize:22,color:'#8aac70',opacity:0.6}}>›</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function InventoryTab(){
   const{db,updateDb,toast}=useApp();
   const[view,setView]=useState(null);
   const[fabOpen,setFabOpen]=useState(false);
+  const[showExportMenu,setShowExportMenu]=useState(false);
   useEffect(()=>{
-    function onTabReset(e){if(e.detail==='inventory'){setView(null);setFabOpen(false);}}
+    function onTabReset(e){if(e.detail==='inventory'){setView(null);setFabOpen(false);setShowExportMenu(false);}}
     window.addEventListener('tabReset',onTabReset);
     return()=>window.removeEventListener('tabReset',onTabReset);
   },[]);
@@ -3250,16 +3279,23 @@ function InventoryTab(){
   if(view?.type==='add_med') return<FertMedForm type="med"  initItem={null} onClose={()=>setView(null)}/>;
   if(view?.type==='add_soil')return<SoilForm initItem={null} onClose={()=>setView(null)}/>;
   if(view?.type==='add_recipe')return<RecipeForm initItem={null} onClose={()=>setView(null)}/>;
-  if(view?.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
+  if(view&&view.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
+  if(view&&view.type==='plantPicker')return<ExportPlantPicker onSelect={function(p){doExportPlant(p);}} onClose={()=>setView(null)}/>;
+  async function withPhotos(plants){
+    return Promise.all((plants||[]).map(async function(p){
+      if(!p.photo||!PHOTO_IDB.isRef(p.photo))return p;
+      const data=await PHOTO_IDB.get(p.photo.slice(6));
+      return data?{...p,photo:data}:p;
+    }));
+  }
+  function dlJson(obj,filename){
+    const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=filename;a.click();
+    URL.revokeObjectURL(url);
+  }
   async function exportData(){
-    // 导出前从 IndexedDB 取回照片，并入 JSON（下载文件不受 localStorage 大小限制）
-    async function withPhotos(plants){
-      return Promise.all((plants||[]).map(async function(p){
-        if(!p.photo||!PHOTO_IDB.isRef(p.photo))return p;
-        const data=await PHOTO_IDB.get(p.photo.slice(6));
-        return data?{...p,photo:data}:p;
-      }));
-    }
+    // 完整备份（保持原函数名供 exportAll 调用）
     const plantsOut=await withPhotos(db.plants);
     const archivePlantsOut=await withPhotos((db.archive||{}).plants);
     const data={
@@ -3268,10 +3304,43 @@ function InventoryTab(){
       archive:{...db.archive,plants:archivePlantsOut},
       exportTime:new Date().toISOString()
     };
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='植物志备份_'+toDay()+'.json';a.click();
-    URL.revokeObjectURL(url);toast.show('💾 备份已下载');
+    dlJson(data,'植物志备份_'+toDay()+'.json');
+    toast.show('💾 完整备份已下载');
+    setShowExportMenu(false);
+  }
+  async function doExportPlant(plant){
+    setView(null);
+    const plantsOut=await withPhotos([plant]);
+    const batches=(db.prop||[]).filter(function(b){return b.parentId===plant.id;});
+    const label=plant.name+(plant.variety?' '+plant.variety:'');
+    const data={
+      type:'plant',
+      plant:plantsOut[0],
+      propBatches:batches,
+      exportTime:new Date().toISOString()
+    };
+    dlJson(data,'植物志_'+label+'_'+toDay()+'.json');
+    toast.show('💾 '+label+' 备份已下载');
+  }
+  function exportInventory(){
+    const data={
+      type:'inventory',
+      fert:db.lib.fert,med:db.lib.med,soil:db.lib.soil,recipe:db.lib.recipe||[],
+      exportTime:new Date().toISOString()
+    };
+    dlJson(data,'植物志_库存_'+toDay()+'.json');
+    toast.show('💾 库存备份已下载');
+    setShowExportMenu(false);
+  }
+  function exportProp(){
+    const data={
+      type:'propagation',
+      prop:db.prop||[],
+      exportTime:new Date().toISOString()
+    };
+    dlJson(data,'植物志_繁育_'+toDay()+'.json');
+    toast.show('💾 繁育记录备份已下载');
+    setShowExportMenu(false);
   }
   function importData(){document.getElementById('import-file').click();}
   function handleImport(e){
@@ -3326,10 +3395,25 @@ function InventoryTab(){
         ))}
       </div>
       <div style={{padding:'0 16px 20px',display:'flex',gap:8}}>
-        <button className="btn btn-green" style={{flex:1}} onClick={exportData}>💾 备份数据</button>
+        <button className="btn btn-green" style={{flex:1}} onClick={()=>setShowExportMenu(v=>!v)}>💾 备份数据 ›</button>
         <button style={{flex:1,padding:'11px 16px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:600,background:'rgba(165,195,220,0.25)',border:'1px solid rgba(140,175,210,0.4)',color:'#384a68'}} onClick={importData}>📂 恢复数据</button>
       </div>
       <input type="file" id="import-file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
+      {/* 备份选项菜单 */}
+      {showExportMenu&&<div style={{position:'fixed',inset:0,zIndex:58}} onClick={()=>setShowExportMenu(false)}/>}
+      {showExportMenu&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 68px)',left:'max(calc(50% - 230px + 16px),16px)',zIndex:59,display:'flex',flexDirection:'column',gap:8}}>
+        {[
+          {icon:'💾',label:'完整备份',action:exportData},
+          {icon:'🌿',label:'单株备份',action:function(){setView({type:'plantPicker'});setShowExportMenu(false);}},
+          {icon:'🔬',label:'繁育记录',action:exportProp},
+          {icon:'📚',label:'库存数据',action:exportInventory},
+        ].map(function(opt){return(
+          <button key={opt.label} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 16px',borderRadius:20,background:'#f5f8f2',border:'1px solid rgba(140,180,110,0.5)',boxShadow:'0 2px 10px rgba(40,70,20,.18)',cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap'}}
+            onClick={opt.action}>
+            <span style={{fontSize:18}}>{opt.icon}</span>{opt.label}
+          </button>
+        );})}
+      </div>}
       {/* 库存 FAB */}
       {fabOpen&&<div style={{position:'fixed',inset:0,zIndex:59}} onClick={()=>setFabOpen(false)}/>}
       {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
