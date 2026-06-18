@@ -149,7 +149,7 @@ const BLANK=()=>({
   prePlantDate:'',prePlantNotes:'',
   transplantDate:'',transplantNotes:'',
   finalPlantDate:'',finalPlantNotes:'',finalPlantLocation:'',
-  wi:7,fi:14,mi:30,medMode:'symptom',
+  wi:7,fi:14,mi:30,medMode:'symptom',mc:3,mcStart:'',
   waterLog:[],fertLog:[],medLog:[],noteLog:[],
   waterPause:null,fertPause:null,
 });
@@ -214,6 +214,14 @@ function getEffLogDate(p,type){
   var ld=lastLog(log);
   return(ld&&ld>pause.end)?ld:pause.end;
 }
+// 给药疗程进度：用药不是无限期的，一般为2-3次。
+// 只统计本疗程开始日期（mcStart）之后的有效给药记录，跳过的记录不计入。
+function medCourseInfo(p){
+  const total=Math.max(1,parseInt(p.mc)||3);
+  const start=p.mcStart||'';
+  const given=(p.medLog||[]).filter(r=>!r.skip&&(!start||r.date>=start)).length;
+  return{given,total,remain:Math.max(0,total-given),done:given>=total};
+}
 
 function careAlerts(p){
   const a=[];
@@ -232,9 +240,13 @@ function careAlerts(p){
     if(lf!=null&&fd!=null&&fd>=fi)a.push({type:'fert',icon:'🌿',label:'施肥（已'+fd+'天）',color:'#2a7020'});
   }
   if(p.medMode==='scheduled'){
-    const lm=lastLog(p.medLog);
-    const md=lm!=null?daysSince(lm):null;
-    if(lm!=null&&md!=null&&md>=(parseInt(p.mi)||30))a.push({type:'med',icon:'💊',label:'给药（已'+md+'天）',color:'#882010'});
+    const info=medCourseInfo(p);
+    if(!info.done){
+      const lm=lastLog(p.medLog);
+      const md=lm!=null?daysSince(lm):null;
+      if(lm!=null&&md!=null&&md>=(parseInt(p.mi)||30))
+        a.push({type:'med',icon:'💊',label:'给药（已'+md+'天，第'+(info.given+1)+'/'+info.total+'次）',color:'#882010'});
+    }
   }
   return a;
 }
@@ -861,6 +873,11 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
     })}));
     toast.show('▶ 已恢复护理');
   }
+  // 重新开始给药疗程：重置疗程起始日期为今天，重新计次
+  function restartMedCourse(pid){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>p.id===pid?{...p,mcStart:toDay()}:p)}));
+    toast.show('💊 已开始新疗程');
+  }
 
   return(
     <div className="fullpage">
@@ -926,6 +943,19 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
                   style={{padding:'3px 10px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',background:'rgba(100,140,200,.2)',border:'1px solid rgba(100,140,200,.4)',color:'#3a5a88',whiteSpace:'nowrap'}}>恢复</button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* 给药疗程已完成提示 */}
+        {plant.medMode==='scheduled'&&medCourseInfo(plant).done&&(
+          <div className="card" style={{borderColor:'rgba(90,150,90,.35)',background:'rgba(190,225,190,.15)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:13,color:'#2a6a35'}}>
+                {'✅ 给药疗程已完成（'+medCourseInfo(plant).given+'/'+medCourseInfo(plant).total+'次），不会再提醒'}
+              </span>
+              <button onClick={()=>restartMedCourse(plant.id)}
+                style={{padding:'3px 10px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',background:'rgba(90,150,90,.2)',border:'1px solid rgba(90,150,90,.4)',color:'#2a6a35',whiteSpace:'nowrap'}}>开始新疗程</button>
+            </div>
           </div>
         )}
 
@@ -1380,15 +1410,38 @@ function PlantForm({initPlant,onClose}){
                     background:form.medMode===k?'rgba(155,195,125,0.45)':'rgba(180,210,160,0.12)',
                     border:`1px solid ${form.medMode===k?'rgba(130,175,100,0.6)':'rgba(150,185,130,0.3)'}`,
                     color:form.medMode===k?'#2e4a22':'#6a8858'}}
-                    onClick={()=>sf('medMode',k)}>{l}</button>
+                    onClick={()=>{
+                      // 从「按需」切到「定期」时，视为开启一个新疗程，重新计次
+                      if(k==='scheduled'&&form.medMode!=='scheduled')
+                        setForm(f=>({...f,medMode:k,mcStart:toDay()}));
+                      else sf('medMode',k);
+                    }}>{l}</button>
                 ))}
               </div>
-              {form.medMode==='scheduled'&&<div style={{marginTop:7}}>
-                <label className="field-label">给药间隔（天）</label>
-                <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#7a4030'}} defaultValue={form.mi||30} onBlur={e=>sf('mi',+e.target.value||30)}/>
+              {form.medMode==='scheduled'&&<div style={{marginTop:7,display:'flex',flexDirection:'column',gap:7}}>
+                <div style={{display:'flex',gap:10}}>
+                  <div>
+                    <label className="field-label">给药间隔（天）</label>
+                    <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#7a4030'}} defaultValue={form.mi||30} onBlur={e=>sf('mi',+e.target.value||30)}/>
+                  </div>
+                  <div>
+                    <label className="field-label">疗程次数（一般2-3次）</label>
+                    <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#7a4030'}} defaultValue={form.mc||3} onBlur={e=>sf('mc',+e.target.value||3)}/>
+                  </div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:'rgba(220,160,130,.15)',borderRadius:8,border:'1px solid rgba(200,120,90,.3)'}}>
+                  <span style={{flex:1,fontSize:11,color:'#7a4030'}}>
+                    {(()=>{const info=medCourseInfo(form);return info.done
+                      ?`✅ 本疗程已完成（${info.given}/${info.total}次）`
+                      :`本疗程：已用药 ${info.given}/${info.total} 次`;})()}
+                  </span>
+                  <button onClick={()=>setForm(f=>({...f,mcStart:toDay()}))}
+                    style={{padding:'3px 10px',borderRadius:12,fontSize:11,cursor:'pointer',fontFamily:'inherit',background:'rgba(200,120,90,.25)',border:'1px solid rgba(200,120,90,.4)',color:'#7a4030',whiteSpace:'nowrap'}}>重新开始疗程</button>
+                </div>
               </div>}
             </div>
           </div>}
+
 
           <div style={{display:'flex',gap:8,marginTop:14}}>
             <button className="btn btn-green" style={{flex:1}} onClick={save}>✓ 保存</button>
@@ -1437,7 +1490,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   const[search,setSearch]=useState('');
   const[filterCat,setFilter]=useState('all');
   const[sortBy,setSortBy]=useState('entry');
-  const[sortDir,setSortDir]=useState(1); // 1=正序 -1=倒序
+  const[sortDir,setSortDir]=useState(-1); // 1=正序 -1=倒序；默认按添加时间倒序
   const[view,setView]=useState(null);
   const[catEdit,setCatEdit]=useState(null); // {id,newName} 分类编辑弹窗
   const listRef=useRef(null);
@@ -3447,6 +3500,23 @@ function App(){
   const[tab,setTab]=useState('calendar');
   const[jumpPlantId,setJumpPlantId]=useState(null);
   const toast=useToast();
+
+  // 一次性数据迁移：早期版本的"定期给药"没有疗程次数/起始日期概念，
+  // 会导致提醒无限期持续。这里为缺失字段的植物补全默认值（默认3次，
+  // 从今天开始计），修复后续不再无期限提醒。
+  useEffect(()=>{
+    updateDb(prev=>{
+      let changed=false;
+      const plants=prev.plants.map(p=>{
+        if(p.medMode==='scheduled'&&!p.mcStart){
+          changed=true;
+          return{...p,mc:p.mc||3,mcStart:toDay()};
+        }
+        return p;
+      });
+      return changed?{...prev,plants}:prev;
+    });
+  },[]);
 
   function navToPlant(id,returnTab,logType){setJumpPlantId({id,returnTab:returnTab||null,logType:logType||null});setTab('plants');}
 
