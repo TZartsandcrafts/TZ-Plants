@@ -531,7 +531,7 @@ function LogPage({plantId,logType,onClose}){
             <input key={'ma-'+form.amount} className="input" style={{marginBottom:8}} placeholder="稀释800倍…" defaultValue={form.amount} onBlur={e=>sf('amount',e.target.value)}/>
           </>}
           <label className="field-label">{logType==='water'?'备注（可选）':'备注'}</label>
-          <textarea className="input" rows={2} style={{marginBottom:10,resize:'vertical',lineHeight:1.6}} placeholder={meta.ph} defaultValue={form.note} onBlur={e=>sf('note',e.target.value)}/>
+          <textarea key={'note-'+editIdx+'-'+form.note} className="input" rows={2} style={{marginBottom:10,resize:'vertical',lineHeight:1.6}} placeholder={meta.ph} defaultValue={form.note} onBlur={e=>sf('note',e.target.value)}/>
           <div style={{display:'flex',gap:8}}>
             <button className="btn btn-green" style={{flex:1}} onClick={save}>✓ {editIdx!==null?'保存修改':'添加'}</button>
             {editIdx!==null&&<button className="btn btn-gray" onClick={()=>{setEditIdx(null);setForm(blank())}}>取消</button>}
