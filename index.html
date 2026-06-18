@@ -1744,9 +1744,11 @@ function buildDotMap(plants){
     });
     (p.noteLog||[]).forEach(r=>addLog(r.date,'note',false));
     // 计划点
-    function planDots(lastDate,interval,type){
+    function planDots(lastDate,interval,type,maxCount){
       if(!interval||interval>=900)return;
+      if(maxCount!=null&&maxCount<=0)return;
       const base=lastDate?(()=>{const pts=lastDate.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todObj;
+      let added=0;
       for(let n=1;n<=60;n++){
         const d=new Date(base);d.setDate(base.getDate()+interval*n);
         const dObj=new Date(d.getFullYear(),d.getMonth(),d.getDate());
@@ -1759,12 +1761,20 @@ function buildDotMap(plants){
           ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
         }
         addPlan(ds,type);
+        added++;
+        if(maxCount!=null&&added>=maxCount)break;
       }
     }
     if(!getIsPaused(p,'water'))planDots(getEffLogDate(p,'water'),parseIntervalMin(p.wi),'water');
     if(!getIsPaused(p,'fert'))planDots(getEffLogDate(p,'fert'),parseIntervalMin(p.fi),'fert');
-    const mi=parseIntervalMin(p.mi);
-    if(mi<900&&(p.medLog||[]).length>0)planDots(lastLog(p.medLog),mi,'med');
+    // 给药计划点：之前这里不分"按需/定期"模式、也不看疗程次数，只要有过一次用药记录
+    // 就会按间隔无限投射下去（最多60期），这正是日历上出现"无期限给药提醒"、
+    // 且很多植物的提醒恰好都堆在同一天（默认间隔30天）的原因。
+    // 现在改为：只有"定期"模式才投射，且最多只投射本疗程剩余的次数。
+    if(p.medMode==='scheduled'){
+      const info=medCourseInfo(p);
+      if(!info.done)planDots(lastLog(p.medLog),parseIntervalMin(p.mi),'med',info.remain);
+    }
   });
   return map;
 }
@@ -1946,12 +1956,22 @@ function CalendarTab(){
       db.plants.forEach(p=>{
         const log=e.type==='water'?p.waterLog:e.type==='fert'?p.fertLog:p.medLog;
         if(e.plan){
+          let courseRemain=null;
+          if(e.type==='med'){
+            // 给药计划项：只有"定期"模式且本疗程未完成才算数，
+            // 否则会把"按需"用药、或已完成疗程的植物也错误地算进未来计划
+            if(p.medMode!=='scheduled')return;
+            const info=medCourseInfo(p);
+            if(info.done)return;
+            courseRemain=info.remain;
+          }
           const interval=e.type==='water'?parseIntervalMin(p.wi):e.type==='fert'?parseIntervalMin(p.fi):parseIntervalMin(p.mi);
           const llog=lastLog(log);if(!interval||interval>=900)return;
           const base=llog?(()=>{const pts=llog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todayD;
           const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
           const diff=Math.round((selT-base)/86400000);
-          if(diff>0&&diff%interval===0)plantLines.push({name:p.name,type:e.type,plan:true});
+          if(diff>0&&diff%interval===0&&(courseRemain==null||Math.round(diff/interval)<=courseRemain))
+            plantLines.push({name:p.name,type:e.type,plan:true});
         } else {
           (log||[]).forEach(r=>{if(r.date===ds)plantLines.push({name:p.name,type:e.type,skip:r.skip});});
         }
