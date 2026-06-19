@@ -149,9 +149,10 @@ const BLANK=()=>({
   prePlantDate:'',prePlantNotes:'',
   transplantDate:'',transplantNotes:'',
   finalPlantDate:'',finalPlantNotes:'',finalPlantLocation:'',
-  wi:7,fi:14,mi:30,medMode:'symptom',mc:3,mcStart:'',
+  wi:7,fi:14,mi:30,
   waterLog:[],fertLog:[],medLog:[],noteLog:[],
   waterPause:null,fertPause:null,
+  activeCourse:null, // 当前进行中的疗程对象，null表示无疗程
 });
 
 const STATUS_MAP={
@@ -214,13 +215,30 @@ function getEffLogDate(p,type){
   var ld=lastLog(log);
   return(ld&&ld>pause.end)?ld:pause.end;
 }
-// 给药疗程进度：用药不是无限期的，一般为2-3次。
-// 只统计本疗程开始日期（mcStart）之后的有效给药记录，跳过的记录不计入。
+// ── 疗程辅助 ──
+// 从激活疗程（p.activeCourse）+给药日志统计当前进度。
+// 返回：{active, course, given, total, remain, done}
 function medCourseInfo(p){
-  const total=Math.max(1,parseInt(p.mc)||3);
-  const start=p.mcStart||'';
-  const given=(p.medLog||[]).filter(r=>!r.skip&&(!start||r.date>=start)).length;
-  return{given,total,remain:Math.max(0,total-given),done:given>=total};
+  const course=p.activeCourse;
+  if(!course)return{active:false,course:null,given:0,total:0,remain:0,done:false};
+  const total=Math.max(1,parseInt(course.total)||3);
+  const given=(p.medLog||[]).filter(r=>!r.skip&&r.courseId===course.id).length;
+  return{active:true,course,given,total,remain:Math.max(0,total-given),done:given>=total};
+}
+// 在 updateDb 的纯更新函数内调用：将疗程归档并清空 activeCourse
+// status: 'done'（自动完成）| 'closed'（手动结束）
+function archiveCourseInUpdate(prev,plantId,status,today){
+  const plant=prev.plants.find(p=>p.id===plantId);
+  if(!plant||!plant.activeCourse)return prev;
+  const info=medCourseInfo(plant);
+  const archived={
+    ...plant.activeCourse,
+    plantId,plantName:plant.name,
+    given:info.given,status,endDate:today,
+  };
+  const courses=[...(prev.archive?.courses||[]),archived];
+  const plants=prev.plants.map(p=>p.id===plantId?{...p,activeCourse:null}:p);
+  return{...prev,plants,archive:{...prev.archive,courses}};
 }
 
 function careAlerts(p){
@@ -239,12 +257,13 @@ function careAlerts(p){
     const fi=parseInt(p.fi)||14;
     if(lf!=null&&fd!=null&&fd>=fi)a.push({type:'fert',icon:'🌿',label:'施肥（已'+fd+'天）',color:'#2a7020'});
   }
-  if(p.medMode==='scheduled'){
+  if(p.activeCourse){
     const info=medCourseInfo(p);
     if(!info.done){
       const lm=lastLog(p.medLog);
       const md=lm!=null?daysSince(lm):null;
-      if(lm!=null&&md!=null&&md>=(parseInt(p.mi)||30))
+      const interval=parseInt(info.course.interval)||7;
+      if(lm!=null&&md!=null&&md>=interval)
         a.push({type:'med',icon:'💊',label:'给药（已'+md+'天，第'+(info.given+1)+'/'+info.total+'次）',color:'#882010'});
     }
   }
@@ -342,7 +361,7 @@ function loadAll(){
     plants: rLS(SK,[]),
     cats:   rLS('plant_cats',DEFAULT_CATS),
     lib:{fert:rLS('lib_fert',[]),med:rLS('lib_med',[]),soil:rLS('lib_soil',[]),recipe:rLS('lib_recipe',[])},
-    archive:{plants:arc.plants||[],batches:arc.batches||[]},
+    archive:{plants:arc.plants||[],batches:arc.batches||[],courses:rLS('course_archive',[])},
     prop:   rLS('lib_prop',[]),
   };
 }
@@ -355,6 +374,7 @@ function saveAll(db){
   wLS('lib_med',db.lib.med);
   wLS('lib_soil',db.lib.soil);
   wLS('lib_recipe',db.lib.recipe||[]);
+  wLS('course_archive',db.archive?.courses||[]);
   wLS('plant_archive',{
     plants:(db.archive?.plants||[]).map(stripPhoto),
     batches:db.archive?.batches||[],
@@ -435,28 +455,73 @@ function LogPage({plantId,logType,onClose}){
   const[form,setForm]=useState(blank());
   const[editIdx,setEditIdx]=useState(null);
   const[delIdx,setDelIdx]=useState(null);
+  const[showNewCourse,setShowNewCourse]=useState(false);
+  const[courseForm,setCourseForm]=useState({drugName:'',reason:'',amount:'',interval:7,total:3});
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const scf=(k,v)=>setCourseForm(f=>({...f,[k]:v}));
 
   useEffect(()=>{window.scrollTo(0,0)},[]);
 
+  const today=toDay();
+  const medInfo=logType==='med'?medCourseInfo(plant):null;
+
   function save(){
     if(!form.date){toast.show('⚠️ 请选择日期');return}
+    const isNewEntry=editIdx===null;
     updateDb(prev=>{
-      const plants=prev.plants.map(p=>{
+      let plants=prev.plants.map(p=>{
         if(p.id!==plantId)return p;
         const arr=[...(p[meta.key]||[])];
         const rec={date:form.date};
         if(logType==='fert'){rec.name=form.name;rec.amount=form.amount;rec.note=form.note}
-        else if(logType==='med'){rec.name=form.name;rec.reason=form.reason;rec.amount=form.amount;rec.note=form.note}
+        else if(logType==='med'){
+          rec.name=form.name;rec.reason=form.reason;rec.amount=form.amount;rec.note=form.note;
+          // 新增给药记录时自动附上当前疗程ID
+          if(isNewEntry&&p.activeCourse)rec.courseId=p.activeCourse.id;
+        }
         else{rec.note=form.note}
         if(editIdx!==null)arr[editIdx]=rec;
         else{arr.push(rec);arr.sort((a,b)=>a.date.localeCompare(b.date))}
         return{...p,[meta.key]:arr};
       });
-      return{...prev,plants};
+      let next={...prev,plants};
+      // 新增给药记录后检查是否完成疗程
+      if(logType==='med'&&isNewEntry){
+        const updated=next.plants.find(p=>p.id===plantId);
+        if(updated){
+          const info=medCourseInfo(updated);
+          if(info.done)next=archiveCourseInUpdate(next,plantId,'done',today);
+        }
+      }
+      return next;
     });
     setEditIdx(null);setForm(blank());
     toast.show(editIdx!==null?'✅ 已保存修改':`${meta.icon} 已记录${meta.label}`);
+  }
+
+  function closeCourse(){
+    updateDb(prev=>archiveCourseInUpdate(prev,plantId,'closed',today));
+    toast.show('🔚 疗程已结束并存档');
+  }
+
+  function startNewCourse(){
+    if(!courseForm.drugName.trim()){toast.show('⚠️ 请填写药品名称');return}
+    const cid='c'+Date.now()+Math.random().toString(36).slice(2,6);
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==plantId)return p;
+      return{...p,activeCourse:{
+        id:cid,
+        drugName:courseForm.drugName.trim(),
+        reason:courseForm.reason.trim(),
+        amount:courseForm.amount.trim(),
+        interval:Math.max(1,parseInt(courseForm.interval)||7),
+        total:Math.max(1,parseInt(courseForm.total)||3),
+        startDate:today,
+      }};
+    })}));
+    setShowNewCourse(false);
+    setCourseForm({drugName:'',reason:'',amount:'',interval:7,total:3});
+    toast.show('💊 已开始新疗程');
   }
 
   function startEdit(idx){
@@ -485,6 +550,79 @@ function LogPage({plantId,logType,onClose}){
         </div>
       </div>
       <div style={{padding:'14px 16px',paddingBottom:40}}>
+        {/* ── 给药：当前疗程状态 ── */}
+        {logType==='med'&&(
+          <div style={{marginBottom:14}}>
+            {medInfo.active&&!medInfo.done?(
+              <div className="card" style={{borderColor:'rgba(200,100,60,.4)',background:'rgba(240,200,180,.15)',marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:700,color:'#7a3018',marginBottom:6}}>💊 当前疗程</div>
+                <div style={{fontSize:13,color:'#5a2010',marginBottom:2,fontWeight:600}}>{medInfo.course.drugName}</div>
+                {medInfo.course.reason&&<div style={{fontSize:11,color:'#9a6050',marginBottom:4}}>病症：{medInfo.course.reason}</div>}
+                {medInfo.course.amount&&<div style={{fontSize:11,color:'#9a6050',marginBottom:4}}>用量：{medInfo.course.amount}</div>}
+                <div style={{fontSize:11,color:'#9a6050',marginBottom:8}}>间隔 {medInfo.course.interval} 天 · 共 {medInfo.total} 次</div>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
+                  {Array.from({length:medInfo.total}).map((_,i)=>(
+                    <div key={i} style={{width:28,height:28,borderRadius:'50%',border:'2px solid rgba(200,100,60,.5)',background:i<medInfo.given?'rgba(200,100,60,.7)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:i<medInfo.given?'white':'#c07050',fontWeight:700}}>{i<medInfo.given?'✓':i+1}</div>
+                  ))}
+                  <span style={{fontSize:12,color:'#9a6050',marginLeft:4}}>第 {medInfo.given+1}/{medInfo.total} 次</span>
+                </div>
+                <div style={{display:'flex',gap:8}}>
+                  <button className="btn btn-green" style={{flex:2,fontSize:13}} onClick={()=>{
+                    setForm(f=>({...f,name:medInfo.course.drugName,reason:medInfo.course.reason,amount:medInfo.course.amount}));
+                    window.scrollTo({top:300,behavior:'smooth'});
+                  }}>💊 记录第 {medInfo.given+1} 次给药</button>
+                  <button className="btn btn-gray" style={{flex:1,fontSize:12}} onClick={()=>{if(confirm('确认手动结束此疗程并存档吗？'))closeCourse();}}>🔚 结束疗程</button>
+                </div>
+              </div>
+            ):(
+              <div className="card" style={{marginBottom:10}}>
+                {!showNewCourse?(
+                  <div style={{textAlign:'center',padding:'4px 0 8px'}}>
+                    <div style={{fontSize:13,color:'#7a9060',marginBottom:10}}>暂无进行中的疗程</div>
+                    <button className="btn btn-green" style={{width:'100%'}} onClick={()=>setShowNewCourse(true)}>＋ 开始新疗程</button>
+                  </div>
+                ):(
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:'#7a3018',marginBottom:10}}>💊 新疗程设置</div>
+                    {(db.lib.med||[]).length>0&&<>
+                      <label className="field-label">从药品库选择（可选）</label>
+                      <select className="input" style={{marginBottom:8,color:'#2e4a22'}}
+                        value={courseForm.drugName||''}
+                        onChange={e=>{
+                          const m=(db.lib.med||[]).find(x=>x.name===e.target.value);
+                          if(m)setCourseForm(f=>({...f,drugName:m.name,amount:m.dosage||f.amount,reason:m.target||f.reason}));
+                          else setCourseForm(f=>({...f,drugName:''}));
+                        }}>
+                        <option value="">— 不从库存选择 —</option>
+                        {(db.lib.med||[]).map(m=><option key={m.id||m.name} value={m.name}>{m.name}</option>)}
+                      </select>
+                    </>}
+                    <label className="field-label">药品名称 *</label>
+                    <input key={'cname-'+courseForm.drugName} className="input" style={{marginBottom:8}} placeholder="多菌灵、吡虫啉…" defaultValue={courseForm.drugName} onBlur={e=>scf('drugName',e.target.value)}/>
+                    <label className="field-label">病症/原因</label>
+                    <input key={'creason-'+courseForm.reason} className="input" style={{marginBottom:8}} placeholder="白粉病、蚜虫…" defaultValue={courseForm.reason} onBlur={e=>scf('reason',e.target.value)}/>
+                    <label className="field-label">用量/浓度</label>
+                    <input key={'camount-'+courseForm.amount} className="input" style={{marginBottom:8}} placeholder="稀释800倍…" defaultValue={courseForm.amount} onBlur={e=>scf('amount',e.target.value)}/>
+                    <div style={{display:'flex',gap:10,marginBottom:8}}>
+                      <div style={{flex:1}}>
+                        <label className="field-label">给药间隔（天）</label>
+                        <input type="number" min={1} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}} defaultValue={courseForm.interval} onBlur={e=>scf('interval',+e.target.value||7)}/>
+                      </div>
+                      <div style={{flex:1}}>
+                        <label className="field-label">总次数</label>
+                        <input type="number" min={1} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}} defaultValue={courseForm.total} onBlur={e=>scf('total',+e.target.value||3)}/>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:8}}>
+                      <button className="btn btn-green" style={{flex:1}} onClick={startNewCourse}>✓ 开始疗程</button>
+                      <button className="btn btn-gray" style={{flex:1}} onClick={()=>setShowNewCourse(false)}>取消</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {/* 表单 */}
         <div className="card" style={{marginBottom:14}}>
           <div style={{fontSize:12,color:'#6a8858',fontWeight:700,marginBottom:10}}>{editIdx!==null?'修改记录':'新增记录'}</div>
@@ -510,19 +648,6 @@ function LogPage({plantId,logType,onClose}){
             <input key={'fa-'+form.amount} className="input" style={{marginBottom:8}} placeholder="5g/L…" defaultValue={form.amount} onBlur={e=>sf('amount',e.target.value)}/>
           </>}
           {logType==='med'&&<>
-            {(db.lib.med||[]).length>0&&<>
-              <label className="field-label">从药品库选择（可选）</label>
-              <select className="input" style={{marginBottom:8,color:form.name?'#2e4a22':'#9aaa88'}}
-                value={form.name||''}
-                onChange={e=>{
-                  const m=(db.lib.med||[]).find(x=>x.name===e.target.value);
-                  if(m){setForm(prev=>({...prev,name:m.name,amount:m.dosage||prev.amount,reason:m.target||prev.reason}));}
-                  else{setForm(prev=>({...prev,name:''}));}
-                }}>
-                <option value="">— 不从库存选择 —</option>
-                {(db.lib.med||[]).map(m=><option key={m.id||m.name} value={m.name}>{m.name}</option>)}
-              </select>
-            </>}
             <label className="field-label">药品名称</label>
             <input key={'mn-'+form.name} className="input" style={{marginBottom:8}} placeholder="多菌灵、吡虫啉…" defaultValue={form.name} onBlur={e=>sf('name',e.target.value)}/>
             <label className="field-label">病症/原因</label>
@@ -551,6 +676,7 @@ function LogPage({plantId,logType,onClose}){
                     {r.name&&<span style={{fontSize:12,color:'#5a7848',marginLeft:8}}>{r.name}</span>}
                     {r.amount&&<span style={{fontSize:12,color:'#7a9060',marginLeft:6}}>· {r.amount}</span>}
                     {r.reason&&<div style={{fontSize:11,color:'#9a7040',marginTop:2}}>病症：{r.reason}</div>}
+                    {r.courseId&&<div style={{fontSize:10,color:'#b08060',marginTop:2}}>📋 疗程记录</div>}
                     {r.note&&<div style={{fontSize:12,color:'#6a8858',marginTop:2}}>{r.note}</div>}
                   </div>
                   <div style={{display:'flex',gap:2,flexShrink:0,marginLeft:8}}>
@@ -864,7 +990,7 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
   const fd=daysSince(lastLog(plant.fertLog));
   const md=daysSince(lastLog(plant.medLog));
 
-  // 恢复暂停：清除 pause 字段并写入一条 skip 日志作为新周期起点
+  // 恢复暂停：清除 pause 字段
   function resumePause(pid,type){
     updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
       if(p.id!==pid)return p;
@@ -872,11 +998,6 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
       return{...p,[pauseKey]:null};
     })}));
     toast.show('▶ 已恢复护理');
-  }
-  // 重新开始给药疗程：重置疗程起始日期为今天，重新计次
-  function restartMedCourse(pid){
-    updateDb(prev=>({...prev,plants:prev.plants.map(p=>p.id===pid?{...p,mcStart:toDay()}:p)}));
-    toast.show('💊 已开始新疗程');
   }
 
   return(
@@ -946,19 +1067,6 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           </div>
         )}
 
-        {/* 给药疗程已完成提示 */}
-        {plant.medMode==='scheduled'&&medCourseInfo(plant).done&&(
-          <div className="card" style={{borderColor:'rgba(90,150,90,.35)',background:'rgba(190,225,190,.15)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontSize:13,color:'#2a6a35'}}>
-                {'✅ 给药疗程已完成（'+medCourseInfo(plant).given+'/'+medCourseInfo(plant).total+'次），不会再提醒'}
-              </span>
-              <button onClick={()=>restartMedCourse(plant.id)}
-                style={{padding:'3px 10px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',background:'rgba(90,150,90,.2)',border:'1px solid rgba(90,150,90,.4)',color:'#2a6a35',whiteSpace:'nowrap'}}>开始新疗程</button>
-            </div>
-          </div>
-        )}
-
         {/* 护理提醒 */}
         {alerts.length>0&&(
           <div className="card" style={{borderColor:'rgba(200,140,50,.4)',background:'rgba(240,200,180,.15)'}}>
@@ -971,24 +1079,33 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
         <div className="card">
           <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:10}}>📋 护理记录</div>
           <div style={{display:'flex',gap:6}}>
-            {[
-              {type:'water',icon:'💧',days:wd,urgent:!getIsPaused(plant,'water')&&(wd!=null?wd:999)>=(parseInt(plant.wi)||7),cnt:(plant.waterLog||[]).length},
-              {type:'fert', icon:'🌿',days:fd,urgent:!getIsPaused(plant,'fert')&&(fd!=null?fd:999)>=(parseInt(plant.fi)||14),cnt:(plant.fertLog||[]).length},
-              {type:'med',  icon:'💊',days:md,urgent:false,cnt:(plant.medLog||[]).length},
-            ].map(item=>(
-              <button key={item.type}
-                className="care-btn-block"
-                style={{
-                  border:`1px solid ${item.urgent?'rgba(200,140,50,.5)':'rgba(150,185,130,.45)'}`,
-                  background:item.urgent?'rgba(240,190,100,.25)':'rgba(180,215,160,.2)',
-                  color:item.urgent?'#7a5010':'#4a7040',
-                }}
-                onClick={()=>onOpenLog(plant.id,item.type)}>
-                <div style={{fontSize:18,marginBottom:2}}>{item.icon}</div>
-                <div style={{fontWeight:600}}>{item.urgent?'⚠️ ':''}{item.days!=null?`${item.days}天前`:LOG_META[item.type].label}</div>
-                <div style={{fontSize:10,color:'#8aaa78',marginTop:1}}>{item.cnt}条记录</div>
-              </button>
-            ))}
+            {(()=>{
+              const medInfo=medCourseInfo(plant);
+              const medUrgent=medInfo.active&&!medInfo.done&&(()=>{
+                const lm=lastLog(plant.medLog);
+                const d=lm!=null?daysSince(lm):null;
+                return d!=null&&d>=(parseInt(medInfo.course.interval)||7);
+              })();
+              return[
+                {type:'water',icon:'💧',days:wd,urgent:!getIsPaused(plant,'water')&&(wd!=null?wd:999)>=(parseInt(plant.wi)||7),cnt:(plant.waterLog||[]).length,sub:null},
+                {type:'fert', icon:'🌿',days:fd,urgent:!getIsPaused(plant,'fert')&&(fd!=null?fd:999)>=(parseInt(plant.fi)||14),cnt:(plant.fertLog||[]).length,sub:null},
+                {type:'med',  icon:'💊',days:md,urgent:medUrgent,cnt:(plant.medLog||[]).length,
+                  sub:medInfo.active?`疗程 ${medInfo.given}/${medInfo.total}次`:null},
+              ].map(item=>(
+                <button key={item.type}
+                  className="care-btn-block"
+                  style={{
+                    border:`1px solid ${item.urgent?'rgba(200,140,50,.5)':'rgba(150,185,130,.45)'}`,
+                    background:item.urgent?'rgba(240,190,100,.25)':'rgba(180,215,160,.2)',
+                    color:item.urgent?'#7a5010':'#4a7040',
+                  }}
+                  onClick={()=>onOpenLog(plant.id,item.type)}>
+                  <div style={{fontSize:18,marginBottom:2}}>{item.icon}</div>
+                  <div style={{fontWeight:600}}>{item.urgent?'⚠️ ':''}{item.days!=null?`${item.days}天前`:LOG_META[item.type].label}</div>
+                  <div style={{fontSize:10,color:'#8aaa78',marginTop:1}}>{item.sub||item.cnt+'条记录'}</div>
+                </button>
+              ));
+            })()}
           </div>
         </div>
 
@@ -1402,43 +1519,8 @@ function PlantForm({initPlant,onClose}){
                 </div>
               )}
             </div>
-            <div>
-              <label className="field-label">💊 给药模式</label>
-              <div style={{display:'flex',gap:7}}>
-                {[['symptom','🩺 按需'],['scheduled','📅 定期']].map(([k,l])=>(
-                  <button key={k} style={{flex:1,padding:7,borderRadius:9,cursor:'pointer',fontFamily:'inherit',fontSize:11,
-                    background:form.medMode===k?'rgba(155,195,125,0.45)':'rgba(180,210,160,0.12)',
-                    border:`1px solid ${form.medMode===k?'rgba(130,175,100,0.6)':'rgba(150,185,130,0.3)'}`,
-                    color:form.medMode===k?'#2e4a22':'#6a8858'}}
-                    onClick={()=>{
-                      // 从「按需」切到「定期」时，视为开启一个新疗程，重新计次
-                      if(k==='scheduled'&&form.medMode!=='scheduled')
-                        setForm(f=>({...f,medMode:k,mcStart:toDay()}));
-                      else sf('medMode',k);
-                    }}>{l}</button>
-                ))}
-              </div>
-              {form.medMode==='scheduled'&&<div style={{marginTop:7,display:'flex',flexDirection:'column',gap:7}}>
-                <div style={{display:'flex',gap:10}}>
-                  <div>
-                    <label className="field-label">给药间隔（天）</label>
-                    <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#7a4030'}} defaultValue={form.mi||30} onBlur={e=>sf('mi',+e.target.value||30)}/>
-                  </div>
-                  <div>
-                    <label className="field-label">疗程次数（一般2-3次）</label>
-                    <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#7a4030'}} defaultValue={form.mc||3} onBlur={e=>sf('mc',+e.target.value||3)}/>
-                  </div>
-                </div>
-                <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:'rgba(220,160,130,.15)',borderRadius:8,border:'1px solid rgba(200,120,90,.3)'}}>
-                  <span style={{flex:1,fontSize:11,color:'#7a4030'}}>
-                    {(()=>{const info=medCourseInfo(form);return info.done
-                      ?`✅ 本疗程已完成（${info.given}/${info.total}次）`
-                      :`本疗程：已用药 ${info.given}/${info.total} 次`;})()}
-                  </span>
-                  <button onClick={()=>setForm(f=>({...f,mcStart:toDay()}))}
-                    style={{padding:'3px 10px',borderRadius:12,fontSize:11,cursor:'pointer',fontFamily:'inherit',background:'rgba(200,120,90,.25)',border:'1px solid rgba(200,120,90,.4)',color:'#7a4030',whiteSpace:'nowrap'}}>重新开始疗程</button>
-                </div>
-              </div>}
+            <div style={{padding:'8px 10px',background:'rgba(200,220,180,.2)',borderRadius:8,border:'1px solid rgba(150,185,130,.3)'}}>
+              <div style={{fontSize:11,color:'#7a9868'}}>💊 给药疗程请在各植物的给药记录页面设置，可按不同药品独立开启和归档疗程。</div>
             </div>
           </div>}
 
@@ -1767,13 +1849,10 @@ function buildDotMap(plants){
     }
     if(!getIsPaused(p,'water'))planDots(getEffLogDate(p,'water'),parseIntervalMin(p.wi),'water');
     if(!getIsPaused(p,'fert'))planDots(getEffLogDate(p,'fert'),parseIntervalMin(p.fi),'fert');
-    // 给药计划点：之前这里不分"按需/定期"模式、也不看疗程次数，只要有过一次用药记录
-    // 就会按间隔无限投射下去（最多60期），这正是日历上出现"无期限给药提醒"、
-    // 且很多植物的提醒恰好都堆在同一天（默认间隔30天）的原因。
-    // 现在改为：只有"定期"模式才投射，且最多只投射本疗程剩余的次数。
-    if(p.medMode==='scheduled'){
+    // 给药计划点：只有存在活跃疗程且未完成时才投射，最多投射剩余次数
+    if(p.activeCourse){
       const info=medCourseInfo(p);
-      if(!info.done)planDots(lastLog(p.medLog),parseIntervalMin(p.mi),'med',info.remain);
+      if(!info.done)planDots(lastLog(p.medLog),parseIntervalMin(p.activeCourse.interval),'med',info.remain);
     }
   });
   return map;
@@ -1958,14 +2037,12 @@ function CalendarTab(){
         if(e.plan){
           let courseRemain=null;
           if(e.type==='med'){
-            // 给药计划项：只有"定期"模式且本疗程未完成才算数，
-            // 否则会把"按需"用药、或已完成疗程的植物也错误地算进未来计划
-            if(p.medMode!=='scheduled')return;
+            if(!p.activeCourse)return;
             const info=medCourseInfo(p);
             if(info.done)return;
             courseRemain=info.remain;
           }
-          const interval=e.type==='water'?parseIntervalMin(p.wi):e.type==='fert'?parseIntervalMin(p.fi):parseIntervalMin(p.mi);
+          const interval=e.type==='water'?parseIntervalMin(p.wi):e.type==='fert'?parseIntervalMin(p.fi):parseIntervalMin(p.activeCourse?.interval);
           const llog=lastLog(log);if(!interval||interval>=900)return;
           const base=llog?(()=>{const pts=llog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todayD;
           const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
@@ -3038,7 +3115,8 @@ function ArchivePage({onClose}){
   const[sub,setSub]=useState('plants');
   useEffect(()=>{window.scrollTo(0,0)},[]);
   useSwipeBack(onClose);
-  const arc=db.archive||{plants:[],batches:[]};
+  const arc=db.archive||{plants:[],batches:[],courses:[]};
+  const courses=arc.courses||[];
   function unarchivePlant(id){
     const p=arc.plants.find(x=>x.id===id);if(!p)return;
     updateDb(prev=>({...prev,plants:[...prev.plants,{...p,archivedAt:undefined}],archive:{...prev.archive,plants:prev.archive.plants.filter(x=>x.id!==id)}}));
@@ -3049,7 +3127,17 @@ function ArchivePage({onClose}){
     updateDb(prev=>({...prev,prop:[...prev.prop,{...b,archivedAt:undefined}],archive:{...prev.archive,batches:prev.archive.batches.filter(x=>x.id!==id)}}));
     toast.show('↩ 已恢复到繁育页');
   }
-  const isPlants=sub==='plants';
+  function deleteCourse(id){
+    updateDb(prev=>({...prev,archive:{...prev.archive,courses:(prev.archive.courses||[]).filter(c=>c.id!==id)}}));
+    toast.show('🗑 疗程记录已删除');
+  }
+  // 按植物名分组
+  const coursesByPlant={};
+  [...courses].reverse().forEach(c=>{
+    const key=c.plantName||'未知植物';
+    if(!coursesByPlant[key])coursesByPlant[key]=[];
+    coursesByPlant[key].push(c);
+  });
   return(
     <div className="fullpage">
       <div className="page-header">
@@ -3057,16 +3145,16 @@ function ArchivePage({onClose}){
         <div className="page-header-title">📦 档案库</div>
       </div>
       <div style={{maxWidth:460,margin:'0 auto',padding:'12px 16px'}}>
-        <div style={{display:'flex',gap:8,marginBottom:14}}>
-          {[['plants','🪴 植物存档',arc.plants.length],['batches','🌱 繁育存档',arc.batches.length]].map(([k,l,cnt])=>(
-            <button key={k} style={{flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:600,
+        <div style={{display:'flex',gap:6,marginBottom:14}}>
+          {[['plants','🪴 植物',arc.plants.length],['batches','🌱 繁育',arc.batches.length],['courses','💊 疗程',courses.length]].map(([k,l,cnt])=>(
+            <button key={k} style={{flex:1,padding:'10px 6px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,
               background:sub===k?'rgba(140,185,110,0.4)':'rgba(255,255,255,0.5)',
               border:'1.5px solid '+(sub===k?'rgba(110,165,80,0.6)':'rgba(150,185,130,0.3)'),
               color:sub===k?'#2e4a22':'#6a8858'}}
               onClick={()=>setSub(k)}>{l} <span style={{fontSize:11,fontWeight:400,color:'#7a9060'}}>{cnt}</span></button>
           ))}
         </div>
-        {isPlants
+        {sub==='plants'
           ?arc.plants.length===0
             ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:13,lineHeight:2.2}}>暂无植物存档</div>
             :arc.plants.slice().reverse().map(p=>(
@@ -3083,24 +3171,55 @@ function ArchivePage({onClose}){
                 <button className="btn btn-gray" style={{width:'100%',fontSize:12,padding:'8px'}} onClick={()=>unarchivePlant(p.id)}>↩ 恢复到植物页</button>
               </div>
             ))
-          :arc.batches.length===0
-            ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:13,lineHeight:2.2}}>暂无繁育存档</div>
-            :arc.batches.slice().reverse().map(b=>{
-              const method=PROP_METHODS.find(m=>m.key===b.method)||PROP_METHODS[0];
-              const succ=(b.seedlings||[]).filter(s=>s.status==='success').length;
-              const rate=b.total>0?Math.round((succ/b.total)*100):0;
-              return<div key={b.id} className="card" style={{marginBottom:10}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                  <span style={{fontSize:15,fontWeight:700,color:'#2e4a22'}}>{method.icon} {b.parentName||'未命名'}</span>
-                  {b.archivedAt&&<span style={{fontSize:10,color:'#aab89a'}}>归档 {b.archivedAt}</span>}
+          :sub==='batches'
+            ?arc.batches.length===0
+              ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:13,lineHeight:2.2}}>暂无繁育存档</div>
+              :arc.batches.slice().reverse().map(b=>{
+                const method=PROP_METHODS.find(m=>m.key===b.method)||PROP_METHODS[0];
+                const succ=(b.seedlings||[]).filter(s=>s.status==='success').length;
+                const rate=b.total>0?Math.round((succ/b.total)*100):0;
+                return<div key={b.id} className="card" style={{marginBottom:10}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+                    <span style={{fontSize:15,fontWeight:700,color:'#2e4a22'}}>{method.icon} {b.parentName||'未命名'}</span>
+                    {b.archivedAt&&<span style={{fontSize:10,color:'#aab89a'}}>归档 {b.archivedAt}</span>}
+                  </div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
+                    <span style={{fontSize:11,background:'rgba(80,180,80,0.12)',color:'#2a6a35',borderRadius:8,padding:'2px 8px'}}>✅ {succ}/{b.total} ({rate}%)</span>
+                    <span style={{fontSize:11,color:'#7a9060'}}>📅 {fmtDate(b.date)}</span>
+                  </div>
+                  <button className="btn btn-gray" style={{width:'100%',fontSize:12,padding:'8px'}} onClick={()=>unarchiveBatch(b.id)}>↩ 恢复到繁育页</button>
+                </div>;
+              })
+            :courses.length===0
+              ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:13,lineHeight:2.2}}>暂无疗程存档<br/><span style={{fontSize:11}}>完成或手动结束的用药疗程会自动归档到这里</span></div>
+              :Object.entries(coursesByPlant).map(([plantName,cs])=>(
+                <div key={plantName} style={{marginBottom:14}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#5a7848',marginBottom:6,paddingLeft:2}}>🪴 {plantName}</div>
+                  {cs.map(c=>(
+                    <div key={c.id} className="card" style={{marginBottom:8,borderColor:c.status==='done'?'rgba(80,160,80,.3)':'rgba(180,140,80,.3)',background:c.status==='done'?'rgba(180,230,180,.1)':'rgba(230,210,160,.1)'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+                        <div>
+                          <span style={{fontSize:14,fontWeight:700,color:'#3a2810'}}>{c.drugName||'未记录药品'}</span>
+                          <span style={{marginLeft:8,fontSize:10,padding:'2px 7px',borderRadius:10,fontWeight:600,
+                            background:c.status==='done'?'rgba(80,160,80,.2)':'rgba(180,130,50,.2)',
+                            color:c.status==='done'?'#2a6a35':'#7a5010'}}>
+                            {c.status==='done'?'✅ 已完成':'🔚 已结束'}
+                          </span>
+                        </div>
+                        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:14,color:'#bbb',padding:'0 2px'}} onClick={()=>deleteCourse(c.id)}>🗑</button>
+                      </div>
+                      {c.reason&&<div style={{fontSize:11,color:'#9a7040',marginBottom:2}}>病症：{c.reason}</div>}
+                      {c.amount&&<div style={{fontSize:11,color:'#9a7040',marginBottom:2}}>用量：{c.amount}</div>}
+                      <div style={{fontSize:11,color:'#9a9080',marginBottom:2}}>
+                        {'间隔 '+c.interval+' 天 · 计划 '+c.total+' 次 · 实际完成 '+(c.given||0)+' 次'}
+                      </div>
+                      <div style={{fontSize:10,color:'#aab89a'}}>
+                        {'开始 '+fmtDate(c.startDate)+(c.endDate?' · 结束 '+fmtDate(c.endDate):'')}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
-                  <span style={{fontSize:11,background:'rgba(80,180,80,0.12)',color:'#2a6a35',borderRadius:8,padding:'2px 8px'}}>✅ {succ}/{b.total} ({rate}%)</span>
-                  <span style={{fontSize:11,color:'#7a9060'}}>📅 {fmtDate(b.date)}</span>
-                </div>
-                <button className="btn btn-gray" style={{width:'100%',fontSize:12,padding:'8px'}} onClick={()=>unarchiveBatch(b.id)}>↩ 恢复到繁育页</button>
-              </div>;
-            })
+              ))
         }
       </div>
     </div>
@@ -3375,6 +3494,7 @@ function InventoryTab(){
       plants:plantsOut,fert:db.lib.fert,med:db.lib.med,soil:db.lib.soil,
       recipe:db.lib.recipe||[],prop:db.prop,
       archive:{...db.archive,plants:archivePlantsOut},
+      courses:db.archive?.courses||[],
       exportTime:new Date().toISOString()
     };
     dlJson(data,'植物志备份_'+toDay()+'.json');
@@ -3439,7 +3559,7 @@ function InventoryTab(){
             plants:migratedPlants,
             cats:data.cats||DEFAULT_CATS,
             lib:{fert:data.fert||[],med:data.med||[],soil:data.soil||[],recipe:data.recipe||[]},
-            archive:{...(data.archive||{plants:[],batches:[]}),plants:migratedArchivePlants},
+            archive:{...(data.archive||{plants:[],batches:[]}),plants:migratedArchivePlants,courses:data.courses||[]},
             prop:data.prop||[]
           };});
           toast.show('✅ 数据恢复成功');
@@ -3453,7 +3573,7 @@ function InventoryTab(){
     {type:'med',  icon:'💊',label:'药品库',color:'rgba(210,155,120,0.2)',border:'rgba(190,135,100,0.4)',tc:'#5a3828',cnt:db.lib.med.length},
     {type:'soil', icon:'🪨',label:'盆土库',color:'rgba(190,165,120,0.2)',border:'rgba(170,145,100,0.4)',tc:'#4a3a20',cnt:db.lib.soil.length},
     {type:'recipe',icon:'🧪',label:'配方库',color:'rgba(215,185,250,0.2)',border:'rgba(185,155,220,0.4)',tc:'#4a2a68',cnt:(db.lib.recipe||[]).length},
-    {type:'archive',icon:'📦',label:'档案库',color:'rgba(165,195,220,0.2)',border:'rgba(140,175,210,0.4)',tc:'#2a3a58',cnt:(db.archive?.plants?.length||0)+(db.archive?.batches?.length||0)},
+    {type:'archive',icon:'📦',label:'档案库',color:'rgba(165,195,220,0.2)',border:'rgba(140,175,210,0.4)',tc:'#2a3a58',cnt:(db.archive?.plants?.length||0)+(db.archive?.batches?.length||0)+(db.archive?.courses?.length||0)},
   ];
   return(
     <div className="tab-content">
@@ -3521,17 +3641,23 @@ function App(){
   const[jumpPlantId,setJumpPlantId]=useState(null);
   const toast=useToast();
 
-  // 一次性数据迁移：早期版本的"定期给药"没有疗程次数/起始日期概念，
-  // 会导致提醒无限期持续。这里为缺失字段的植物补全默认值（默认3次，
-  // 从今天开始计），修复后续不再无期限提醒。
+  // 数据迁移：将旧版"定期给药"字段（medMode/mi/mc/mcStart）迁移到新的 activeCourse 结构
   useEffect(()=>{
     updateDb(prev=>{
       let changed=false;
       const plants=prev.plants.map(p=>{
-        if(p.medMode==='scheduled'&&!p.mcStart){
+        if(p.activeCourse!==undefined&&p.activeCourse!==null)return p;
+        if(p.medMode==='scheduled'){
           changed=true;
-          return{...p,mc:p.mc||3,mcStart:toDay()};
+          return{...p,activeCourse:{
+            id:'c'+Date.now()+Math.random().toString(36).slice(2,6),
+            drugName:'',reason:'',amount:'',
+            interval:parseInt(p.mi)||30,
+            total:parseInt(p.mc)||3,
+            startDate:p.mcStart||toDay(),
+          }};
         }
+        if(p.activeCourse===undefined){changed=true;return{...p,activeCourse:null};}
         return p;
       });
       return changed?{...prev,plants}:prev;
@@ -3760,16 +3886,32 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
       if (!ids.length) { alert('请先选择植物'); return; }
       var today = toDay();
       _updateDb(function(prev) {
-        return Object.assign({}, prev, { plants: prev.plants.map(function(p) {
+        var newCourses = (prev.archive&&prev.archive.courses)||[];
+        var plants = prev.plants.map(function(p) {
           if (ids.indexOf(p.id) < 0) return p;
           var key = type==='water'?'waterLog':type==='fert'?'fertLog':'medLog';
-          var arr = (p[key]||[]).concat([{date:today}]);
+          var entry = {date:today};
+          // 给药：自动附加当前疗程ID
+          if(type==='med'&&p.activeCourse) entry.courseId = p.activeCourse.id;
+          var arr = (p[key]||[]).concat([entry]);
           arr.sort(function(a,b){ return a.date.localeCompare(b.date); });
           var np = Object.assign({},p); np[key]=arr;
           if(type==='water')np.waterPause=null;
           else if(type==='fert')np.fertPause=null;
+          else if(type==='med'&&p.activeCourse){
+            // 检查疗程是否已完成
+            var total = Math.max(1,parseInt(p.activeCourse.total)||3);
+            var given = arr.filter(function(r){ return !r.skip&&r.courseId===p.activeCourse.id; }).length;
+            if(given>=total){
+              newCourses = newCourses.concat([Object.assign({},p.activeCourse,{
+                plantId:p.id,plantName:p.name,given:given,status:'done',endDate:today
+              })]);
+              np.activeCourse = null;
+            }
+          }
           return np;
-        })});
+        });
+        return Object.assign({},prev,{plants:plants,archive:Object.assign({},prev.archive,{courses:newCourses})});
       });
       if (_toast) _toast.show('已为 '+ids.length+' 株记录'+LABEL[type]);
       document.body.removeChild(overlay);
