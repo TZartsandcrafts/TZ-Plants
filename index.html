@@ -986,6 +986,8 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
     });
   }
 
+  const[showGrowth,setShowGrowth]=useState(false);
+
   const wd=daysSince(lastLog(plant.waterLog));
   const fd=daysSince(lastLog(plant.fertLog));
   const md=daysSince(lastLog(plant.medLog));
@@ -1000,12 +1002,44 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
     toast.show('▶ 已恢复护理');
   }
 
+  if(showGrowth) return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={()=>setShowGrowth(false)}>‹</button>
+        <div className="page-header-title">📋 生长档案</div>
+        <div style={{width:60}}/>
+      </div>
+      <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px'}}>
+        {tl.map((item,idx)=>(
+          <div key={idx} style={{display:'flex',gap:12,alignItems:'flex-start',padding:'14px 0',borderBottom:idx<tl.length-1?'1px solid rgba(150,185,130,.2)':'none'}}>
+            <span style={{fontSize:22,flexShrink:0}}>{item.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:4}}>
+                <span style={{fontSize:13,color:item.color,fontWeight:700}}>{item.label}</span>
+                <span style={{fontSize:12,color:'#7a9868'}}>{fmtDate(item.date)}</span>
+              </div>
+              {item.note&&<div style={{fontSize:13,color:'#7a9060',lineHeight:1.75,whiteSpace:'pre-line'}}>{item.note}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return(
     <div className="fullpage">
       <div className="page-header">
         <button className="back-btn" onClick={onClose}>‹</button>
         <div className="page-header-title">{plant.name}{plant.variety?<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:14}}>{plant.variety}</span>:''}</div>
-        <span style={{background:st.bg,color:st.color,padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>{st.label}</span>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{background:st.bg,color:st.color,padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>{st.label}</span>
+          {tl.length>0&&(
+            <button onClick={()=>setShowGrowth(true)}
+              style={{background:'rgba(180,215,160,0.35)',border:'1px solid rgba(130,175,100,0.45)',borderRadius:16,padding:'4px 10px',fontSize:11,fontWeight:600,color:'#3a6028',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+              📋 生长档案
+            </button>
+          )}
+        </div>
       </div>
       <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
         {/* 照片 + 基本信息并排 */}
@@ -1077,7 +1111,7 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
 
         {/* 护理记录 */}
         <div className="card">
-          <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:10}}>📋 护理记录</div>
+          <div style={{fontSize:13,fontWeight:700,color:'#4a6a38',marginBottom:10,textAlign:'center'}}>📋 护理记录</div>
           <div style={{display:'flex',gap:6}}>
             {(()=>{
               const medInfo=medCourseInfo(plant);
@@ -1109,8 +1143,8 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           </div>
         </div>
 
-        {/* 查看护理日历 */}
-        <button className="btn" style={{width:'100%',background:'rgba(165,195,220,0.3)',border:'1px solid rgba(140,175,210,0.4)',color:'#2a3a68',padding:'11px'}} onClick={()=>onOpenCal(plant.id)}>📅 查看护理日历</button>
+        {/* 护理月历 */}
+        <button className="btn" style={{width:'100%',background:'rgba(165,195,220,0.3)',border:'1px solid rgba(140,175,210,0.4)',color:'#2a3a68',padding:'11px',textAlign:'center'}} onClick={()=>onOpenCal(plant.id)}>📅 护理月历</button>
 
         {/* 备注 */}
         {plant.notes&&(
@@ -1120,24 +1154,6 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
           </div>
         )}
 
-        {/* 生长档案（最底部） */}
-        {tl.length>0&&(
-          <div className="card">
-            <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:8}}>📋 生长档案</div>
-            {tl.map((item,idx)=>(
-              <div key={idx} style={{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 0',borderBottom:idx<tl.length-1?'1px solid rgba(150,185,130,.15)':'none'}}>
-                <span style={{fontSize:18}}>{item.icon}</span>
-                <div style={{flex:1}}>
-                  <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                    <span style={{fontSize:12,color:item.color,fontWeight:700}}>{item.label}</span>
-                    <span style={{fontSize:12,color:'#7a9868'}}>{fmtDate(item.date)}</span>
-                  </div>
-                  {item.note&&<div style={{fontSize:12,color:'#7a9060',marginTop:4,lineHeight:1.7,whiteSpace:'pre-line'}}>{item.note}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -2048,16 +2064,16 @@ function CalendarTab(){
           const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
           const diff=Math.round((selT-base)/86400000);
           if(diff>0&&diff%interval===0&&(courseRemain==null||Math.round(diff/interval)<=courseRemain))
-            plantLines.push({name:p.name,type:e.type,plan:true});
+            plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
         } else {
-          (log||[]).forEach(r=>{if(r.date===ds)plantLines.push({name:p.name,type:e.type,skip:r.skip});});
+          (log||[]).forEach(r=>{if(r.date===ds)plantLines.push({name:p.name,variety:p.variety||'',type:e.type,skip:r.skip});});
         }
       });
     });
     const noteLines=[];
-    db.plants.forEach(p=>(p.noteLog||[]).forEach(n=>{if(n.date===ds)noteLines.push({name:p.name,text:n.text});}));
+    db.plants.forEach(p=>(p.noteLog||[]).forEach(n=>{if(n.date===ds)noteLines.push({name:p.name,variety:p.variety||'',text:n.text});}));
     const seen={};
-    const deduped=plantLines.filter(l=>{const k=l.name+'|'+l.type;if(seen[k])return false;seen[k]=true;return true;});
+    const deduped=plantLines.filter(l=>{const k=l.name+'|'+l.variety+'|'+l.type;if(seen[k])return false;seen[k]=true;return true;});
     const total=deduped.length+noteLines.length;
     return <div style={{background:'rgba(240,248,235,0.8)',borderRadius:10,padding:'10px 12px',border:'1px solid rgba(140,180,110,0.3)'}}>
       <div style={{fontSize:12,fontWeight:700,color:'#2e4a22',marginBottom:6}}>
@@ -2068,12 +2084,12 @@ function CalendarTab(){
         const suffix=l.skip?' (跳过)':l.plan?' (计划)':'';
         return <div key={i} style={{fontSize:12,color:'#3a6028',display:'flex',alignItems:'center',gap:6,padding:'2px 0'}}>
           <span style={{color:col}}>{TYPE_ICON[l.type]||'●'}</span>
-          <span>{l.name}<span style={{color:'#9aaa88',fontSize:11}}>{suffix}</span></span>
+          <span>{l.name}{l.variety&&<span style={{color:'#9aaa88',fontSize:11}}> · {l.variety}</span>}<span style={{color:'#9aaa88',fontSize:11}}>{suffix}</span></span>
         </div>;
       })}
       {noteLines.map((n,i)=><div key={'n'+i} style={{fontSize:12,color:'#7a4a10',display:'flex',alignItems:'flex-start',gap:6,padding:'3px 0',borderTop:'1px solid rgba(208,128,48,0.15)',marginTop:2}}>
         <span style={{color:'#d08030',flexShrink:0}}>📝</span>
-        <span><span style={{color:'#9aaa88',fontSize:11}}>{n.name}　</span>{n.text}</span>
+        <span><span style={{color:'#9aaa88',fontSize:11}}>{n.name}{n.variety&&` · ${n.variety}`}　</span>{n.text}</span>
       </div>)}
       {!total&&<div style={{fontSize:11,color:'#9aaa88'}}>暂无匹配记录</div>}
     </div>;
