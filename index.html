@@ -1031,15 +1031,7 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
       <div className="page-header">
         <button className="back-btn" onClick={onClose}>‹</button>
         <div className="page-header-title">{plant.name}{plant.variety?<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:14}}>{plant.variety}</span>:''}</div>
-        <div style={{display:'flex',alignItems:'center',gap:6}}>
-          <span style={{background:st.bg,color:st.color,padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>{st.label}</span>
-          {tl.length>0&&(
-            <button onClick={()=>setShowGrowth(true)}
-              style={{background:'rgba(180,215,160,0.35)',border:'1px solid rgba(130,175,100,0.45)',borderRadius:16,padding:'4px 10px',fontSize:11,fontWeight:600,color:'#3a6028',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
-              📋 生长档案
-            </button>
-          )}
-        </div>
+        <span style={{background:st.bg,color:st.color,padding:'4px 10px',borderRadius:20,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>{st.label}</span>
       </div>
       <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
         {/* 照片 + 基本信息并排 */}
@@ -1068,6 +1060,9 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
               {src&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>{src.icon} {src.label}</span>}
               {plant.finalPlantLocation&&<span style={{fontSize:11,color:'#5a7848',lineHeight:1.4}}>📍 {plant.finalPlantLocation}</span>}
             </div>
+            {tl.length>0&&(
+              <button className="btn" style={{width:'100%',padding:'7px 6px',fontSize:11,background:'rgba(180,215,160,0.35)',border:'1px solid rgba(130,175,100,0.45)',color:'#3a6028'}} onClick={()=>setShowGrowth(true)}>📋 生长档案</button>
+            )}
             <button className="btn btn-green" style={{width:'100%',padding:'9px 6px',fontSize:12}} onClick={()=>onEdit(plant)}>✏️ 编辑</button>
             <div style={{display:'flex',gap:6}}>
               <button className="btn btn-gray" style={{flex:1,padding:'8px 4px',fontSize:12}} onClick={()=>onArchive(plant.id)}>📦</button>
@@ -1111,7 +1106,7 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
 
         {/* 护理记录 */}
         <div className="card">
-          <div style={{fontSize:13,fontWeight:700,color:'#4a6a38',marginBottom:10,textAlign:'center'}}>📋 护理记录</div>
+          <div style={{fontSize:14,fontWeight:600,color:'#4a6a38',marginBottom:10,textAlign:'center'}}>📋 护理记录</div>
           <div style={{display:'flex',gap:6}}>
             {(()=>{
               const medInfo=medCourseInfo(plant);
