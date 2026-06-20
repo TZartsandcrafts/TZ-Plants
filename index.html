@@ -710,7 +710,7 @@ function LogPage({plantId,logType,onClose}){
 // ═══════════════════════════════════════════════
 // 植物护理日历页（全屏）
 // ═══════════════════════════════════════════════
-function PlantCareCalendar({plantId,onClose}){
+function PlantCareCalendarBody({plantId}){
   const{db,updateDb,toast}=useApp();
   const plant=db.plants.find(p=>p.id===plantId);
   const today=toDay();
@@ -721,8 +721,6 @@ function PlantCareCalendar({plantId,onClose}){
   const[showNoteInput,setShowNoteInput]=useState(false);
   const[editNote,setEditNote]=useState(null); // {idx, text} for editing
   const[editText,setEditText]=useState('');
-  useEffect(()=>{window.scrollTo(0,0)},[]);
-  useSwipeBack(onClose);
   if(!plant)return null;
 
   function navMo(dir){
@@ -817,121 +815,112 @@ function PlantCareCalendar({plantId,onClose}){
   const selMilestone=selDate?milestones[selDate]:null;
 
   return(
-    <div className="fullpage">
-      <div className="page-header">
-        <button className="back-btn" onClick={onClose}>‹</button>
-        <div style={{flex:1,minWidth:0}}>
-          <div className="page-header-title" style={{fontSize:15}}>{plant.name}{plant.variety&&<span style={{fontWeight:400,fontSize:13,color:'#5a7848',marginLeft:6}}>{plant.variety}</span>}</div>
-          <div style={{fontSize:11,color:'#7a9868'}}>护理日历</div>
+    <div>
+      {/* 月历（支持横划翻月） */}
+      <div ref={calSwRef} style={{touchAction:'pan-y'}}>
+      {/* 月份导航 */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={prevMo}>‹</button>
+        <span style={{fontSize:15,fontWeight:700,color:'#2e4a22'}}>{yr}年 {MN[mo]}</span>
+        <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={nextMo}>›</button>
+      </div>
+      {/* 星期头 */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
+        {WK2.map(w=><div key={w} style={{textAlign:'center',fontSize:10,color:'#9aaa88',padding:'2px 0'}}>{w}</div>)}
+      </div>
+      {/* 日历格 */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:14}}>
+        {Array.from({length:startOff},(_,i)=><div key={'e'+i}/>)}
+        {Array.from({length:daysInMonth},(_,i)=>{
+          const day=i+1;
+          const ds=yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+          const isT=ds===today,isSel=selDate===ds;
+          const hasMile=!!milestones[ds];
+          const dots=dotMap[ds]||[];
+          return <div key={day}
+            style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'2px 0',
+              cursor:'pointer',borderRadius:8,
+              background:isSel?'rgba(140,185,110,0.4)':'transparent'}}
+            onClick={()=>handleDayClick(ds)}>
+            <div style={{width:28,height:28,borderRadius:'50%',
+              background:isT?'rgba(70,160,70,0.85)':hasMile?'rgba(200,140,50,0.2)':'transparent',
+              border:hasMile&&!isT?'1.5px solid rgba(200,140,50,0.6)':'none',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:isT?14:12,fontWeight:isT?800:400,color:isT?'white':'#2e4a22'}}>
+              {day}
+            </div>
+            <div style={{display:'flex',gap:2,justifyContent:'center',marginTop:2}}>
+              {['water','fert','med','note'].map(t=>{
+                const e=dots.find(x=>x.type===t);if(!e)return null;
+                return <div key={t} style={{width:5,height:5,borderRadius:'50%',
+                  background:e.plan||e.skip?'transparent':DOT_COLOR[t],
+                  border:e.plan||e.skip?`1.5px solid ${DOT_COLOR[t]}`:'none'}}/>;
+              })}
+            </div>
+          </div>;
+        })}
+      </div>
+      {/* 图例 */}
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:14,padding:'8px 10px',background:'rgba(240,248,235,0.7)',borderRadius:10}}>
+        {[{t:'water',l:'浇水'},{t:'fert',l:'施肥'},{t:'med',l:'给药'},{t:'note',l:'备注'}].map(x=>(
+          <div key={x.t} style={{display:'flex',alignItems:'center',gap:3}}>
+            <div style={{width:6,height:6,borderRadius:'50%',background:DOT_COLOR[x.t]}}/>
+            <span style={{fontSize:10,color:'#7a9060'}}>{x.l}</span>
+          </div>
+        ))}
+        <div style={{display:'flex',alignItems:'center',gap:3}}>
+          <div style={{width:12,height:12,borderRadius:'50%',background:'rgba(200,140,50,0.2)',border:'1.5px solid rgba(200,140,50,0.6)'}}/>
+          <span style={{fontSize:10,color:'#7a9060'}}>里程碑</span>
         </div>
       </div>
-      <div style={{padding:'12px 16px'}}>
-        {/* 月历（支持横划翻月） */}
-        <div ref={calSwRef} style={{touchAction:'pan-y'}}>
-        {/* 月份导航 */}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={prevMo}>‹</button>
-          <span style={{fontSize:15,fontWeight:700,color:'#2e4a22'}}>{yr}年 {MN[mo]}</span>
-          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:24,color:'#5a8040',padding:'2px 8px',lineHeight:1}} onClick={nextMo}>›</button>
-        </div>
-        {/* 星期头 */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
-          {WK2.map(w=><div key={w} style={{textAlign:'center',fontSize:10,color:'#9aaa88',padding:'2px 0'}}>{w}</div>)}
-        </div>
-        {/* 日历格 */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:14}}>
-          {Array.from({length:startOff},(_,i)=><div key={'e'+i}/>)}
-          {Array.from({length:daysInMonth},(_,i)=>{
-            const day=i+1;
-            const ds=yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
-            const isT=ds===today,isSel=selDate===ds;
-            const hasMile=!!milestones[ds];
-            const dots=dotMap[ds]||[];
-            return <div key={day}
-              style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'2px 0',
-                cursor:'pointer',borderRadius:8,
-                background:isSel?'rgba(140,185,110,0.4)':'transparent'}}
-              onClick={()=>handleDayClick(ds)}>
-              <div style={{width:28,height:28,borderRadius:'50%',
-                background:isT?'rgba(70,160,70,0.85)':hasMile?'rgba(200,140,50,0.2)':'transparent',
-                border:hasMile&&!isT?'1.5px solid rgba(200,140,50,0.6)':'none',
-                display:'flex',alignItems:'center',justifyContent:'center',
-                fontSize:isT?14:12,fontWeight:isT?800:400,color:isT?'white':'#2e4a22'}}>
-                {day}
-              </div>
-              <div style={{display:'flex',gap:2,justifyContent:'center',marginTop:2}}>
-                {['water','fert','med','note'].map(t=>{
-                  const e=dots.find(x=>x.type===t);if(!e)return null;
-                  return <div key={t} style={{width:5,height:5,borderRadius:'50%',
-                    background:e.plan||e.skip?'transparent':DOT_COLOR[t],
-                    border:e.plan||e.skip?`1.5px solid ${DOT_COLOR[t]}`:'none'}}/>;
-                })}
-              </div>
-            </div>;
-          })}
-        </div>
-        {/* 图例 */}
-        <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:14,padding:'8px 10px',background:'rgba(240,248,235,0.7)',borderRadius:10}}>
-          {[{t:'water',l:'浇水'},{t:'fert',l:'施肥'},{t:'med',l:'给药'},{t:'note',l:'备注'}].map(x=>(
-            <div key={x.t} style={{display:'flex',alignItems:'center',gap:3}}>
-              <div style={{width:6,height:6,borderRadius:'50%',background:DOT_COLOR[x.t]}}/>
-              <span style={{fontSize:10,color:'#7a9060'}}>{x.l}</span>
+      </div>{/* end swipe wrapper */}
+      {/* 日期详情 */}
+      {selDate&&(
+        <div style={{background:'rgba(240,248,235,0.9)',borderRadius:12,padding:'12px 14px',border:'1px solid rgba(140,185,110,0.35)'}}>
+          <div style={{fontSize:13,fontWeight:700,color:'#2e4a22',marginBottom:8}}>{selDate.slice(5).replace('-','/')} {selDate===today?'（今天）':''}</div>
+          {selMilestone&&<div style={{fontSize:12,color:'#8a5010',background:'rgba(200,140,50,0.15)',borderRadius:8,padding:'4px 10px',marginBottom:6}}>📌 {selMilestone}</div>}
+          {selLogs.map((item,i)=>(
+            <div key={i} style={{fontSize:12,color:'#3a6028',display:'flex',alignItems:'center',gap:6,padding:'3px 0'}}>
+              <span style={{color:DOT_COLOR[item.type]}}>{TYPE_ICON[item.type]}</span>
+              <span>{TYPE_LABEL[item.type]}{item.r.note?`：${item.r.note}`:''}{item.r.skip?' (跳过)':''}</span>
             </div>
           ))}
-          <div style={{display:'flex',alignItems:'center',gap:3}}>
-            <div style={{width:12,height:12,borderRadius:'50%',background:'rgba(200,140,50,0.2)',border:'1.5px solid rgba(200,140,50,0.6)'}}/>
-            <span style={{fontSize:10,color:'#7a9060'}}>里程碑</span>
-          </div>
-        </div>
-        </div>{/* end swipe wrapper */}
-        {/* 日期详情 */}
-        {selDate&&(
-          <div style={{background:'rgba(240,248,235,0.9)',borderRadius:12,padding:'12px 14px',border:'1px solid rgba(140,185,110,0.35)'}}>
-            <div style={{fontSize:13,fontWeight:700,color:'#2e4a22',marginBottom:8}}>{selDate.slice(5).replace('-','/')} {selDate===today?'（今天）':''}</div>
-            {selMilestone&&<div style={{fontSize:12,color:'#8a5010',background:'rgba(200,140,50,0.15)',borderRadius:8,padding:'4px 10px',marginBottom:6}}>📌 {selMilestone}</div>}
-            {selLogs.map((item,i)=>(
-              <div key={i} style={{fontSize:12,color:'#3a6028',display:'flex',alignItems:'center',gap:6,padding:'3px 0'}}>
-                <span style={{color:DOT_COLOR[item.type]}}>{TYPE_ICON[item.type]}</span>
-                <span>{TYPE_LABEL[item.type]}{item.r.note?`：${item.r.note}`:''}{item.r.skip?' (跳过)':''}</span>
-              </div>
-            ))}
-            {selNotes.map((n,i)=>(
-              <div key={i} style={{padding:'6px 0',borderTop:'1px solid rgba(200,140,50,0.15)',marginTop:3}}>
-                {editNote&&editNote.idx===n.idx
-                  ?<div>
-                    <textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:6,fontSize:12}} value={editText} onChange={e=>setEditText(e.target.value)}/>
-                    <div style={{display:'flex',gap:6}}>
-                      <button className="btn btn-green" style={{flex:1,padding:'7px',fontSize:12}} onClick={saveEditNote}>✓ 保存</button>
-                      <button className="btn btn-gray" style={{flex:1,padding:'7px',fontSize:12}} onClick={()=>{setEditNote(null);setEditText('');}}>取消</button>
-                    </div>
+          {selNotes.map((n,i)=>(
+            <div key={i} style={{padding:'6px 0',borderTop:'1px solid rgba(200,140,50,0.15)',marginTop:3}}>
+              {editNote&&editNote.idx===n.idx
+                ?<div>
+                  <textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:6,fontSize:12}} value={editText} onChange={e=>setEditText(e.target.value)}/>
+                  <div style={{display:'flex',gap:6}}>
+                    <button className="btn btn-green" style={{flex:1,padding:'7px',fontSize:12}} onClick={saveEditNote}>✓ 保存</button>
+                    <button className="btn btn-gray" style={{flex:1,padding:'7px',fontSize:12}} onClick={()=>{setEditNote(null);setEditText('');}}>取消</button>
                   </div>
-                  :<div style={{display:'flex',alignItems:'flex-start',gap:6}}>
-                    <span style={{color:'#d08030',fontSize:13,flexShrink:0}}>📝</span>
-                    <span style={{fontSize:12,color:'#7a4a10',flex:1,lineHeight:1.7}}>{n.text}</span>
-                    <div style={{display:'flex',gap:3,flexShrink:0}}>
-                      <button style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#7a9060',padding:'0 3px'}} onClick={()=>startEditNote(n)}>✏️</button>
-                      <button style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#9a8878',padding:'0 3px'}} onClick={()=>deleteNote(n.idx)}>🗑️</button>
-                    </div>
-                  </div>
-                }
-              </div>
-            ))}
-            {selLogs.length===0&&selNotes.length===0&&!selMilestone&&<div style={{fontSize:11,color:'#9aaa88',marginBottom:6}}>暂无记录</div>}
-            {/* 添加备注 */}
-            {showNoteInput
-              ?<div style={{marginTop:8}}>
-                <textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
-                <div style={{display:'flex',gap:7}}>
-                  <button className="btn btn-green" style={{flex:1,padding:'8px'}} onClick={saveNote}>✓ 保存</button>
-                  <button className="btn btn-gray" style={{flex:1,padding:'8px'}} onClick={()=>{setShowNoteInput(false);setNoteText('');}}>取消</button>
                 </div>
+                :<div style={{display:'flex',alignItems:'flex-start',gap:6}}>
+                  <span style={{color:'#d08030',fontSize:13,flexShrink:0}}>📝</span>
+                  <span style={{fontSize:12,color:'#7a4a10',flex:1,lineHeight:1.7}}>{n.text}</span>
+                  <div style={{display:'flex',gap:3,flexShrink:0}}>
+                    <button style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#7a9060',padding:'0 3px'}} onClick={()=>startEditNote(n)}>✏️</button>
+                    <button style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#9a8878',padding:'0 3px'}} onClick={()=>deleteNote(n.idx)}>🗑️</button>
+                  </div>
+                </div>
+              }
+            </div>
+          ))}
+          {selLogs.length===0&&selNotes.length===0&&!selMilestone&&<div style={{fontSize:11,color:'#9aaa88',marginBottom:6}}>暂无记录</div>}
+          {/* 添加备注 */}
+          {showNoteInput
+            ?<div style={{marginTop:8}}>
+              <textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
+              <div style={{display:'flex',gap:7}}>
+                <button className="btn btn-green" style={{flex:1,padding:'8px'}} onClick={saveNote}>✓ 保存</button>
+                <button className="btn btn-gray" style={{flex:1,padding:'8px'}} onClick={()=>{setShowNoteInput(false);setNoteText('');}}>取消</button>
               </div>
-              :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>setShowNoteInput(true)}>＋ 添加备注</button>
-            }
-          </div>
-        )}
-        {!selDate&&<div style={{textAlign:'center',padding:'20px 0',color:'#9aaa88',fontSize:12}}>📅 点击日期查看记录或添加备注</div>}
-      </div>
+            </div>
+            :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>setShowNoteInput(true)}>＋ 添加备注</button>
+          }
+        </div>
+      )}
+      {!selDate&&<div style={{textAlign:'center',padding:'20px 0',color:'#9aaa88',fontSize:12}}>📅 点击日期查看记录或添加备注</div>}
     </div>
   );
 }
@@ -939,7 +928,7 @@ function PlantCareCalendar({plantId,onClose}){
 // ═══════════════════════════════════════════════
 // 8. 植物详情页（全屏）
 // ═══════════════════════════════════════════════
-function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDelete}){
+function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
   const{db,updateDb,toast}=useApp();
   const plant=db.plants.find(p=>p.id===plantId);
   useEffect(()=>{window.scrollTo(0,0)},[]);
@@ -1139,7 +1128,10 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onOpenCal,onArchive,onDel
         </div>
 
         {/* 护理月历 */}
-        <button className="btn" style={{width:'100%',background:'rgba(165,195,220,0.3)',border:'1px solid rgba(140,175,210,0.4)',color:'#2a3a68',padding:'11px',textAlign:'center'}} onClick={()=>onOpenCal(plant.id)}>📅 护理月历</button>
+        <div className="card">
+          <div style={{fontSize:14,fontWeight:600,color:'#2a3a68',marginBottom:10,textAlign:'center'}}>📅 护理月历</div>
+          <PlantCareCalendarBody plantId={plant.id}/>
+        </div>
 
         {/* 备注 */}
         {plant.notes&&(
@@ -1639,15 +1631,12 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       if(view.returnTab){setView(null);setTab(view.returnTab);}
       else setView({type:'detail',id:view.plantId});
     }}/>;
-  if(view?.type==='cal')
-    return<PlantCareCalendar plantId={view.id} onClose={()=>{returnTabRef.current=null;setView({type:'detail',id:view.id});}}/>;
   if(view?.type==='detail')
     return<PlantDetail
       plantId={view.id}
       onClose={closeDetail}
       onEdit={p=>setView({type:'form',plant:p})}
       onOpenLog={(pid,lt)=>setView({type:'log',plantId:pid,logType:lt})}
-      onOpenCal={(pid)=>setView({type:'cal',id:pid})}
       onArchive={(pid)=>{
         if(!window.confirm('将此植物移入档案库？'))return;
         updateDb(prev=>({...prev,
