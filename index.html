@@ -480,7 +480,7 @@ function LogPage({plantId,logType,onClose}){
           if(isNewEntry&&p.activeCourse)rec.courseId=p.activeCourse.id;
         }
         else{rec.note=form.note}
-        if(editIdx!==null)arr[editIdx]=rec;
+        if(editIdx!==null)arr[editIdx]={...arr[editIdx],...rec};
         else{arr.push(rec);arr.sort((a,b)=>a.date.localeCompare(b.date))}
         return{...p,[meta.key]:arr};
       });
