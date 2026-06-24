@@ -26,17 +26,18 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
   min-height:100vh;
   background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc);
   padding-bottom:calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 20px);
+  -webkit-transform:translateZ(0);
+  transform:translateZ(0);
+  isolation:isolate;
 }
 
 /* 顶部导航栏（全屏页面用）*/
 .page-header{
   padding:14px 16px 10px;
   border-bottom:1px solid rgba(90,120,70,0.2);
-  background:rgba(220,232,216,0.95);
+  background:rgba(220,232,216,0.98);
   display:flex;align-items:center;gap:12px;
   position:sticky;top:0;z-index:10;
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
   padding-top:max(14px,env(safe-area-inset-top,14px));
 }
 .page-header-title{font-size:17px;font-weight:700;color:#2e4a22;flex:1}
@@ -2606,6 +2607,7 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
         opNotes:isCutting?combinedNotes:'',
         sowMethod:batch.method==='seed'?combinedNotes:'',
         prePlantNotes:batch.method==='bulb'&&medPart?medPart:'',
+        notes:s.note||'',
       }
     });
   }
@@ -2685,8 +2687,10 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
                 <button style={{padding:'4px 8px',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:10,background:'rgba(165,195,220,0.25)',border:'1px solid rgba(140,175,210,0.4)',color:'#384a68',flexShrink:0}}
                   onClick={()=>graduateSingle(idx)}>建卡</button>
               </div>
-              <input className="input" style={{fontSize:12,padding:'6px 10px',marginTop:6}} placeholder="备注…"
-                defaultValue={s.note} onBlur={e=>setSeedlingNote(idx,e.target.value)}/>
+              <textarea className="input" rows={2} style={{fontSize:12,padding:'6px 10px',marginTop:6,resize:'none',lineHeight:1.5,overflowY:'hidden',whiteSpace:'pre-wrap'}} placeholder="备注…"
+                defaultValue={s.note}
+                onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}}
+                onBlur={e=>setSeedlingNote(idx,e.target.value)}/>
             </div>;
           })}
         </div>
@@ -3456,16 +3460,23 @@ function RecipeListPage({onClose}){
 
 function ExportPlantPicker({onSelect,onClose}){
   const{db}=useApp();
+  const[search,setSearch]=useState('');
   const plants=db.plants||[];
+  const q=search.trim().toLowerCase();
+  const filtered=q?plants.filter(function(p){return(p.name||'').toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q);}):plants;
   return(
     <div className="fullpage">
       <div className="page-header">
         <button className="back-btn" onClick={onClose}>‹</button>
         <div className="page-header-title">选择植物 · 单株备份</div>
       </div>
+      <div style={{padding:'10px 16px 6px',background:'rgba(220,232,216,0.9)',borderBottom:'1px solid rgba(90,120,70,0.1)'}}>
+        <input className="input" placeholder="搜索名称、品种…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
+      </div>
       <div>
         {plants.length===0&&<div style={{padding:'40px 16px',textAlign:'center',color:'#9aaa88'}}>暂无植物数据</div>}
-        {plants.map(function(p){
+        {filtered.length===0&&plants.length>0&&<div style={{padding:'30px 16px',textAlign:'center',color:'#9aaa88'}}>未找到匹配植物</div>}
+        {filtered.map(function(p){
           return(
             <div key={p.id} onClick={function(){onSelect(p);}}
               style={{display:'flex',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid rgba(90,120,70,0.12)',cursor:'pointer',gap:10,background:'rgba(255,255,255,0.35)'}}>
