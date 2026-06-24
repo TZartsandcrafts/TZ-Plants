@@ -2460,6 +2460,22 @@ function PropForm({initBatch,onClose}){
 }
 
 // ── 批次详情页（全屏）──
+function SeedlingNoteTextarea({note,onSave}){
+  const ref=useRef(null);
+  useEffect(()=>{
+    const el=ref.current;
+    if(!el)return;
+    el.style.height='auto';
+    el.style.height=el.scrollHeight+'px';
+  },[]);
+  return<textarea ref={ref} className="input"
+    style={{fontSize:12,padding:'6px 10px',marginTop:6,resize:'none',lineHeight:1.5,overflowY:'hidden',whiteSpace:'pre-wrap',minHeight:'34px'}}
+    placeholder="备注…"
+    defaultValue={note}
+    onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}}
+    onBlur={e=>onSave(e.target.value)}/>;
+}
+
 function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
   const{db,updateDb,toast}=useApp();
   const batch=db.prop.find(b=>b.id===batchId);
@@ -2687,10 +2703,7 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
                 <button style={{padding:'4px 8px',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:10,background:'rgba(165,195,220,0.25)',border:'1px solid rgba(140,175,210,0.4)',color:'#384a68',flexShrink:0}}
                   onClick={()=>graduateSingle(idx)}>建卡</button>
               </div>
-              <textarea className="input" rows={2} style={{fontSize:12,padding:'6px 10px',marginTop:6,resize:'none',lineHeight:1.5,overflowY:'hidden',whiteSpace:'pre-wrap'}} placeholder="备注…"
-                defaultValue={s.note}
-                onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}}
-                onBlur={e=>setSeedlingNote(idx,e.target.value)}/>
+              <SeedlingNoteTextarea note={s.note} onSave={note=>setSeedlingNote(idx,note)}/>
             </div>;
           })}
         </div>
