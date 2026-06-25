@@ -272,11 +272,17 @@ function careAlerts(p){
   }
   allMedCourseInfos(p).forEach(info=>{
     if(!info.done){
-      const lm=lastLogForCourse(p,info.course.id);
-      const md=lm!=null?daysSince(lm):null;
-      const interval=parseInt(info.course.interval)||7;
-      if(lm!=null&&md!=null&&md>=interval)
-        a.push({type:'med',icon:'💊',label:`给药（${info.course.drugName}·已${md}天·第${info.given+1}/${info.total}次）`,color:'#882010'});
+      const course=info.course;
+      if(course.noInterval||parseInt(course.total)===1){
+        if(info.given===0&&course.startDate&&daysSince(course.startDate)>=0)
+          a.push({type:'med',icon:'💊',label:`给药（${course.drugName}·单次）`,color:'#882010'});
+      }else{
+        const lm=lastLogForCourse(p,course.id);
+        const md=lm!=null?daysSince(lm):null;
+        const interval=parseInt(course.interval)||7;
+        if(lm!=null&&md!=null&&md>=interval)
+          a.push({type:'med',icon:'💊',label:`给药（${course.drugName}·已${md}天·第${info.given+1}/${info.total}次）`,color:'#882010'});
+      }
     }
   });
   return a;
@@ -468,7 +474,8 @@ function LogPage({plantId,logType,onClose}){
   const[editIdx,setEditIdx]=useState(null);
   const[delIdx,setDelIdx]=useState(null);
   const[showNewCourse,setShowNewCourse]=useState(false);
-  const[courseForm,setCourseForm]=useState({drugName:'',reason:'',amount:'',interval:7,total:3});
+  const[courseForm,setCourseForm]=useState({drugName:'',reason:'',amount:'',interval:7,total:3,startDate:toDay(),noInterval:false});
+  const[editingCourseId,setEditingCourseId]=useState(null);
   const[pendingCourseId,setPendingCourseId]=useState(null); // 新增记录时关联的疗程ID
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
   const scf=(k,v)=>setCourseForm(f=>({...f,[k]:v}));
@@ -518,23 +525,30 @@ function LogPage({plantId,logType,onClose}){
 
   function startNewCourse(){
     if(!courseForm.drugName.trim()){toast.show('⚠️ 请填写药品名称');return}
-    const cid='c'+Date.now()+Math.random().toString(36).slice(2,6);
+    const isEdit=!!editingCourseId;
+    const cid=isEdit?editingCourseId:'c'+Date.now()+Math.random().toString(36).slice(2,6);
+    const noInt=!!courseForm.noInterval||parseInt(courseForm.total)===1;
+    const newCourse={
+      id:cid,
+      drugName:courseForm.drugName.trim(),
+      reason:courseForm.reason.trim(),
+      amount:courseForm.amount.trim(),
+      noInterval:noInt,
+      interval:noInt?0:Math.max(1,parseInt(courseForm.interval)||7),
+      total:Math.max(1,parseInt(courseForm.total)||1),
+      startDate:courseForm.startDate||today,
+    };
     updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
       if(p.id!==plantId)return p;
-      const newCourse={
-        id:cid,
-        drugName:courseForm.drugName.trim(),
-        reason:courseForm.reason.trim(),
-        amount:courseForm.amount.trim(),
-        interval:Math.max(1,parseInt(courseForm.interval)||7),
-        total:Math.max(1,parseInt(courseForm.total)||3),
-        startDate:today,
-      };
-      return{...p,activeCourses:[...(p.activeCourses||[]),newCourse]};
+      const courses=isEdit
+        ?(p.activeCourses||[]).map(c=>c.id===cid?newCourse:c)
+        :[...(p.activeCourses||[]),newCourse];
+      return{...p,activeCourses:courses};
     })}));
     setShowNewCourse(false);
-    setCourseForm({drugName:'',reason:'',amount:'',interval:7,total:3});
-    toast.show('💊 已开始新疗程');
+    setEditingCourseId(null);
+    setCourseForm({drugName:'',reason:'',amount:'',interval:7,total:3,startDate:toDay(),noInterval:false});
+    toast.show(isEdit?'✅ 疗程已更新':'💊 已开始新疗程');
   }
 
   function startEdit(idx){
@@ -568,11 +582,21 @@ function LogPage({plantId,logType,onClose}){
           <div style={{marginBottom:14}}>
             {medInfos.filter(i=>!i.done).map(info=>(
               <div key={info.course.id} className="card" style={{borderColor:'rgba(200,100,60,.4)',background:pendingCourseId===info.course.id?'rgba(240,200,180,.28)':'rgba(240,200,180,.15)',marginBottom:10}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#7a3018',marginBottom:6}}>💊 当前疗程</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#7a3018'}}>💊 当前疗程</div>
+                  <button style={{background:'rgba(200,100,60,.12)',border:'1px solid rgba(200,100,60,.3)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'#7a3018',cursor:'pointer'}} onClick={()=>{
+                    setEditingCourseId(info.course.id);
+                    setCourseForm({drugName:info.course.drugName||'',reason:info.course.reason||'',amount:info.course.amount||'',interval:info.course.interval||7,total:info.total,startDate:info.course.startDate||today,noInterval:!!info.course.noInterval});
+                    setShowNewCourse(true);
+                    setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),50);
+                  }}>✏️ 编辑</button>
+                </div>
                 <div style={{fontSize:13,color:'#5a2010',marginBottom:2,fontWeight:600}}>{info.course.drugName}</div>
                 {info.course.reason&&<div style={{fontSize:11,color:'#9a6050',marginBottom:4}}>病症：{info.course.reason}</div>}
                 {info.course.amount&&<div style={{fontSize:11,color:'#9a6050',marginBottom:4}}>用量：{info.course.amount}</div>}
-                <div style={{fontSize:11,color:'#9a6050',marginBottom:8}}>间隔 {info.course.interval} 天 · 共 {info.total} 次</div>
+                {(info.course.noInterval||info.total===1)
+                  ?<div style={{fontSize:11,color:'#9a6050',marginBottom:8}}>单次给药{info.course.startDate?` · 计划日期 ${info.course.startDate}`:''}</div>
+                  :<div style={{fontSize:11,color:'#9a6050',marginBottom:8}}>间隔 {info.course.interval} 天 · 共 {info.total} 次{info.course.startDate?` · 开始 ${info.course.startDate}`:''}</div>}
                 <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
                   {Array.from({length:info.total}).map((_,i)=>(
                     <div key={i} style={{width:28,height:28,borderRadius:'50%',border:'2px solid rgba(200,100,60,.5)',background:i<info.given?'rgba(200,100,60,.7)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:i<info.given?'white':'#c07050',fontWeight:700}}>{i<info.given?'✓':i+1}</div>
@@ -595,8 +619,8 @@ function LogPage({plantId,logType,onClose}){
                 <button className="btn btn-green" style={{width:'100%'}} onClick={()=>setShowNewCourse(true)}>＋ 开始新疗程</button>
               ):(
                 <div>
-                  <div style={{fontSize:12,fontWeight:700,color:'#7a3018',marginBottom:10}}>💊 新疗程设置</div>
-                  {(db.lib.med||[]).length>0&&<>
+                  <div style={{fontSize:12,fontWeight:700,color:'#7a3018',marginBottom:10}}>💊 {editingCourseId?'编辑疗程':'新疗程设置'}</div>
+                  {!editingCourseId&&(db.lib.med||[]).length>0&&<>
                     <label className="field-label">从药品库选择（可选）</label>
                     <select className="input" style={{marginBottom:8,color:'#2e4a22'}}
                       value={courseForm.drugName||''}
@@ -610,24 +634,29 @@ function LogPage({plantId,logType,onClose}){
                     </select>
                   </>}
                   <label className="field-label">药品名称 *</label>
-                  <input key={'cname-'+courseForm.drugName} className="input" style={{marginBottom:8}} placeholder="多菌灵、吡虫啉…" defaultValue={courseForm.drugName} onBlur={e=>scf('drugName',e.target.value)}/>
+                  <input key={'cname-'+(editingCourseId||'new')+courseForm.drugName} className="input" style={{marginBottom:8}} placeholder="多菌灵、吡虫啉…" defaultValue={courseForm.drugName} onBlur={e=>scf('drugName',e.target.value)}/>
                   <label className="field-label">病症/原因</label>
-                  <input key={'creason-'+courseForm.reason} className="input" style={{marginBottom:8}} placeholder="白粉病、蚜虫…" defaultValue={courseForm.reason} onBlur={e=>scf('reason',e.target.value)}/>
+                  <input key={'creason-'+(editingCourseId||'new')+courseForm.reason} className="input" style={{marginBottom:8}} placeholder="白粉病、蚜虫…" defaultValue={courseForm.reason} onBlur={e=>scf('reason',e.target.value)}/>
                   <label className="field-label">用量/浓度</label>
-                  <input key={'camount-'+courseForm.amount} className="input" style={{marginBottom:8}} placeholder="稀释800倍…" defaultValue={courseForm.amount} onBlur={e=>scf('amount',e.target.value)}/>
-                  <div style={{display:'flex',gap:10,marginBottom:8}}>
-                    <div style={{flex:1}}>
-                      <label className="field-label">给药间隔（天）</label>
-                      <input type="number" min={1} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}} defaultValue={courseForm.interval} onBlur={e=>scf('interval',+e.target.value||7)}/>
-                    </div>
+                  <input key={'camount-'+(editingCourseId||'new')+courseForm.amount} className="input" style={{marginBottom:8}} placeholder="稀释800倍…" defaultValue={courseForm.amount} onBlur={e=>scf('amount',e.target.value)}/>
+                  <label className="field-label">{courseForm.noInterval||parseInt(courseForm.total)===1?'计划给药日期':'计划开始日期'}</label>
+                  <input type="date" className="input" style={{marginBottom:8}} value={courseForm.startDate||today} onChange={e=>scf('startDate',e.target.value)}/>
+                  <div style={{display:'flex',gap:10,marginBottom:4}}>
                     <div style={{flex:1}}>
                       <label className="field-label">总次数</label>
-                      <input type="number" min={1} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}} defaultValue={courseForm.total} onBlur={e=>scf('total',+e.target.value||3)}/>
+                      <input type="number" min={1} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}} value={courseForm.total} onChange={e=>{const v=Math.max(1,+e.target.value||1);setCourseForm(f=>({...f,total:v,noInterval:v===1?true:f.noInterval}));}}/>
                     </div>
+                    {!courseForm.noInterval&&parseInt(courseForm.total)>1&&(
+                      <div style={{flex:1}}>
+                        <label className="field-label">给药间隔（天）</label>
+                        <input type="number" min={1} key={'cint-'+(editingCourseId||'new')+(courseForm.noInterval?'no':'yes')} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}} defaultValue={courseForm.interval} onBlur={e=>scf('interval',+e.target.value||7)}/>
+                      </div>
+                    )}
                   </div>
-                  <div style={{display:'flex',gap:8}}>
-                    <button className="btn btn-green" style={{flex:1}} onClick={startNewCourse}>✓ 开始疗程</button>
-                    <button className="btn btn-gray" style={{flex:1}} onClick={()=>setShowNewCourse(false)}>取消</button>
+                  {(courseForm.noInterval||parseInt(courseForm.total)===1)&&<div style={{fontSize:11,color:'#9a6050',marginBottom:8,paddingLeft:2}}>✓ 单次给药，无需设置间隔</div>}
+                  <div style={{display:'flex',gap:8,marginTop:8}}>
+                    <button className="btn btn-green" style={{flex:1}} onClick={startNewCourse}>✓ {editingCourseId?'保存修改':'开始疗程'}</button>
+                    <button className="btn btn-gray" style={{flex:1}} onClick={()=>{setShowNewCourse(false);setEditingCourseId(null);setCourseForm({drugName:'',reason:'',amount:'',interval:7,total:3,startDate:today,noInterval:false});}}>{editingCourseId?'放弃修改':'取消'}</button>
                   </div>
                 </div>
               )}
@@ -1119,9 +1148,12 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
             {(()=>{
               const activeInfos=allMedCourseInfos(plant).filter(i=>!i.done);
               const medUrgent=activeInfos.some(info=>{
+                const course=info.course;
+                if(course.noInterval||parseInt(course.total)===1)
+                  return info.given===0&&course.startDate&&daysSince(course.startDate)>=0;
                 const lm=lastLogForCourse(plant,info.course.id);
                 const d=lm!=null?daysSince(lm):null;
-                return d!=null&&d>=(parseInt(info.course.interval)||7);
+                return d!=null&&d>=(parseInt(course.interval)||7);
               });
               const medSub=activeInfos.length>0?`${activeInfos.length}个疗程进行中`:null;
               return[
