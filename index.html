@@ -474,6 +474,7 @@ function LogPage({plantId,logType,onClose}){
   const[editIdx,setEditIdx]=useState(null);
   const[delIdx,setDelIdx]=useState(null);
   const[showNewCourse,setShowNewCourse]=useState(false);
+  const newCourseFormRef=useRef(null);
   const[courseForm,setCourseForm]=useState({drugName:'',reason:'',amount:'',interval:7,total:3,startDate:toDay(),noInterval:false});
   const[editingCourseId,setEditingCourseId]=useState(null);
   const[pendingCourseId,setPendingCourseId]=useState(null); // 新增记录时关联的疗程ID
@@ -588,7 +589,7 @@ function LogPage({plantId,logType,onClose}){
                     setEditingCourseId(info.course.id);
                     setCourseForm({drugName:info.course.drugName||'',reason:info.course.reason||'',amount:info.course.amount||'',interval:info.course.interval||7,total:info.total,startDate:info.course.startDate||today,noInterval:!!info.course.noInterval});
                     setShowNewCourse(true);
-                    setTimeout(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}),50);
+                    setTimeout(()=>newCourseFormRef.current?.scrollIntoView({behavior:'smooth',block:'center'}),80);
                   }}>✏️ 编辑</button>
                 </div>
                 <div style={{fontSize:13,color:'#5a2010',marginBottom:2,fontWeight:600}}>{info.course.drugName}</div>
@@ -614,7 +615,7 @@ function LogPage({plantId,logType,onClose}){
               </div>
             ))}
             {/* 开始新疗程 — 始终可见 */}
-            <div className="card" style={{marginBottom:0}}>
+            <div className="card" ref={newCourseFormRef} style={{marginBottom:0}}>
               {!showNewCourse?(
                 <button className="btn btn-green" style={{width:'100%'}} onClick={()=>setShowNewCourse(true)}>＋ 开始新疗程</button>
               ):(
@@ -1902,7 +1903,15 @@ function buildDotMap(plants){
     if(!getIsPaused(p,'fert'))planDots(getEffLogDate(p,'fert'),parseIntervalMin(p.fi),'fert');
     // 给药计划点：遍历所有活跃未完成疗程，每个疗程用自己的间隔和最后给药日期独立投射
     allMedCourseInfos(p).forEach(info=>{
-      if(!info.done)planDots(lastLogForCourse(p,info.course.id),parseIntervalMin(info.course.interval),'med',info.remain);
+      if(!info.done){
+        const course=info.course;
+        if(course.noInterval||parseInt(course.total)===1){
+          // 单次给药：直接在计划日期打一个点
+          if(info.given===0&&course.startDate)addPlan(course.startDate,'med');
+        }else{
+          planDots(lastLogForCourse(p,course.id),parseIntervalMin(course.interval),'med',info.remain);
+        }
+      }
     });
   });
   return map;
@@ -2091,8 +2100,15 @@ function CalendarTab(){
             if(!activeInfos.length)return;
             // 对每个活跃疗程分别判断该日是否是计划给药日
             activeInfos.forEach(info=>{
-              const interval=parseIntervalMin(info.course.interval);
-              const llog=lastLogForCourse(p,info.course.id);
+              const course=info.course;
+              if(course.noInterval||parseInt(course.total)===1){
+                // 单次给药：只在计划日期当天出现
+                if(info.given===0&&course.startDate&&course.startDate===ds)
+                  plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
+                return;
+              }
+              const interval=parseIntervalMin(course.interval);
+              const llog=lastLogForCourse(p,course.id);
               if(!interval||interval>=900)return;
               const base=llog?(()=>{const pts=llog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todayD;
               const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
