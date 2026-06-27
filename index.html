@@ -2214,6 +2214,41 @@ function CalendarTab(){
         else if(due===3)soon3.push({type,plant:p});
       });
     });
+    // 用药疗程任务
+    const todayPts=today.split('-');
+    const todayDate=new Date(+todayPts[0],+todayPts[1]-1,+todayPts[2]);
+    db.plants.forEach(p=>{
+      allMedCourseInfos(p).filter(i=>!i.done).forEach(info=>{
+        const course=info.course;
+        let nextDate=null;
+        if(course.noInterval||parseInt(course.total)===1){
+          if(info.given===0&&course.startDate){
+            const pts=course.startDate.split('-');
+            nextDate=new Date(+pts[0],+pts[1]-1,+pts[2]);
+          }
+        }else{
+          const llog=lastLogForCourse(p,course.id);
+          const interval=parseIntervalMin(course.interval);
+          if(!interval||interval>=900)return;
+          if(!llog&&course.startDate){
+            const pts=course.startDate.split('-');
+            nextDate=new Date(+pts[0],+pts[1]-1,+pts[2]);
+          }else if(llog){
+            const pts=llog.split('-');
+            nextDate=new Date(+pts[0],+pts[1]-1,+pts[2]);
+            nextDate.setDate(nextDate.getDate()+interval);
+          }
+        }
+        if(!nextDate)return;
+        const due=Math.round((nextDate-todayDate)/86400000);
+        const task={type:'med',plant:p,course};
+        if(due<0)overdue.push({...task,overdueDays:-due});
+        else if(due===0)todayT.push(task);
+        else if(due===1)soon1.push(task);
+        else if(due===2)soon2.push(task);
+        else if(due===3)soon3.push(task);
+      });
+    });
     overdue.sort((a,b)=>b.overdueDays-a.overdueDays);
     return{overdue,todayT,soon1,soon2,soon3,unlogged,paused};
   }
@@ -2277,18 +2312,19 @@ function CalendarTab(){
   }
 
   function TaskChip({t,showOverdue}){
+    const isMed=t.type==='med';
     return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,0.3)'}}>
       <span style={{fontSize:18}}>{TYPE_ICON[t.type]}</span>
-      <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>navToPlant(t.plant.id,'calendar')}>
+      <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>navToPlant(t.plant.id,isMed?'tasks':'calendar',isMed?'med':undefined)}>
         <div style={{fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.plant.name}{t.plant.variety?' · '+t.plant.variety:''}</div>
         {showOverdue&&t.overdueDays>0
           ?<div style={{fontSize:11,color:'#c05020',fontWeight:600}}>逾期 {t.overdueDays} 天</div>
-          :<div style={{fontSize:11,color:'#7a9060'}}>{TYPE_LABEL[t.type]}</div>
+          :<div style={{fontSize:11,color:'#7a9060'}}>{isMed&&t.course?t.course.drugName:TYPE_LABEL[t.type]}</div>
         }
       </div>
       <div style={{display:'flex',gap:5}}>
-        <button onClick={()=>window.__showPauseMenu(t.plant.id,t.type,t.plant.name)}
-          style={{padding:'5px 10px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,background:'rgba(180,180,170,0.25)',border:'1px solid rgba(160,160,150,0.4)',color:'#7a8870',whiteSpace:'nowrap'}}>⏸ 跳过</button>
+        {!isMed&&<button onClick={()=>window.__showPauseMenu(t.plant.id,t.type,t.plant.name)}
+          style={{padding:'5px 10px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,background:'rgba(180,180,170,0.25)',border:'1px solid rgba(160,160,150,0.4)',color:'#7a8870',whiteSpace:'nowrap'}}>⏸ 跳过</button>}
         <button onClick={()=>navToPlant(t.plant.id,'tasks',t.type)}
           style={{padding:'5px 12px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:TYPE_COLOR[t.type],border:'none',color:'white',whiteSpace:'nowrap'}}>记录</button>
       </div>
@@ -3664,10 +3700,11 @@ function InventoryTab(){
     const data={
       type:'propagation',
       prop:db.prop||[],
+      archive:{batches:db.archive?.batches||[]},
       exportTime:new Date().toISOString()
     };
     dlJson(data,'植物志_繁育_'+toDay()+'.json');
-    toast.show('💾 繁育记录备份已下载');
+    toast.show('💾 繁育记录备份已下载（含'+( (db.archive?.batches||[]).length )+'条归档）');
     setShowExportMenu(false);
   }
   function importData(){document.getElementById('import-file').click();}
