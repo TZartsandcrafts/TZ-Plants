@@ -524,6 +524,14 @@ function LogPage({plantId,logType,onClose}){
     toast.show('🔚 疗程已结束并存档');
   }
 
+  function deleteCourse(courseId){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==plantId)return p;
+      return{...p,activeCourses:(p.activeCourses||[]).filter(c=>c.id!==courseId)};
+    })}));
+    toast.show('🗑️ 疗程已删除');
+  }
+
   function startNewCourse(){
     if(!courseForm.drugName.trim()){toast.show('⚠️ 请填写药品名称');return}
     const isEdit=!!editingCourseId;
@@ -585,12 +593,15 @@ function LogPage({plantId,logType,onClose}){
               <div key={info.course.id} className="card" style={{borderColor:'rgba(200,100,60,.4)',background:pendingCourseId===info.course.id?'rgba(240,200,180,.28)':'rgba(240,200,180,.15)',marginBottom:10}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
                   <div style={{fontSize:12,fontWeight:700,color:'#7a3018'}}>💊 当前疗程</div>
-                  <button style={{background:'rgba(200,100,60,.12)',border:'1px solid rgba(200,100,60,.3)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'#7a3018',cursor:'pointer'}} onClick={()=>{
-                    setEditingCourseId(info.course.id);
-                    setCourseForm({drugName:info.course.drugName||'',reason:info.course.reason||'',amount:info.course.amount||'',interval:info.course.interval||7,total:info.total,startDate:info.course.startDate||today,noInterval:!!info.course.noInterval});
-                    setShowNewCourse(true);
-                    setTimeout(()=>newCourseFormRef.current?.scrollIntoView({behavior:'smooth',block:'center'}),80);
-                  }}>✏️ 编辑</button>
+                  <div style={{display:'flex',gap:6}}>
+                    <button style={{background:'rgba(180,60,40,.10)',border:'1px solid rgba(180,60,40,.28)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'#922010',cursor:'pointer'}} onClick={()=>{if(confirm('确认删除此疗程？\n删除后不会归档，数据将彻底清除。'))deleteCourse(info.course.id);}}>🗑️ 删除</button>
+                    <button style={{background:'rgba(200,100,60,.12)',border:'1px solid rgba(200,100,60,.3)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'#7a3018',cursor:'pointer'}} onClick={()=>{
+                      setEditingCourseId(info.course.id);
+                      setCourseForm({drugName:info.course.drugName||'',reason:info.course.reason||'',amount:info.course.amount||'',interval:info.course.interval||7,total:info.total,startDate:info.course.startDate||today,noInterval:!!info.course.noInterval});
+                      setShowNewCourse(true);
+                      setTimeout(()=>newCourseFormRef.current?.scrollIntoView({behavior:'smooth',block:'center'}),80);
+                    }}>✏️ 编辑</button>
+                  </div>
                 </div>
                 <div style={{fontSize:13,color:'#5a2010',marginBottom:2,fontWeight:600}}>{info.course.drugName}</div>
                 {info.course.reason&&<div style={{fontSize:11,color:'#9a6050',marginBottom:4}}>病症：{info.course.reason}</div>}
@@ -650,12 +661,12 @@ function LogPage({plantId,logType,onClose}){
                         onChange={e=>{
                           const raw=e.target.value;
                           const v=parseInt(raw);
-                          if(!isNaN(v)&&v>=1)setCourseForm(f=>({...f,total:raw,noInterval:v===1?true:f.noInterval}));
+                          if(!isNaN(v)&&v>=1)setCourseForm(f=>({...f,total:raw,noInterval:v===1}));
                           else setCourseForm(f=>({...f,total:raw}));
                         }}
                         onBlur={e=>{
                           const v=Math.max(1,parseInt(e.target.value)||1);
-                          setCourseForm(f=>({...f,total:v,noInterval:v===1?true:f.noInterval}));
+                          setCourseForm(f=>({...f,total:v,noInterval:v===1}));
                         }}/>
                     </div>
                     {!courseForm.noInterval&&parseInt(courseForm.total)>1&&(
