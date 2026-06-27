@@ -645,7 +645,18 @@ function LogPage({plantId,logType,onClose}){
                   <div style={{display:'flex',gap:10,marginBottom:4}}>
                     <div style={{flex:1}}>
                       <label className="field-label">总次数</label>
-                      <input type="number" min={1} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}} value={courseForm.total} onChange={e=>{const v=Math.max(1,+e.target.value||1);setCourseForm(f=>({...f,total:v,noInterval:v===1?true:f.noInterval}));}}/>
+                      <input type="number" min={1} className="input" style={{textAlign:'center',fontWeight:700,color:'#7a3018'}}
+                        value={courseForm.total}
+                        onChange={e=>{
+                          const raw=e.target.value;
+                          const v=parseInt(raw);
+                          if(!isNaN(v)&&v>=1)setCourseForm(f=>({...f,total:raw,noInterval:v===1?true:f.noInterval}));
+                          else setCourseForm(f=>({...f,total:raw}));
+                        }}
+                        onBlur={e=>{
+                          const v=Math.max(1,parseInt(e.target.value)||1);
+                          setCourseForm(f=>({...f,total:v,noInterval:v===1?true:f.noInterval}));
+                        }}/>
                     </div>
                     {!courseForm.noInterval&&parseInt(courseForm.total)>1&&(
                       <div style={{flex:1}}>
@@ -1909,7 +1920,18 @@ function buildDotMap(plants){
           // 单次给药：直接在计划日期打一个点
           if(info.given===0&&course.startDate)addPlan(course.startDate,'med');
         }else{
-          planDots(lastLogForCourse(p,course.id),parseIntervalMin(course.interval),'med',info.remain);
+          const llog=lastLogForCourse(p,course.id);
+          const interval=parseIntervalMin(course.interval);
+          if(!llog&&course.startDate){
+            // 首次给药前：以 startDate 为第一个计划点，往前推一个间隔作为 fakeBase
+            const pts=course.startDate.split('-');
+            const fakeBase=new Date(+pts[0],+pts[1]-1,+pts[2]);
+            fakeBase.setDate(fakeBase.getDate()-interval);
+            const fakeStr=fakeBase.getFullYear()+'-'+String(fakeBase.getMonth()+1).padStart(2,'0')+'-'+String(fakeBase.getDate()).padStart(2,'0');
+            planDots(fakeStr,interval,'med',info.remain);
+          }else{
+            planDots(llog,interval,'med',info.remain);
+          }
         }
       }
     });
@@ -2110,7 +2132,10 @@ function CalendarTab(){
               const interval=parseIntervalMin(course.interval);
               const llog=lastLogForCourse(p,course.id);
               if(!interval||interval>=900)return;
-              const base=llog?(()=>{const pts=llog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todayD;
+              let base;
+              if(llog){const pts=llog.split('-');base=new Date(+pts[0],+pts[1]-1,+pts[2]);}
+              else if(course.startDate){const pts=course.startDate.split('-');base=new Date(+pts[0],+pts[1]-1,+pts[2]);base.setDate(base.getDate()-interval);}
+              else base=todayD;
               const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
               const diff=Math.round((selT-base)/86400000);
               if(diff>0&&diff%interval===0&&Math.round(diff/interval)<=info.remain)
