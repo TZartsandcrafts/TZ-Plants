@@ -2154,6 +2154,7 @@ function CalendarTab(){
             });
             return;
           }
+          if(getIsPaused(p,e.type))return;
           const interval=e.type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
           const llog=lastLog(e.type==='water'?p.waterLog:p.fertLog);if(!interval||interval>=900)return;
           const base=llog?(()=>{const pts=llog.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})():todayD;
