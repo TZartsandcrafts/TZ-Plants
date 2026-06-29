@@ -698,7 +698,7 @@ function LogPage({plantId,logType,onClose}){
         <div className="card" style={{marginBottom:14}}>
           <div style={{fontSize:12,color:'#6a8858',fontWeight:700,marginBottom:10}}>{editIdx!==null?'修改记录':'新增记录'}</div>
           <label className="field-label">日期</label>
-          <input type="date" className="input" style={{marginBottom:8}} defaultValue={form.date} max={toDay()} onBlur={e=>sf('date',e.target.value)}/>
+          <input type="date" key={'date-'+editIdx} className="input" style={{marginBottom:8}} defaultValue={form.date} max={toDay()} onBlur={e=>sf('date',e.target.value)}/>
           {logType==='fert'&&<>
             {(db.lib.fert||[]).length>0&&<>
               <label className="field-label">从肥料库选择（可选）</label>
