@@ -1466,7 +1466,21 @@ function PlantForm({initPlant,onClose}){
     updateDb(prev=>{
       const plants=isEdit?prev.plants.map(p=>p.id===form.id?{...p,...form}:p):[...prev.plants,form];
       const cats=(form.category&&!prev.cats.includes(form.category))?[...prev.cats,form.category]:prev.cats;
-      return{...prev,plants,cats};
+      // 同步繁育批次中的母株名称
+      let newState={...prev,plants,cats};
+      if(isEdit){
+        const oldParentName=(initPlant.name||'')+(initPlant.variety?' '+initPlant.variety:'');
+        const newParentName=form.name+(form.variety?' '+form.variety:'');
+        const syncBatch=b=>b.parentId===form.id?{...b,parentName:newParentName}:b;
+        const syncPlant=p=>p.buyFrom===oldParentName?{...p,buyFrom:newParentName}:p;
+        newState={
+          ...newState,
+          plants:newState.plants.map(syncPlant),
+          prop:(prev.prop||[]).map(syncBatch),
+          archive:{...prev.archive,batches:(prev.archive?.batches||[]).map(syncBatch)},
+        };
+      }
+      return newState;
     });
     toast.show(isEdit?'✅ 已更新':'🌱 已添加');
     onClose();
