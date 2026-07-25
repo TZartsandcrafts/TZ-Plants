@@ -719,6 +719,19 @@ function LogPage({plantId,logType,onClose}){
             <input key={'fa-'+form.amount} className="input" style={{marginBottom:8}} placeholder="5g/L…" defaultValue={form.amount} onBlur={e=>sf('amount',e.target.value)}/>
           </>}
           {logType==='med'&&<>
+            {(db.lib.med||[]).length>0&&<>
+              <label className="field-label">从药品库选择（可选）</label>
+              <select className="input" style={{marginBottom:8,color:form.name?'#2e4a22':'#9aaa88'}}
+                value={form.name||''}
+                onChange={e=>{
+                  const m=(db.lib.med||[]).find(x=>x.name===e.target.value);
+                  if(m)setForm(prev=>({...prev,name:m.name,amount:m.dosage||prev.amount,reason:m.target||prev.reason}));
+                  else setForm(prev=>({...prev,name:''}));
+                }}>
+                <option value="">— 不从库存选择 —</option>
+                {(db.lib.med||[]).map(m=><option key={m.id||m.name} value={m.name}>{m.name}</option>)}
+              </select>
+            </>}
             <label className="field-label">药品名称</label>
             <input key={'mn-'+form.name} className="input" style={{marginBottom:8}} placeholder="多菌灵、吡虫啉…" defaultValue={form.name} onBlur={e=>sf('name',e.target.value)}/>
             <label className="field-label">病症/原因</label>
@@ -2433,7 +2446,6 @@ function CalendarTab(){
         <DaySection label={`今天 ${(todayD.getMonth()+1)}月${todayD.getDate()}日`} tasks={todayT} urgent={false}/>
         <DaySection label={`明天 ${fmtShort(d1)}`} tasks={soon1} urgent={false}/>
         <DaySection label={fmtShort(d2)} tasks={soon2} urgent={false}/>
-        <DaySection label={fmtShort(d3)} tasks={soon3} urgent={false}/>
         {paused.length>0&&<div style={{marginBottom:8}}>
           <div style={{fontSize:12,fontWeight:700,color:'#5a78a8',marginBottom:8,paddingLeft:2}}>
             {'⏸ 暂停中'}
@@ -3296,6 +3308,8 @@ function ArchivePage({onClose}){
   useSwipeBack(onClose);
   const arc=db.archive||{plants:[],batches:[],courses:[]};
   const courses=arc.courses||[];
+  const[viewArchivedPlant,setViewArchivedPlant]=useState(null);
+  const[viewArchivedBatch,setViewArchivedBatch]=useState(null);
   function unarchivePlant(id){
     const p=arc.plants.find(x=>x.id===id);if(!p)return;
     updateDb(prev=>({...prev,plants:[...prev.plants,{...p,archivedAt:undefined}],archive:{...prev.archive,plants:prev.archive.plants.filter(x=>x.id!==id)}}));
@@ -3347,7 +3361,17 @@ function ArchivePage({onClose}){
                     {p.archivedAt&&<div style={{fontSize:10,color:'#aab89a',marginTop:1}}>归档于 {p.archivedAt}</div>}
                   </div>
                 </div>
-                <button className="btn btn-gray" style={{width:'100%',fontSize:12,padding:'8px'}} onClick={()=>unarchivePlant(p.id)}>↩ 恢复到植物页</button>
+                {viewArchivedPlant===p.id
+                  ?<div style={{marginTop:6,padding:'8px 10px',background:'rgba(255,255,255,0.5)',borderRadius:8,fontSize:12,color:'#4a6a38',lineHeight:1.8}}>
+                    {p.family&&<div>🌿 {p.family}{p.genus?' · '+p.genus:''}</div>}
+                    {p.location&&<div>📍 {p.location}</div>}
+                    {p.buyFrom&&<div>🛒 购入来源：{p.buyFrom}</div>}
+                    {p.acquiredDate&&<div>📅 入手日期：{p.acquiredDate}</div>}
+                    {p.notes&&<div style={{marginTop:4,color:'#5a7848',whiteSpace:'pre-wrap'}}>📝 {p.notes}</div>}
+                    <button style={{marginTop:6,background:'none',border:'none',fontSize:11,color:'#9aaa88',cursor:'pointer',padding:0}} onClick={()=>setViewArchivedPlant(null)}>收起 ▲</button>
+                  </div>
+                  :<button style={{background:'none',border:'none',fontSize:11,color:'#7a9060',cursor:'pointer',padding:'2px 0',display:'block',marginBottom:2}} onClick={()=>setViewArchivedPlant(p.id)}>查看详情 ▼</button>}
+                <button className="btn btn-gray" style={{width:'100%',fontSize:12,padding:'8px',marginTop:4}} onClick={()=>unarchivePlant(p.id)}>↩ 恢复到植物页</button>
               </div>
             ))
           :sub==='batches'
@@ -3366,7 +3390,21 @@ function ArchivePage({onClose}){
                     <span style={{fontSize:11,background:'rgba(80,180,80,0.12)',color:'#2a6a35',borderRadius:8,padding:'2px 8px'}}>✅ {succ}/{b.total} ({rate}%)</span>
                     <span style={{fontSize:11,color:'#7a9060'}}>📅 {fmtDate(b.date)}</span>
                   </div>
-                  <button className="btn btn-gray" style={{width:'100%',fontSize:12,padding:'8px'}} onClick={()=>unarchiveBatch(b.id)}>↩ 恢复到繁育页</button>
+                  {viewArchivedBatch===b.id
+                    ?<div style={{marginTop:6}}>
+                      {b.medium&&<div style={{fontSize:11,color:'#7a9060',marginBottom:4}}>🪨 基质：{b.medium}</div>}
+                      {b.note&&<div style={{fontSize:11,color:'#7a9060',marginBottom:4,whiteSpace:'pre-wrap'}}>📝 {b.note}</div>}
+                      {(b.seedlings||[]).map(s=>(
+                        <div key={s.id} style={{display:'flex',alignItems:'center',gap:6,padding:'3px 0',borderTop:'1px solid rgba(150,185,130,0.15)',fontSize:11}}>
+                          <span style={{color:s.status==='success'?'#4a9a5a':s.status==='failed'?'#c05020':'#9aaa88'}}>{s.status==='success'?'✅':s.status==='failed'?'✗':'⏳'}</span>
+                          <span style={{color:'#4a6a38',flex:1}}>{s.label}{s.note?<span style={{color:'#8a9a78',marginLeft:4}}>— {s.note}</span>:''}</span>
+                          {s.successDate&&<span style={{color:'#7a9060'}}>{s.successDate}</span>}
+                        </div>
+                      ))}
+                      <button style={{marginTop:6,background:'none',border:'none',fontSize:11,color:'#9aaa88',cursor:'pointer',padding:0}} onClick={()=>setViewArchivedBatch(null)}>收起 ▲</button>
+                    </div>
+                    :<button style={{background:'none',border:'none',fontSize:11,color:'#7a9060',cursor:'pointer',padding:'2px 0',display:'block',marginBottom:2}} onClick={()=>setViewArchivedBatch(b.id)}>查看幼苗详情 ▼</button>}
+                  <button className="btn btn-gray" style={{width:'100%',fontSize:12,padding:'8px',marginTop:4}} onClick={()=>unarchiveBatch(b.id)}>↩ 恢复到繁育页</button>
                 </div>;
               })
             :courses.length===0
