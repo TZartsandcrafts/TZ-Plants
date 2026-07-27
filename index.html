@@ -3647,16 +3647,21 @@ function RecipeListPage({onClose}){
 function ExportPlantPicker({onSelect,onClose}){
   const{db}=useApp();
   const[search,setSearch]=useState('');
-  const plants=db.plants||[];
+  const touchStartX=useRef(0);
+  // ② 按建卡时间正序（id 含时间戳，数值越小越早）
+  const plants=[...(db.plants||[])].sort(function(a,b){return(parseInt(a.id)||0)-(parseInt(b.id)||0);});
   const q=search.trim().toLowerCase();
   const filtered=q?plants.filter(function(p){return(p.name||'').toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q);}):plants;
   return(
-    <div className="fullpage">
+    <div className="fullpage"
+      onTouchStart={function(e){touchStartX.current=e.touches[0].clientX;}}
+      onTouchEnd={function(e){if(e.changedTouches[0].clientX-touchStartX.current>60)onClose();}}>
       <div className="page-header">
         <button className="back-btn" onClick={onClose}>‹</button>
         <div className="page-header-title">选择植物 · 单株备份</div>
       </div>
-      <div style={{padding:'10px 16px 6px',background:'rgba(220,232,216,0.9)',borderBottom:'1px solid rgba(90,120,70,0.1)'}}>
+      {/* ① 搜索栏冻结 */}
+      <div style={{position:'sticky',top:0,zIndex:9,padding:'10px 16px 6px',background:'rgba(220,232,216,0.98)',borderBottom:'1px solid rgba(90,120,70,0.1)'}}>
         <input className="input" placeholder="搜索名称、品种…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
       </div>
       <div>
