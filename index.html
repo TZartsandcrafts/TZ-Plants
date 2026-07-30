@@ -805,6 +805,8 @@ function PlantCareCalendarBody({plantId}){
   const[showNoteInput,setShowNoteInput]=useState(false);
   const[editNote,setEditNote]=useState(null); // {idx, text} for editing
   const[editText,setEditText]=useState('');
+  const detailRef=useRef(null);
+  const noteInputRef=useRef(null);
   if(!plant)return null;
 
   function navMo(dir){
@@ -843,9 +845,11 @@ function PlantCareCalendarBody({plantId}){
   const WK2=['一','二','三','四','五','六','日'];
 
   function handleDayClick(ds){
+    const opening=selDate!==ds;
     setSelDate(s=>s===ds?null:ds);
     setShowNoteInput(false);
     setNoteText('');
+    if(opening)setTimeout(()=>detailRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'}),80);
   }
 
   function saveNote(){
@@ -960,7 +964,7 @@ function PlantCareCalendarBody({plantId}){
       </div>{/* end swipe wrapper */}
       {/* 日期详情 */}
       {selDate&&(
-        <div style={{background:'rgba(240,248,235,0.9)',borderRadius:12,padding:'12px 14px',border:'1px solid rgba(140,185,110,0.35)'}}>
+        <div ref={detailRef} style={{background:'rgba(240,248,235,0.9)',borderRadius:12,padding:'12px 14px',border:'1px solid rgba(140,185,110,0.35)'}}>
           <div style={{fontSize:13,fontWeight:700,color:'#2e4a22',marginBottom:8}}>{selDate.slice(5).replace('-','/')} {selDate===today?'（今天）':''}</div>
           {selMilestone&&<div style={{fontSize:12,color:'#8a5010',background:'rgba(200,140,50,0.15)',borderRadius:8,padding:'4px 10px',marginBottom:6}}>📌 {selMilestone}</div>}
           {selLogs.map((item,i)=>(
@@ -994,13 +998,13 @@ function PlantCareCalendarBody({plantId}){
           {/* 添加备注 */}
           {showNoteInput
             ?<div style={{marginTop:8}}>
-              <textarea autoFocus className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
+              <textarea ref={noteInputRef} className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
               <div style={{display:'flex',gap:7}}>
                 <button className="btn btn-green" style={{flex:1,padding:'8px'}} onClick={saveNote}>✓ 保存</button>
                 <button className="btn btn-gray" style={{flex:1,padding:'8px'}} onClick={()=>{setShowNoteInput(false);setNoteText('');}}>取消</button>
               </div>
             </div>
-            :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>{setShowNoteInput(true);setTimeout(()=>document.activeElement?.scrollIntoView({behavior:'smooth',block:'center'}),120);}}>＋ 添加备注</button>
+            :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>{setShowNoteInput(true);setTimeout(()=>{noteInputRef.current?.scrollIntoView({behavior:'smooth',block:'center'});noteInputRef.current?.focus();},120);}}>＋ 添加备注</button>
           }
         </div>
       )}
