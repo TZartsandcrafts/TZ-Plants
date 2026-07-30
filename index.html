@@ -994,13 +994,13 @@ function PlantCareCalendarBody({plantId}){
           {/* 添加备注 */}
           {showNoteInput
             ?<div style={{marginTop:8}}>
-              <textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
+              <textarea autoFocus className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
               <div style={{display:'flex',gap:7}}>
                 <button className="btn btn-green" style={{flex:1,padding:'8px'}} onClick={saveNote}>✓ 保存</button>
                 <button className="btn btn-gray" style={{flex:1,padding:'8px'}} onClick={()=>{setShowNoteInput(false);setNoteText('');}}>取消</button>
               </div>
             </div>
-            :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>setShowNoteInput(true)}>＋ 添加备注</button>
+            :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>{setShowNoteInput(true);setTimeout(()=>document.activeElement?.scrollIntoView({behavior:'smooth',block:'center'}),120);}}>＋ 添加备注</button>
           }
         </div>
       )}
@@ -3649,7 +3649,7 @@ function ExportPlantPicker({onSelect,onClose}){
   const[search,setSearch]=useState('');
   const touchStartX=useRef(0);
   // ② 按建卡时间正序（id 含时间戳，数值越小越早）
-  const plants=[...(db.plants||[])].sort(function(a,b){return(parseInt(a.id)||0)-(parseInt(b.id)||0);});
+  const plants=[...(db.plants||[])].sort(function(a,b){return(parseInt(b.id)||0)-(parseInt(a.id)||0);});
   const q=search.trim().toLowerCase();
   const filtered=q?plants.filter(function(p){return(p.name||'').toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q);}):plants;
   return(
