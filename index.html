@@ -97,15 +97,15 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
 
 /* 植物列表 */
 .plant-list{padding:4px 16px;display:flex;flex-direction:column;gap:10px}
-.plant-card-row{background:rgba(255,255,255,.6);border:1px solid rgba(150,185,130,.45);border-radius:14px;padding:12px 13px;cursor:pointer;display:flex;align-items:flex-start;gap:11px}
+.plant-card-row{background:rgba(255,255,255,.6);border:1px solid rgba(150,185,130,.45);border-radius:14px;padding:12px 13px;cursor:pointer;display:flex;align-items:flex-start;gap:11px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .plant-card-row:active{opacity:.85}
 
 /* 分类卡片网格（植物页主页，配色风格参考库存页） */
 .cat-card-grid{padding:14px 16px 4px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.cat-card{aspect-ratio:2/3;border-radius:18px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-family:inherit;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:10px}
+.cat-card{border-radius:16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font-family:inherit;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;padding:18px 8px}
 .cat-card:active{opacity:.85}
-.cat-card-icon{font-size:34px;line-height:1}
-.cat-card-name{font-size:15px;font-weight:700;text-align:center}
+.cat-card-icon{font-size:32px;line-height:1}
+.cat-card-name{font-size:15px;font-weight:600;text-align:center}
 .cat-card-count{font-size:12px;color:#7a9060;font-weight:400}
 
 /* 分类详情页返回栏 */
@@ -151,6 +151,12 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
+// 分类"裸名"：去掉形如"🍎 水果"前面的 emoji+空格前缀，用于把 "🍎 水果" 和用户手打的 "水果" 归并为同一分类
+function catBare(s){
+  s=(s||'').trim();
+  const sp=s.indexOf(' ');
+  return sp===-1?s:s.slice(sp+1).trim();
+}
 
 const BLANK=()=>({
   id:'',name:'',variety:'',type:'',category:'',notes:'',photo:'',
@@ -1497,7 +1503,7 @@ function PlantForm({initPlant,onClose}){
     if(!form.name.trim()){toast.show('⚠️ 请填写植物名称');return}
     updateDb(prev=>{
       const plants=isEdit?prev.plants.map(p=>p.id===form.id?{...p,...form}:p):[...prev.plants,form];
-      const cats=(form.category&&!prev.cats.includes(form.category))?[...prev.cats,form.category]:prev.cats;
+      const cats=(form.category&&!prev.cats.some(c=>catBare(c)===catBare(form.category)))?[...prev.cats,form.category]:prev.cats;
       // 同步繁育批次中的母株名称
       let newState={...prev,plants,cats};
       if(isEdit){
@@ -1912,7 +1918,15 @@ function PlantsTab({jumpPlantId,onJumpDone}){
     }}/>;
 
   const usedCats=[...new Set(db.plants.map(p=>p.category).filter(Boolean))];
-  const allCats=[...new Set([...db.cats,...usedCats])];
+  const rawCats=[...new Set([...db.cats,...usedCats])];
+  // 按"裸名"（去掉emoji前缀）归并重复分类，优先展示带 emoji 前缀的写法
+  const byBare={};
+  rawCats.forEach(c=>{
+    const bare=catBare(c);
+    const cur=byBare[bare];
+    if(!cur||(cur.indexOf(' ')===-1&&c.indexOf(' ')!==-1))byBare[bare]=c;
+  });
+  const allCats=Object.values(byBare);
   const uncatCount=db.plants.filter(p=>!p.category).length;
 
   // ── 主页：分类卡片网格 ──
@@ -1936,7 +1950,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
           </div>
           :<div className="cat-card-grid">
             {allCats.map((c,i)=>(
-              <CategoryCard key={c} label={c} count={db.plants.filter(p=>p.category===c).length}
+              <CategoryCard key={c} label={c} count={db.plants.filter(p=>catBare(p.category)===catBare(c)).length}
                 color={CAT_CARD_PALETTE[i%CAT_CARD_PALETTE.length]}
                 onTap={()=>openCat(c)}
                 onLongPress={()=>window.__showCatEdit(c,c,
@@ -1946,7 +1960,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
                       if(catOrder[catId]){catOrder[newName]=catOrder[catId];delete catOrder[catId];}
                       return{...prev,
                         cats:prev.cats.map(x=>x===catId?newName:x),
-                        plants:prev.plants.map(p=>p.category===catId?{...p,category:newName}:p),
+                        plants:prev.plants.map(p=>catBare(p.category)===catBare(catId)?{...p,category:newName}:p),
                         catOrder,
                       };
                     });
@@ -1958,7 +1972,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
                       delete catOrder[catId];
                       return{...prev,
                         cats:prev.cats.filter(x=>x!==catId),
-                        plants:prev.plants.map(p=>p.category===catId?{...p,category:''}:p),
+                        plants:prev.plants.map(p=>catBare(p.category)===catBare(catId)?{...p,category:''}:p),
                         catOrder,
                       };
                     });
@@ -1976,7 +1990,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
         {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
           {[
             {icon:'🏷️',label:'新分类',action:()=>{setFabOpen(false);window.__showCatAdd(name=>{
-              updateDb(prev=>prev.cats.includes(name)?prev:{...prev,cats:[...prev.cats,name]});
+              updateDb(prev=>prev.cats.some(c=>catBare(c)===catBare(name))?prev:{...prev,cats:[...prev.cats,name]});
               toast.show('✅ 分类已添加');
             });}},
             {icon:'🌱',label:'新植物',action:()=>{setFabOpen(false);setView({type:'form',plant:null});}},
@@ -1997,7 +2011,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   const q=search.trim().toLowerCase();
   const filtered=db.plants.filter(p=>{
     const mQ=!q||p.name.toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q)||(p.finalPlantLocation||'').toLowerCase().includes(q);
-    const mC=catView==='__none__'?!p.category:p.category===catView;
+    const mC=catView==='__none__'?!p.category:catBare(p.category)===catBare(catView);
     return mQ&&mC;
   });
 
