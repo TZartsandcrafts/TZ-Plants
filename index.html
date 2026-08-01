@@ -100,6 +100,19 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
 .plant-card-row{background:rgba(255,255,255,.6);border:1px solid rgba(150,185,130,.45);border-radius:14px;padding:12px 13px;cursor:pointer;display:flex;align-items:flex-start;gap:11px}
 .plant-card-row:active{opacity:.85}
 
+/* 分类卡片网格（植物页主页，配色风格参考库存页） */
+.cat-card-grid{padding:14px 16px 4px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cat-card{aspect-ratio:2/3;border-radius:18px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-family:inherit;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:10px}
+.cat-card:active{opacity:.85}
+.cat-card-icon{font-size:34px;line-height:1}
+.cat-card-name{font-size:15px;font-weight:700;text-align:center}
+.cat-card-count{font-size:12px;color:#7a9060;font-weight:400}
+
+/* 分类详情页返回栏 */
+.cat-back-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.cat-back-row .back-btn{font-size:24px;color:#5a8040;background:none;border:none;cursor:pointer;padding:0 2px 0 0;line-height:1}
+.cat-back-row .cat-back-title{font-size:17px;font-weight:800;color:#2e4a22;flex:1}
+
 /* 占位 */
 .placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:80px 32px;text-align:center}
 .placeholder-emoji{font-size:56px;opacity:.55}
@@ -381,6 +394,7 @@ function loadAll(){
     lib:{fert:rLS('lib_fert',[]),med:rLS('lib_med',[]),soil:rLS('lib_soil',[]),recipe:rLS('lib_recipe',[])},
     archive:{plants:arc.plants||[],batches:arc.batches||[],courses:rLS('course_archive',[])},
     prop:   rLS('lib_prop',[]),
+    catOrder: rLS('plant_cat_order',{}),
   };
 }
 function saveAll(db){
@@ -398,6 +412,7 @@ function saveAll(db){
     batches:db.archive?.batches||[],
   });
   wLS('lib_prop',db.prop);
+  wLS('plant_cat_order',db.catOrder||{});
 }
 
 // ═══════════════════════════════════════════════
@@ -1461,7 +1476,7 @@ function GrowthTabContent({form,sf,secBox}){
 function PlantForm({initPlant,onClose}){
   const{db,updateDb,toast}=useApp();
   const isEdit=!!(initPlant?.id);
-  const[form,setForm]=useState(()=>({...BLANK(),...(isEdit?initPlant:{}),id:isEdit?initPlant.id:uid()}));
+  const[form,setForm]=useState(()=>({...BLANK(),category:initPlant?.category||'',...(isEdit?initPlant:{}),id:isEdit?initPlant.id:uid()}));
   const[formTab,setFormTab]=useState('basic');
   useEffect(()=>{window.scrollTo(0,0)},[]);
   useSwipeBack(onClose);
@@ -1675,17 +1690,80 @@ function CatChip({item,active,onTap,onLongPress}){
   );
 }
 
+// 分类卡片配色（与库存页卡片风格保持一致，按顺序循环）
+const CAT_CARD_PALETTE=[
+  {bg:'rgba(140,195,110,0.25)',border:'rgba(120,175,90,0.4)',tc:'#2e4a22'},
+  {bg:'rgba(210,155,120,0.2)', border:'rgba(190,135,100,0.4)',tc:'#5a3828'},
+  {bg:'rgba(190,165,120,0.2)', border:'rgba(170,145,100,0.4)',tc:'#4a3a20'},
+  {bg:'rgba(215,185,250,0.2)', border:'rgba(185,155,220,0.4)',tc:'#4a2a68'},
+  {bg:'rgba(165,195,220,0.2)', border:'rgba(140,175,210,0.4)',tc:'#2a3a58'},
+  {bg:'rgba(240,180,190,0.22)',border:'rgba(210,150,160,0.4)',tc:'#5a2838'},
+];
+const CAT_CARD_NONE_COLOR={bg:'rgba(180,180,170,0.2)',border:'rgba(150,150,140,0.4)',tc:'#4a4a40'};
+
+// 分类卡片（植物页主页，长按可编辑，定义在外部避免 iOS 重建）
+function CategoryCard({label,count,color,onTap,onLongPress}){
+  const timerRef=useRef(null);
+  function handleTouchStart(){
+    if(!onLongPress)return;
+    timerRef.current=setTimeout(()=>{
+      timerRef.current=null;
+      window.getSelection?.()?.removeAllRanges();
+      onLongPress();
+    },600);
+  }
+  function handleTouchEnd(){
+    if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null;}
+  }
+  const parts=label.split(' ');
+  const hasEmoji=parts.length>1;
+  const icon=hasEmoji?parts[0]:'🏷️';
+  const name=hasEmoji?parts.slice(1).join(' '):label;
+  const c=color||CAT_CARD_PALETTE[0];
+  return(
+    <button className="cat-card"
+      style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.tc}}
+      onClick={onTap}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}>
+      <div className="cat-card-icon">{icon}</div>
+      <div className="cat-card-name">{name}</div>
+      <div className="cat-card-count">{count} 株</div>
+    </button>
+  );
+}
+
 function PlantsTab({jumpPlantId,onJumpDone}){
   const{db,updateDb,toast,setTab}=useApp();
   const[search,setSearch]=useState('');
-  const[filterCat,setFilter]=useState('all');
   const[sortBy,setSortBy]=useState('entry');
   const[sortDir,setSortDir]=useState(-1); // 1=正序 -1=倒序；默认按添加时间倒序
   const[view,setView]=useState(null);
-  const[catEdit,setCatEdit]=useState(null); // {id,newName} 分类编辑弹窗
+  const[catView,setCatView]=useState(null); // null=分类卡片主页；否则为分类名（或 __none__ 未分类）
+  const[fabOpen,setFabOpen]=useState(false); // 主页 + 按钮弹出菜单
   const listRef=useRef(null);
   const savedScroll=useRef(0);
   const returnTabRef=useRef(null);
+  // 长按拖拽排序相关
+  const[draggingId,setDraggingId]=useState(null);
+  const[liveOrder,setLiveOrder]=useState(null);
+  const[dragY,setDragY]=useState(0);
+  const rowRefs=useRef({});
+  const draggingIdRef=useRef(null);
+  const liveOrderRef=useRef(null);
+  const dragStartYRef=useRef(0);
+  const longPressTimerRef=useRef(null);
+  const justDraggedRef=useRef(false);
+
+  // 打开分类详情：决定默认排序（有手动排序则用手动排序，否则按录入时间倒序）
+  function openCat(catId){
+    const hasCustom=((db.catOrder||{})[catId]||[]).length>0;
+    setSortBy(hasCustom?'custom':'entry');
+    setSortDir(-1);
+    setSearch('');
+    setCatView(catId);
+  }
 
   // 从日历跳转过来时自动打开详情
   useEffect(()=>{
@@ -1704,7 +1782,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   },[jumpPlantId]);
   // 点底部 tab 图标时重置到列表
   useEffect(()=>{
-    function onTabReset(e){if(e.detail==='plants'){returnTabRef.current=null;setView(null);window.scrollTo(0,0);}}
+    function onTabReset(e){if(e.detail==='plants'){returnTabRef.current=null;setView(null);setCatView(null);window.scrollTo(0,0);}}
     window.addEventListener('tabReset',onTabReset);
     return()=>window.removeEventListener('tabReset',onTabReset);
   },[]);
@@ -1727,8 +1805,79 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   }
 
   function handleSort(key){
+    if(key==='custom'){setSortBy('custom');return;}
     if(sortBy===key) setSortDir(d=>d*-1);
     else{setSortBy(key);setSortDir(1);}
+  }
+
+  // 分类详情页右划返回分类卡片主页（仅在未叠加详情/表单等全屏视图时生效）
+  useSwipeBack(()=>{ if(!view&&catView)setCatView(null); });
+
+  // 长按拖拽排序：手指移动/松开时的全局监听
+  useEffect(()=>{
+    if(!draggingId)return;
+    function findInsertIndex(clientY){
+      const draggedId=draggingIdRef.current;
+      const others=(liveOrderRef.current||[]).filter(id=>id!==draggedId);
+      let insertAt=others.length;
+      for(let i=0;i<others.length;i++){
+        const el=rowRefs.current[others[i]];
+        if(!el)continue;
+        const rect=el.getBoundingClientRect();
+        const mid=rect.top+rect.height/2;
+        if(clientY<mid){insertAt=i;break;}
+      }
+      return{others,insertAt};
+    }
+    function onMove(e){
+      const t=e.touches&&e.touches[0];
+      if(!t)return;
+      e.preventDefault();
+      setDragY(t.clientY-dragStartYRef.current);
+      const{others,insertAt}=findInsertIndex(t.clientY);
+      const draggedId=draggingIdRef.current;
+      const newOrder=[...others.slice(0,insertAt),draggedId,...others.slice(insertAt)];
+      const changed=newOrder.length!==(liveOrderRef.current||[]).length||newOrder.some((id,i)=>id!==liveOrderRef.current[i]);
+      if(changed){liveOrderRef.current=newOrder;setLiveOrder(newOrder);}
+    }
+    function onEnd(){
+      const finalOrder=liveOrderRef.current;
+      if(finalOrder&&catView!=null){
+        updateDb(prev=>({...prev,catOrder:{...(prev.catOrder||{}),[catView]:finalOrder}}));
+      }
+      justDraggedRef.current=true;
+      setTimeout(()=>{justDraggedRef.current=false;},80);
+      draggingIdRef.current=null;
+      setDraggingId(null);
+      setDragY(0);
+    }
+    document.addEventListener('touchmove',onMove,{passive:false});
+    document.addEventListener('touchend',onEnd);
+    document.addEventListener('touchcancel',onEnd);
+    return()=>{
+      document.removeEventListener('touchmove',onMove);
+      document.removeEventListener('touchend',onEnd);
+      document.removeEventListener('touchcancel',onEnd);
+    };
+  },[draggingId]);
+
+  // 长按启动拖拽（仅"自定"排序下生效）
+  function handleRowTouchStart(id,e){
+    if(sortBy!=='custom')return;
+    const t=e.touches&&e.touches[0];
+    if(!t)return;
+    const startY=t.clientY;
+    longPressTimerRef.current=setTimeout(()=>{
+      longPressTimerRef.current=null;
+      window.getSelection?.()?.removeAllRanges();
+      draggingIdRef.current=id;
+      dragStartYRef.current=startY;
+      if(navigator.vibrate)navigator.vibrate(10);
+      setDraggingId(id);
+    },500);
+  }
+  function handleRowTouchEnd(){
+    if(longPressTimerRef.current){clearTimeout(longPressTimerRef.current);longPressTimerRef.current=null;}
   }
 
   if(view?.type==='log')
@@ -1764,37 +1913,124 @@ function PlantsTab({jumpPlantId,onJumpDone}){
 
   const usedCats=[...new Set(db.plants.map(p=>p.category).filter(Boolean))];
   const allCats=[...new Set([...db.cats,...usedCats])];
-  const q=search.trim().toLowerCase();
+  const uncatCount=db.plants.filter(p=>!p.category).length;
 
-  // 过滤
-  let filtered=db.plants.filter(p=>{
+  // ── 主页：分类卡片网格 ──
+  if(catView===null){
+    return(
+      <div className="tab-content">
+        <div className="sticky-bar">
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <h1>🪴 植物</h1>
+            <span style={{background:'rgba(70,110,40,.75)',color:'white',padding:'3px 10px',borderRadius:16,border:'1px solid rgba(50,90,25,.5)',display:'inline-flex',alignItems:'baseline',gap:2}}>
+              <span style={{fontSize:15,fontWeight:800,lineHeight:1}}>{db.plants.length}</span>
+              <span style={{fontSize:11,fontWeight:700}}>株</span>
+            </span>
+          </div>
+        </div>
+        {allCats.length===0&&uncatCount===0
+          ?<div className="placeholder">
+            <div className="placeholder-emoji">🪴</div>
+            <div className="placeholder-title">还没有植物</div>
+            <div className="placeholder-desc">点击右下角 ＋ 添加第一株植物！</div>
+          </div>
+          :<div className="cat-card-grid">
+            {allCats.map((c,i)=>(
+              <CategoryCard key={c} label={c} count={db.plants.filter(p=>p.category===c).length}
+                color={CAT_CARD_PALETTE[i%CAT_CARD_PALETTE.length]}
+                onTap={()=>openCat(c)}
+                onLongPress={()=>window.__showCatEdit(c,c,
+                  (catId,newName)=>{
+                    updateDb(prev=>{
+                      const catOrder={...(prev.catOrder||{})};
+                      if(catOrder[catId]){catOrder[newName]=catOrder[catId];delete catOrder[catId];}
+                      return{...prev,
+                        cats:prev.cats.map(x=>x===catId?newName:x),
+                        plants:prev.plants.map(p=>p.category===catId?{...p,category:newName}:p),
+                        catOrder,
+                      };
+                    });
+                    toast.show('✅ 分类已重命名');
+                  },
+                  (catId)=>{
+                    updateDb(prev=>{
+                      const catOrder={...(prev.catOrder||{})};
+                      delete catOrder[catId];
+                      return{...prev,
+                        cats:prev.cats.filter(x=>x!==catId),
+                        plants:prev.plants.map(p=>p.category===catId?{...p,category:''}:p),
+                        catOrder,
+                      };
+                    });
+                    toast.show('🗑 分类已删除');
+                  }
+                )}/>
+            ))}
+            {uncatCount>0&&
+              <CategoryCard key="__none__" label="📦 未分类" count={uncatCount} color={CAT_CARD_NONE_COLOR} onTap={()=>openCat('__none__')}/>
+            }
+          </div>
+        }
+        {/* 悬浮 + 按钮菜单：新增分类 / 新增植物 */}
+        {fabOpen&&<div style={{position:'fixed',inset:0,zIndex:59}} onClick={()=>setFabOpen(false)}/>}
+        {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
+          {[
+            {icon:'🏷️',label:'新分类',action:()=>{setFabOpen(false);window.__showCatAdd(name=>{
+              updateDb(prev=>prev.cats.includes(name)?prev:{...prev,cats:[...prev.cats,name]});
+              toast.show('✅ 分类已添加');
+            });}},
+            {icon:'🌱',label:'新植物',action:()=>{setFabOpen(false);setView({type:'form',plant:null});}},
+          ].map(opt=>(
+            <button key={opt.label} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 14px',borderRadius:20,background:'#f5f8f2',border:'1px solid rgba(140,180,110,0.5)',boxShadow:'0 2px 10px rgba(40,70,20,.18)',cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap'}}
+              onClick={opt.action}>
+              <span style={{fontSize:18}}>{opt.icon}</span>{opt.label}
+            </button>
+          ))}
+        </div>}
+        <button className="fab" style={{zIndex:62,transform:fabOpen?'rotate(45deg)':'rotate(0deg)',transition:'transform 0.2s'}} onClick={()=>setFabOpen(f=>!f)}>＋</button>
+      </div>
+    );
+  }
+
+  // ── 分类详情页：搜索/排序吸顶 + 植物列表（支持"自定"长按拖拽排序）──
+  const catLabel=catView==='__none__'?'未分类':catView;
+  const q=search.trim().toLowerCase();
+  const filtered=db.plants.filter(p=>{
     const mQ=!q||p.name.toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q)||(p.finalPlantLocation||'').toLowerCase().includes(q);
-    const mC=filterCat==='all'||(filterCat==='__none__'&&!p.category)||p.category===filterCat;
+    const mC=catView==='__none__'?!p.category:p.category===catView;
     return mQ&&mC;
   });
 
-  // 排序
-  filtered=[...filtered].sort((a,b)=>{
-    let r=0;
-    if(sortBy==='name')      r=a.name.localeCompare(b.name,'zh');
-    else if(sortBy==='category') r=(a.category||'').localeCompare(b.category||'');
-    else if(sortBy==='planted')  r=(b.finalPlantDate||'').localeCompare(a.finalPlantDate||'');
-    else if(sortBy==='location') r=(a.finalPlantLocation||'').localeCompare(b.finalPlantLocation||'','zh');
-    else r=a.id.localeCompare(b.id); // entry
-    return r*sortDir;
-  });
+  let sortedFiltered;
+  if(sortBy==='custom'){
+    const catOrderArr=(db.catOrder||{})[catView]||[];
+    const filteredIds=filtered.map(p=>p.id);
+    const known=catOrderArr.filter(id=>filteredIds.includes(id));
+    const unknownIds=filtered.filter(p=>!catOrderArr.includes(p.id)).sort((a,b)=>b.id.localeCompare(a.id)).map(p=>p.id);
+    const fullOrderIds=[...known,...unknownIds];
+    if(!draggingId)liveOrderRef.current=fullOrderIds;
+    const orderIds=(draggingId&&liveOrder)?liveOrder:fullOrderIds;
+    sortedFiltered=orderIds.map(id=>filtered.find(p=>p.id===id)).filter(Boolean);
+  }else{
+    sortedFiltered=[...filtered].sort((a,b)=>{
+      let r=0;
+      if(sortBy==='name')      r=a.name.localeCompare(b.name,'zh');
+      else if(sortBy==='category') r=(a.category||'').localeCompare(b.category||'');
+      else if(sortBy==='planted')  r=(b.finalPlantDate||'').localeCompare(a.finalPlantDate||'');
+      else if(sortBy==='location') r=(a.finalPlantLocation||'').localeCompare(b.finalPlantLocation||'','zh');
+      else r=a.id.localeCompare(b.id); // entry
+      return r*sortDir;
+    });
+  }
 
-  const SORT_BTNS=[{key:'entry',label:'录入'},{key:'name',label:'名称'},{key:'category',label:'类别'},{key:'planted',label:'定植'},{key:'location',label:'位置'}];
+  const SORT_BTNS=[{key:'entry',label:'录入'},{key:'name',label:'名称'},{key:'category',label:'类别'},{key:'planted',label:'定植'},{key:'location',label:'位置'},{key:'custom',label:'自定'}];
 
   return(
-    <div className="tab-content">
+    <div className="fullpage">
       <div className="sticky-bar">
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-          <h1>🪴 植物</h1>
-          <span style={{background:'rgba(70,110,40,.75)',color:'white',padding:'3px 10px',borderRadius:16,border:'1px solid rgba(50,90,25,.5)',display:'inline-flex',alignItems:'baseline',gap:2}}>
-            <span style={{fontSize:15,fontWeight:800,lineHeight:1}}>{db.plants.length}</span>
-            <span style={{fontSize:11,fontWeight:700}}>株</span>
-          </span>
+        <div className="cat-back-row">
+          <button className="back-btn" onClick={()=>setCatView(null)}>‹</button>
+          <div className="cat-back-title">{catLabel}<span style={{fontSize:12,fontWeight:400,color:'#7a9060',marginLeft:6}}>({filtered.length})</span></div>
         </div>
         <input className="input" style={{marginBottom:8}} placeholder="搜索植物名称、位置…" value={search} onChange={e=>setSearch(e.target.value)}/>
         {/* 排序行 */}
@@ -1803,7 +2039,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
           <div style={{display:'flex',gap:5,overflowX:'auto',scrollbarWidth:'none'}}>
             {SORT_BTNS.map(s=>{
               const act=sortBy===s.key;
-              const arrow=act?(sortDir===1?' ↑':' ↓'):'';
+              const arrow=(act&&s.key!=='custom')?(sortDir===1?' ↑':' ↓'):'';
               return<button key={s.key}
                 style={{whiteSpace:'nowrap',flexShrink:0,padding:'3px 10px',borderRadius:20,fontSize:11,cursor:'pointer',fontFamily:'inherit',
                   background:act?'rgba(80,120,54,.82)':'rgba(180,210,160,.2)',
@@ -1813,52 +2049,32 @@ function PlantsTab({jumpPlantId,onJumpDone}){
             })}
           </div>
         </div>
-        {/* 分类筛选 */}
-        <div className="cat-strip" style={{padding:'6px 0 2px',margin:'0 -16px',paddingLeft:16,paddingRight:16}} onTouchStart={e=>e.stopPropagation()} onTouchEnd={e=>e.stopPropagation()}>
-        {[{id:'all',label:`全部 (${db.plants.length})`,sys:true},
-          ...allCats.filter(c=>db.plants.some(p=>p.category===c)).map(c=>({id:c,label:`${c} (${db.plants.filter(p=>p.category===c).length})`,sys:false})),
-          db.plants.some(p=>!p.category)?{id:'__none__',label:`未分类 (${db.plants.filter(p=>!p.category).length})`,sys:true}:null,
-        ].filter(Boolean).map(item=>(
-          <CatChip key={item.id} item={item} active={filterCat===item.id}
-            onTap={()=>setFilter(item.id)}
-            onLongPress={item.sys?null:()=>window.__showCatEdit(
-              item.id, item.id,
-              (catId, newName)=>{
-                updateDb(prev=>({...prev,
-                  cats:prev.cats.map(c=>c===catId?newName:c),
-                  plants:prev.plants.map(p=>p.category===catId?{...p,category:newName}:p),
-                }));
-                if(filterCat===catId)setFilter(newName);
-                toast.show('✅ 分类已重命名');
-              },
-              (catId)=>{
-                updateDb(prev=>({...prev,
-                  cats:prev.cats.filter(c=>c!==catId),
-                  plants:prev.plants.map(p=>p.category===catId?{...p,category:''}:p),
-                }));
-                if(filterCat===catId)setFilter('all');
-                toast.show('🗑 分类已删除');
-              }
-            )}/>
-        ))}
-        </div>
-        {/* 分类编辑弹窗 */}
-        
+        {sortBy==='custom'&&<div style={{fontSize:10,color:'#8aaa78',marginTop:5}}>💡 长按卡片可拖动排序</div>}
       </div>{/* end sticky-bar */}
       <div className="plant-list" ref={listRef}>
-        {filtered.length===0
+        {sortedFiltered.length===0
           ?<div className="placeholder">
             <div className="placeholder-emoji">🪴</div>
-            <div className="placeholder-title">{db.plants.length?'没有匹配的植物':'还没有植物'}</div>
-            <div className="placeholder-desc">{db.plants.length?'换个搜索词试试？':'点击右下角 ＋ 添加第一株植物！'}</div>
+            <div className="placeholder-title">{q?'没有匹配的植物':'该分类下还没有植物'}</div>
+            <div className="placeholder-desc">{q?'换个搜索词试试？':'点击右下角 ＋ 添加植物到此分类！'}</div>
           </div>
-          :filtered.map(p=>{
+          :sortedFiltered.map(p=>{
             const st=STATUS_MAP[p.status]||STATUS_MAP.healthy;
             const alerts=careAlerts(p);
             const wd=daysSince(lastLog(p.waterLog));
             const fd=daysSince(lastLog(p.fertLog));
+            const isDragging=draggingId===p.id;
             return(
-              <div key={p.id} className="plant-card-row" onClick={()=>openDetail(p.id)}>
+              <div key={p.id}
+                ref={el=>{if(el)rowRefs.current[p.id]=el;else delete rowRefs.current[p.id];}}
+                className="plant-card-row"
+                style={isDragging?{transform:`translateY(${dragY}px) scale(1.03)`,position:'relative',zIndex:5,boxShadow:'0 8px 24px rgba(40,70,20,.35)',opacity:.96}:undefined}
+                onClick={()=>{if(justDraggedRef.current)return;openDetail(p.id);}}
+                onTouchStart={sortBy==='custom'?(e=>handleRowTouchStart(p.id,e)):undefined}
+                onTouchEnd={sortBy==='custom'?handleRowTouchEnd:undefined}
+                onTouchCancel={sortBy==='custom'?handleRowTouchEnd:undefined}
+                onTouchMove={sortBy==='custom'?handleRowTouchEnd:undefined}>
+                {sortBy==='custom'&&<span style={{fontSize:15,color:'#9aaa88',flexShrink:0,alignSelf:'center'}}>☰</span>}
                 {p.photo
                   ?<PlantPhoto src={p.photo} style={{width:52,height:52,borderRadius:10,objectFit:'cover',flexShrink:0,border:'1px solid rgba(150,185,130,.3)'}}/>
                   :<div style={{width:52,height:52,borderRadius:10,flexShrink:0,background:'rgba(180,210,160,.2)',border:'1px solid rgba(150,185,130,.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>{plantEmoji(p)}</div>
@@ -1868,7 +2084,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
                     {p.name}{p.variety&&<span style={{fontSize:13,fontWeight:400,color:'#5a7848',marginLeft:6}}>{p.variety}</span>}
                   </div>
                   <div style={{fontSize:12,color:'#7a9060',marginTop:3}}>
-                    {[p.category,wd!=null?`💧${wd}天前`:null,fd!=null?`🌿${fd}天前`:null,p.finalPlantLocation?`📍${p.finalPlantLocation}`:null].filter(Boolean).join(' · ')}
+                    {[wd!=null?`💧${wd}天前`:null,fd!=null?`🌿${fd}天前`:null,p.finalPlantLocation?`📍${p.finalPlantLocation}`:null].filter(Boolean).join(' · ')}
                   </div>
                   {alerts.length>0&&<div style={{fontSize:12,color:'#c05020',marginTop:4}}>{alerts.map(a=>a.icon).join('')} {alerts.map(a=>a.label).join('  ')}</div>}
                 </div>
@@ -1877,9 +2093,9 @@ function PlantsTab({jumpPlantId,onJumpDone}){
             );
           })
         }
-        {filtered.length>0&&<div style={{fontSize:11,color:'#9aaa88',textAlign:'center',marginTop:14,paddingBottom:8}}>共 {filtered.length}{filtered.length<db.plants.length?`/${db.plants.length}`:''} 株植物</div>}
+        {sortedFiltered.length>0&&<div style={{fontSize:11,color:'#9aaa88',textAlign:'center',marginTop:14,paddingBottom:8}}>共 {sortedFiltered.length}{sortedFiltered.length<filtered.length?`/${filtered.length}`:''} 株植物</div>}
       </div>
-      <button className="fab" onClick={()=>setView({type:'form',plant:null})}>＋</button>
+      <button className="fab" onClick={()=>setView({type:'form',plant:catView==='__none__'?null:{category:catView}})}>＋</button>
     </div>
   );
 }
@@ -4172,6 +4388,52 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     document.body.appendChild(overlay);
     render();
   }
+
+  // 新增分类弹窗（挂到 body，避免被 #root max-width 截断）
+  window.__showCatAdd = function(onAdd) {
+    var existing = document.getElementById('__cat_add_overlay');
+    if (existing) document.body.removeChild(existing);
+
+    var overlay = document.createElement('div');
+    overlay.id = '__cat_add_overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(40,65,25,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;';
+    overlay.onclick = function(e) { if(e.target===overlay) document.body.removeChild(overlay); };
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#f5f8f2;border-radius:18px;padding:24px 20px;width:100%;max-width:320px;box-sizing:border-box;';
+    box.onclick = function(e){e.stopPropagation();};
+
+    var title = document.createElement('div');
+    title.textContent = '🏷️ 新增分类';
+    title.style.cssText = 'font-size:15px;font-weight:700;color:#2e4a22;margin-bottom:14px;';
+
+    var input = document.createElement('input');
+    input.placeholder = '例如：🍎 水果';
+    input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px 14px;border-radius:12px;border:1.5px solid rgba(150,185,130,0.5);font-size:15px;font-family:inherit;background:rgba(240,248,235,0.8);color:#2e4a22;margin-bottom:14px;outline:none;';
+
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;';
+
+    var addBtn = document.createElement('button');
+    addBtn.textContent = '✓ 添加';
+    addBtn.style.cssText = 'flex:1;padding:12px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;background:rgba(100,160,70,0.85);color:white;';
+    addBtn.onclick = function() {
+      var name = input.value.trim();
+      if(name) onAdd(name);
+      document.body.removeChild(overlay);
+    };
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '取消';
+    cancelBtn.style.cssText = 'flex:1;padding:12px;border-radius:12px;border:1.5px solid rgba(150,185,130,0.4);cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;background:rgba(180,210,160,0.15);color:#5a7848;';
+    cancelBtn.onclick = function() { document.body.removeChild(overlay); };
+
+    btnRow.appendChild(addBtn); btnRow.appendChild(cancelBtn);
+    box.appendChild(title); box.appendChild(input); box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(function(){ input.focus(); }, 100);
+  };
 
   // 分类编辑弹窗（挂到 body，避免被 #root max-width 截断）
   window.__showCatEdit = function(catId, catName, onRename, onDelete) {
