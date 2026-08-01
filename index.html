@@ -151,11 +151,18 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
-// 分类"裸名"：去掉形如"🍎 水果"前面的 emoji+空格前缀，用于把 "🍎 水果" 和用户手打的 "水果" 归并为同一分类
+// 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
+const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
+function catIcon(s){
+  s=(s||'').trim();
+  const m=s.match(CAT_EMOJI_RE);
+  return m?m[1]:'🏷️';
+}
+// 分类"裸名"：去掉分类名前面的 emoji（不论后面有没有空格），用于把 "🍎水果" / "🍎 水果" / 用户手打的 "水果" 归并为同一分类
 function catBare(s){
   s=(s||'').trim();
-  const sp=s.indexOf(' ');
-  return sp===-1?s:s.slice(sp+1).trim();
+  const m=s.match(CAT_EMOJI_RE);
+  return(m?s.slice(m[0].length):s).trim();
 }
 
 const BLANK=()=>({
@@ -1721,10 +1728,8 @@ function CategoryCard({label,count,color,onTap,onLongPress}){
   function handleTouchEnd(){
     if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null;}
   }
-  const parts=label.split(' ');
-  const hasEmoji=parts.length>1;
-  const icon=hasEmoji?parts[0]:'🏷️';
-  const name=hasEmoji?parts.slice(1).join(' '):label;
+  const icon=catIcon(label);
+  const name=catBare(label);
   const c=color||CAT_CARD_PALETTE[0];
   return(
     <button className="cat-card"
@@ -1924,7 +1929,9 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   rawCats.forEach(c=>{
     const bare=catBare(c);
     const cur=byBare[bare];
-    if(!cur||(cur.indexOf(' ')===-1&&c.indexOf(' ')!==-1))byBare[bare]=c;
+    const curHasIcon=catIcon(cur||'')!=='🏷️';
+    const newHasIcon=catIcon(c)!=='🏷️';
+    if(!cur||(!curHasIcon&&newHasIcon))byBare[bare]=c;
   });
   const allCats=Object.values(byBare);
   const uncatCount=db.plants.filter(p=>!p.category).length;
