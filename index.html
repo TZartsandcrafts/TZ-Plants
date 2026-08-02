@@ -877,7 +877,7 @@ function PlantCareCalendarBody({plantId}){
     setSelDate(s=>s===ds?null:ds);
     setShowNoteInput(false);
     setNoteText('');
-    if(opening)setTimeout(()=>detailRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'}),80);
+    if(opening)setTimeout(()=>detailRef.current?.scrollIntoView({behavior:'smooth',block:'center'}),80);
   }
 
   function saveNote(){
@@ -1026,13 +1026,13 @@ function PlantCareCalendarBody({plantId}){
           {/* 添加备注 */}
           {showNoteInput
             ?<div style={{marginTop:8}}>
-              <textarea ref={noteInputRef} className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
+              <textarea ref={noteInputRef} autoFocus className="input" rows={2} style={{resize:'vertical',lineHeight:1.6,marginBottom:7}} placeholder="输入备注…" value={noteText} onChange={e=>setNoteText(e.target.value)}/>
               <div style={{display:'flex',gap:7}}>
                 <button className="btn btn-green" style={{flex:1,padding:'8px'}} onClick={saveNote}>✓ 保存</button>
                 <button className="btn btn-gray" style={{flex:1,padding:'8px'}} onClick={()=>{setShowNoteInput(false);setNoteText('');}}>取消</button>
               </div>
             </div>
-            :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>{setShowNoteInput(true);setTimeout(()=>{noteInputRef.current?.scrollIntoView({behavior:'smooth',block:'center'});noteInputRef.current?.focus();},120);}}>＋ 添加备注</button>
+            :<button className="btn btn-gray" style={{width:'100%',marginTop:7,padding:'8px'}} onClick={()=>{setShowNoteInput(true);setTimeout(()=>{noteInputRef.current?.scrollIntoView({behavior:'smooth',block:'center'});},120);}}>＋ 添加备注</button>
           }
         </div>
       )}
