@@ -3447,12 +3447,12 @@ function LibListPage({type,onClose}){
   }
   return(
     <div className="fullpage">
-      <div className="page-header">
-        <button className="back-btn" onClick={onClose}>‹</button>
-        <div className="page-header-title">{icon} {label}库</div>
-        <button className="btn btn-green" style={{padding:'5px 12px',fontSize:12,flexShrink:0}} onClick={()=>setAddNew(true)}>＋ 添加</button>
-      </div>
-      <div style={{padding:'10px 16px 8px'}}>
+      <div className="page-header" style={{flexDirection:'column',alignItems:'stretch',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <button className="back-btn" onClick={onClose}>‹</button>
+          <div className="page-header-title">{icon} {label}库</div>
+          <button className="btn btn-green" style={{padding:'5px 12px',fontSize:12,flexShrink:0}} onClick={()=>setAddNew(true)}>＋ 添加</button>
+        </div>
         <input className="input" placeholder={'搜索'+label+'…'} value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       <div style={{padding:'4px 16px 40px'}}>
@@ -3812,12 +3812,12 @@ function RecipeListPage({onClose}){
 
   return(
     <div className="fullpage">
-      <div className="page-header">
-        <button className="back-btn" onClick={onClose}>‹</button>
-        <div className="page-header-title">🧪 配方库</div>
-        <button className="btn btn-green" style={{padding:'5px 12px',fontSize:12,flexShrink:0}} onClick={()=>setAddNew(true)}>＋ 添加</button>
-      </div>
-      <div style={{padding:'10px 16px 8px'}}>
+      <div className="page-header" style={{flexDirection:'column',alignItems:'stretch',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <button className="back-btn" onClick={onClose}>‹</button>
+          <div className="page-header-title">🧪 配方库</div>
+          <button className="btn btn-green" style={{padding:'5px 12px',fontSize:12,flexShrink:0}} onClick={()=>setAddNew(true)}>＋ 添加</button>
+        </div>
         <input className="input" placeholder="搜索配方名称、材料…" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       <div style={{padding:'4px 16px 40px'}}>
@@ -3890,39 +3890,68 @@ function RecipeListPage({onClose}){
 function ExportPlantPicker({onSelect,onClose}){
   const{db}=useApp();
   const[search,setSearch]=useState('');
+  const[selected,setSelected]=useState(()=>new Set());
   const touchStartX=useRef(0);
   // ② 按建卡时间正序（id 含时间戳，数值越小越早）
   const plants=[...(db.plants||[])].sort(function(a,b){return(parseInt(b.id)||0)-(parseInt(a.id)||0);});
   const q=search.trim().toLowerCase();
   const filtered=q?plants.filter(function(p){return(p.name||'').toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q);}):plants;
+  function toggle(id){
+    setSelected(function(prev){
+      const next=new Set(prev);
+      if(next.has(id))next.delete(id);else next.add(id);
+      return next;
+    });
+  }
+  const allFilteredSelected=filtered.length>0&&filtered.every(function(p){return selected.has(p.id);});
+  function toggleAllFiltered(){
+    setSelected(function(prev){
+      const next=new Set(prev);
+      if(allFilteredSelected){filtered.forEach(function(p){next.delete(p.id);});}
+      else{filtered.forEach(function(p){next.add(p.id);});}
+      return next;
+    });
+  }
+  function doExport(){
+    const chosen=plants.filter(function(p){return selected.has(p.id);});
+    if(chosen.length===0)return;
+    onSelect(chosen);
+  }
   return(
     <div className="fullpage"
       onTouchStart={function(e){touchStartX.current=e.touches[0].clientX;}}
       onTouchEnd={function(e){if(e.changedTouches[0].clientX-touchStartX.current>60)onClose();}}>
-      <div className="page-header">
-        <button className="back-btn" onClick={onClose}>‹</button>
-        <div className="page-header-title">选择植物 · 单株备份</div>
-      </div>
-      {/* ① 搜索栏冻结 */}
-      <div style={{position:'sticky',top:0,zIndex:9,padding:'10px 16px 6px',background:'rgba(220,232,216,0.98)',borderBottom:'1px solid rgba(90,120,70,0.1)'}}>
+      <div className="page-header" style={{flexDirection:'column',alignItems:'stretch',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <button className="back-btn" onClick={onClose}>‹</button>
+          <div className="page-header-title">选择植物 · 自选备份</div>
+          {filtered.length>0&&<button style={{background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12,color:'#5a8040',flexShrink:0,fontWeight:600,padding:'4px 2px'}} onClick={toggleAllFiltered}>{allFilteredSelected?'取消全选':'全选'}</button>}
+        </div>
         <input className="input" placeholder="搜索名称、品种…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
       </div>
-      <div>
+      <div style={{paddingBottom:selected.size>0?90:16}}>
         {plants.length===0&&<div style={{padding:'40px 16px',textAlign:'center',color:'#9aaa88'}}>暂无植物数据</div>}
         {filtered.length===0&&plants.length>0&&<div style={{padding:'30px 16px',textAlign:'center',color:'#9aaa88'}}>未找到匹配植物</div>}
         {filtered.map(function(p){
+          const checked=selected.has(p.id);
           return(
-            <div key={p.id} onClick={function(){onSelect(p);}}
-              style={{display:'flex',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid rgba(90,120,70,0.12)',cursor:'pointer',gap:10,background:'rgba(255,255,255,0.35)'}}>
+            <div key={p.id} onClick={function(){toggle(p.id);}}
+              style={{display:'flex',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid rgba(90,120,70,0.12)',cursor:'pointer',gap:11,background:checked?'rgba(140,185,110,0.18)':'rgba(255,255,255,0.35)'}}>
+              <div style={{width:22,height:22,borderRadius:6,flexShrink:0,border:'2px solid '+(checked?'rgba(80,140,50,0.9)':'rgba(150,185,130,0.5)'),background:checked?'rgba(90,150,60,0.9)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:14,fontWeight:700}}>{checked?'✓':''}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:600,fontSize:15,color:'#2e4a22'}}>{p.name}</div>
                 {p.variety?<div style={{fontSize:13,color:'#7a9060',marginTop:2}}>{p.variety}</div>:null}
               </div>
-              <div style={{fontSize:22,color:'#8aac70',opacity:0.6}}>›</div>
             </div>
           );
         })}
       </div>
+      {selected.size>0&&
+        <div style={{position:'fixed',left:0,right:0,bottom:0,zIndex:30,padding:'10px 16px calc(10px + max(env(safe-area-inset-bottom,0px),10px))',background:'rgba(220,232,216,0.98)',borderTop:'1px solid rgba(90,120,70,0.2)',display:'flex',alignItems:'center',gap:10,maxWidth:460,margin:'0 auto'}}>
+          <div style={{fontSize:13,color:'#4a6a38',fontWeight:600,flexShrink:0}}>已选 {selected.size} 株</div>
+          <button className="btn btn-green" style={{flex:1,padding:'10px'}} onClick={doExport}>💾 导出备份</button>
+        </div>
+      }
     </div>
   );
 }
@@ -3944,7 +3973,7 @@ function InventoryTab(){
   if(view?.type==='add_soil')return<SoilForm initItem={null} onClose={()=>setView(null)}/>;
   if(view?.type==='add_recipe')return<RecipeForm initItem={null} onClose={()=>setView(null)}/>;
   if(view&&view.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
-  if(view&&view.type==='plantPicker')return<ExportPlantPicker onSelect={function(p){doExportPlant(p);}} onClose={()=>setView(null)}/>;
+  if(view&&view.type==='plantPicker')return<ExportPlantPicker onSelect={function(plants){doExportPlants(plants);}} onClose={()=>setView(null)}/>;
   async function withPhotos(plants){
     return Promise.all((plants||[]).map(async function(p){
       if(!p.photo||!PHOTO_IDB.isRef(p.photo))return p;
@@ -3973,19 +4002,22 @@ function InventoryTab(){
     toast.show('💾 完整备份已下载');
     setShowExportMenu(false);
   }
-  async function doExportPlant(plant){
+  async function doExportPlants(plantsArr){
     setView(null);
-    const plantsOut=await withPhotos([plant]);
-    const batches=(db.prop||[]).filter(function(b){return b.parentId===plant.id;});
-    const label=plant.name+(plant.variety?' '+plant.variety:'');
-    const data={
-      type:'plant',
-      plant:plantsOut[0],
-      propBatches:batches,
-      exportTime:new Date().toISOString()
-    };
-    dlJson(data,'植物志_'+label+'_'+toDay()+'.json');
-    toast.show('💾 '+label+' 备份已下载');
+    if(!plantsArr||plantsArr.length===0)return;
+    const plantsOut=await withPhotos(plantsArr);
+    const ids=plantsArr.map(function(p){return p.id;});
+    const batches=(db.prop||[]).filter(function(b){return ids.indexOf(b.parentId)!==-1;});
+    if(plantsArr.length===1){
+      const label=plantsArr[0].name+(plantsArr[0].variety?' '+plantsArr[0].variety:'');
+      const data={type:'plant',plant:plantsOut[0],propBatches:batches,exportTime:new Date().toISOString()};
+      dlJson(data,'植物志_'+label+'_'+toDay()+'.json');
+      toast.show('💾 '+label+' 备份已下载');
+    }else{
+      const data={type:'plants_multi',plants:plantsOut,propBatches:batches,exportTime:new Date().toISOString()};
+      dlJson(data,'植物志_自选备份_'+plantsArr.length+'株_'+toDay()+'.json');
+      toast.show('💾 已导出 '+plantsArr.length+' 株植物备份');
+    }
   }
   function exportInventory(){
     const data={
@@ -4070,7 +4102,7 @@ function InventoryTab(){
       {showExportMenu&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 68px)',left:'max(calc(50% - 230px + 16px),16px)',zIndex:59,display:'flex',flexDirection:'column',gap:8}}>
         {[
           {icon:'💾',label:'完整备份',action:exportData},
-          {icon:'🌿',label:'单株备份',action:function(){setView({type:'plantPicker'});setShowExportMenu(false);}},
+          {icon:'🌿',label:'自选备份',action:function(){setView({type:'plantPicker'});setShowExportMenu(false);}},
           {icon:'🔬',label:'繁育记录',action:exportProp},
           {icon:'📚',label:'库存数据',action:exportInventory},
         ].map(function(opt){return(
