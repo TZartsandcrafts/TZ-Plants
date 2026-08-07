@@ -3946,12 +3946,12 @@ function ExportPlantPicker({onSelect,onClose}){
           );
         })}
       </div>
-      {selected.size>0&&
+      {selected.size>0&&ReactDOM.createPortal(
         <div style={{position:'fixed',left:0,right:0,bottom:0,zIndex:30,padding:'10px 16px calc(10px + max(env(safe-area-inset-bottom,0px),10px))',background:'rgba(220,232,216,0.98)',borderTop:'1px solid rgba(90,120,70,0.2)',display:'flex',alignItems:'center',gap:10,maxWidth:460,margin:'0 auto'}}>
           <div style={{fontSize:13,color:'#4a6a38',fontWeight:600,flexShrink:0}}>已选 {selected.size} 株</div>
           <button className="btn btn-green" style={{flex:1,padding:'10px'}} onClick={doExport}>💾 导出备份</button>
         </div>
-      }
+      ,document.body)}
     </div>
   );
 }
