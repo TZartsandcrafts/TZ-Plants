@@ -3891,7 +3891,7 @@ function ExportPlantPicker({onSelect,onClose}){
   const{db}=useApp();
   const[search,setSearch]=useState('');
   const[selected,setSelected]=useState(()=>new Set());
-  const touchStartX=useRef(0);
+  useSwipeBack(onClose);
   // ② 按建卡时间正序（id 含时间戳，数值越小越早）
   const plants=[...(db.plants||[])].sort(function(a,b){return(parseInt(b.id)||0)-(parseInt(a.id)||0);});
   const q=search.trim().toLowerCase();
@@ -3918,9 +3918,7 @@ function ExportPlantPicker({onSelect,onClose}){
     onSelect(chosen);
   }
   return(
-    <div className="fullpage"
-      onTouchStart={function(e){touchStartX.current=e.touches[0].clientX;}}
-      onTouchEnd={function(e){if(e.changedTouches[0].clientX-touchStartX.current>60)onClose();}}>
+    <div className="fullpage">
       <div className="page-header" style={{flexDirection:'column',alignItems:'stretch',gap:8}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <button className="back-btn" onClick={onClose}>‹</button>
