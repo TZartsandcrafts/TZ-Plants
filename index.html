@@ -501,6 +501,8 @@ function LogPage({plantId,logType,onClose}){
   const[form,setForm]=useState(blank());
   const[editIdx,setEditIdx]=useState(null);
   const[delIdx,setDelIdx]=useState(null);
+  const[delAnchorY,setDelAnchorY]=useState(0);
+  const[showAllLogs,setShowAllLogs]=useState(false);
   const[showNewCourse,setShowNewCourse]=useState(false);
   const newCourseFormRef=useRef(null);
   const[courseForm,setCourseForm]=useState({drugName:'',reason:'',amount:'',interval:7,total:3,startDate:toDay(),noInterval:false});
@@ -778,42 +780,53 @@ function LogPage({plantId,logType,onClose}){
         <div style={{fontSize:12,color:'#6a8858',fontWeight:700,marginBottom:8}}>历史记录（{log.length} 条）</div>
         {log.length===0
           ?<div style={{textAlign:'center',color:'#9aaa88',fontSize:13,padding:'28px 0'}}>暂无记录</div>
-          :[...log].reverse().map((r,ri)=>{
-            const origIdx=log.length-1-ri;
-            return(
-              <div key={origIdx} className="log-item">
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <span style={{fontSize:13,fontWeight:700,color:'#2e4a22'}}>{fmtDate(r.date)}</span>
-                    {r.name&&<span style={{fontSize:12,color:'#5a7848',marginLeft:8}}>{r.name}</span>}
-                    {r.amount&&<span style={{fontSize:12,color:'#7a9060',marginLeft:6}}>· {r.amount}</span>}
-                    {r.reason&&<div style={{fontSize:11,color:'#9a7040',marginTop:2}}>病症：{r.reason}</div>}
-                    {r.courseId&&<div style={{fontSize:10,color:'#b08060',marginTop:2}}>📋 疗程记录</div>}
-                    {r.note&&<div style={{fontSize:12,color:'#6a8858',marginTop:2}}>{r.note}</div>}
-                  </div>
-                  <div style={{display:'flex',gap:2,flexShrink:0,marginLeft:8}}>
-                    <button style={{background:'none',border:'none',cursor:'pointer',fontSize:16,padding:'2px 5px'}} onClick={()=>startEdit(origIdx)}>✏️</button>
-                    <button style={{background:'none',border:'none',cursor:'pointer',fontSize:16,padding:'2px 5px'}} onClick={()=>setDelIdx(origIdx)}>🗑️</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })
+          :(()=>{
+              const reversed=[...log].reverse();
+              const visible=showAllLogs?reversed:reversed.slice(0,6);
+              return<>
+                {visible.map((r,ri)=>{
+                  const origIdx=log.length-1-ri;
+                  return(
+                    <div key={origIdx} className="log-item">
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <span style={{fontSize:13,fontWeight:700,color:'#2e4a22'}}>{fmtDate(r.date)}</span>
+                          {r.name&&<span style={{fontSize:12,color:'#5a7848',marginLeft:8}}>{r.name}</span>}
+                          {r.amount&&<span style={{fontSize:12,color:'#7a9060',marginLeft:6}}>· {r.amount}</span>}
+                          {r.reason&&<div style={{fontSize:11,color:'#9a7040',marginTop:2}}>病症：{r.reason}</div>}
+                          {r.courseId&&<div style={{fontSize:10,color:'#b08060',marginTop:2}}>📋 疗程记录</div>}
+                          {r.note&&<div style={{fontSize:12,color:'#6a8858',marginTop:2}}>{r.note}</div>}
+                        </div>
+                        <div style={{display:'flex',gap:2,flexShrink:0,marginLeft:8}}>
+                          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:16,padding:'2px 5px'}} onClick={()=>startEdit(origIdx)}>✏️</button>
+                          <button style={{background:'none',border:'none',cursor:'pointer',fontSize:16,padding:'2px 5px'}} onClick={e=>{setDelAnchorY(e.currentTarget.getBoundingClientRect().top);setDelIdx(origIdx);}}>🗑️</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {reversed.length>6&&
+                  <button className="btn btn-gray" style={{width:'100%',marginTop:2,padding:'8px'}} onClick={()=>setShowAllLogs(v=>!v)}>
+                    {showAllLogs?'▴ 收起':`▾ 展开全部（还有 ${reversed.length-6} 条）`}
+                  </button>
+                }
+              </>;
+            })()
         }
       </div>
-      {/* 删除确认 */}
-      {delIdx!==null&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setDelIdx(null)}>
-          <div style={{background:'#f5f8f2',borderRadius:18,padding:'24px 20px',width:'100%',maxWidth:320,textAlign:'center'}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:28,marginBottom:10}}>⚠️</div>
-            <div style={{fontSize:15,fontWeight:600,color:'#2e4a22',marginBottom:18}}>确认删除这条记录吗？</div>
+      {/* 删除确认：定位在被点击条目附近，而非屏幕正中央；portal 到 body 避免 fullpage 的 transform 影响滚动后定位 */}
+      {delIdx!==null&&ReactDOM.createPortal(
+        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200}} onClick={()=>setDelIdx(null)}>
+          <div style={{position:'absolute',left:'50%',top:Math.min(Math.max(delAnchorY-30,86),(typeof window!=='undefined'?window.innerHeight:700)-190),transform:'translateX(-50%)',background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'calc(100% - 48px)',maxWidth:320,textAlign:'center',boxShadow:'0 10px 32px rgba(20,40,10,.3)'}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:26,marginBottom:9}}>⚠️</div>
+            <div style={{fontSize:15,fontWeight:600,color:'#2e4a22',marginBottom:16}}>确认删除这条记录吗？</div>
             <div style={{display:'flex',gap:10}}>
               <button className="btn btn-gray" style={{flex:1}} onClick={()=>setDelIdx(null)}>取消</button>
               <button className="btn btn-red" style={{flex:1}} onClick={doDelete}>确认删除</button>
             </div>
           </div>
         </div>
-      )}
+      ,document.body)}
     </div>
   );
 }
@@ -2870,9 +2883,11 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
   const{db,updateDb,toast}=useApp();
   const batch=db.prop.find(b=>b.id===batchId);
   const[delConfirm,setDelConfirm]=useState(false);
+  const[delAnchorY,setDelAnchorY]=useState(0);
   const[sel,setSel]=useState([]); // 选中的幼苗 idx 数组
   const[datePickIdx,setDatePickIdx]=useState(null); // 正在选日期的幼苗 idx
   const[datePickVal,setDatePickVal]=useState(toDay());
+  const[datePickAnchorY,setDatePickAnchorY]=useState(0);
   useEffect(()=>{window.scrollTo(0,0)},[]);
   useSwipeBack(onClose);
 
@@ -2890,9 +2905,10 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
   function clearSel(){setSel([]);}
 
   // 单苗设置状态
-  function setSeedlingStatus(idx,status){
+  function setSeedlingStatus(idx,status,e){
     if(status==='success'){
       // 弹出日期选择
+      if(e)setDatePickAnchorY(e.currentTarget.getBoundingClientRect().top);
       setDatePickIdx(idx);
       setDatePickVal(seedlings[idx].successDate||toDay());
       return;
@@ -2918,9 +2934,10 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
   }
 
   // 批量设置状态
-  function bulkSetStatus(status){
+  function bulkSetStatus(status,e){
     if(status==='success'){
       // 批量成活也弹日期
+      if(e)setDatePickAnchorY(e.currentTarget.getBoundingClientRect().top);
       setDatePickIdx('bulk');
       setDatePickVal(toDay());
       return;
@@ -3058,7 +3075,7 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
                 {Object.entries(PROP_STATUS).map(([k,v])=>(
                   <button key={k} style={{padding:'4px 10px',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:11,
                     background:`${v.color}22`,border:`1px solid ${v.color}66`,color:v.color}}
-                    onClick={()=>bulkSetStatus(k)}>{v.icon} {v.label}</button>
+                    onClick={e=>bulkSetStatus(k,e)}>{v.icon} {v.label}</button>
                 ))}
                 <button style={{fontSize:11,padding:'4px 10px',borderRadius:8,cursor:'pointer',fontFamily:'inherit',background:'rgba(200,215,195,0.4)',border:'1px solid rgba(160,185,145,0.4)',color:'#6a7e58'}}
                   onClick={clearSel}>取消选择</button>
@@ -3086,7 +3103,7 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
                       background:s.status===k?v.color+'33':'rgba(180,210,160,0.1)',
                       border:`1px solid ${s.status===k?v.color+'88':'rgba(150,185,130,0.25)'}`,
                       color:s.status===k?v.color:'#6a8858'}}
-                      onClick={()=>setSeedlingStatus(idx,k)}>{v.icon}</button>
+                      onClick={e=>setSeedlingStatus(idx,k,e)}>{v.icon}</button>
                   ))}
                 </div>
                 {/* 单苗建卡 */}
@@ -3102,15 +3119,15 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
         <button className="btn btn-green" style={{width:'100%'}} onClick={graduateBatch}>🪴 整批建卡</button>
         <div style={{display:'flex',gap:8}}>
           <button className="btn btn-gray" style={{flex:1}} onClick={archiveBatch}>📦 归档批次</button>
-          <button className="btn btn-red" style={{flex:1}} onClick={()=>setDelConfirm(true)}>🗑 删除</button>
+          <button className="btn btn-red" style={{flex:1}} onClick={e=>{setDelAnchorY(e.currentTarget.getBoundingClientRect().top);setDelConfirm(true);}}>🗑 删除</button>
         </div>
       </div>
 
       {/* 日期选择弹窗 — portal 到 body，绕开 fullpage 的 transform 定位上下文 */}
       {datePickIdx!==null&&ReactDOM.createPortal(
-        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.5)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
+        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.5)',zIndex:2000}}
           onClick={()=>setDatePickIdx(null)}>
-          <div style={{background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'100%',maxWidth:300,textAlign:'center'}}
+          <div style={{position:'absolute',left:'50%',top:Math.min(Math.max(datePickAnchorY-30,86),(typeof window!=='undefined'?window.innerHeight:700)-230),transform:'translateX(-50%)',background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'calc(100% - 48px)',maxWidth:300,textAlign:'center',boxShadow:'0 10px 32px rgba(20,40,10,.3)'}}
             onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:16,fontWeight:700,color:'#2e4a22',marginBottom:14}}>
               {datePickIdx==='bulk'?`选择 ${sel.length} 株的成活日期`:`选择成活日期`}
@@ -3127,20 +3144,20 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
       ,document.body)}
 
       {/* 删除确认 */}
-      {delConfirm&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
+      {delConfirm&&ReactDOM.createPortal(
+        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200}}
           onClick={()=>setDelConfirm(false)}>
-          <div style={{background:'#f5f8f2',borderRadius:18,padding:'24px 20px',width:'100%',maxWidth:320,textAlign:'center'}}
+          <div style={{position:'absolute',left:'50%',top:Math.min(Math.max(delAnchorY-30,86),(typeof window!=='undefined'?window.innerHeight:700)-190),transform:'translateX(-50%)',background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'calc(100% - 48px)',maxWidth:320,textAlign:'center',boxShadow:'0 10px 32px rgba(20,40,10,.3)'}}
             onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:28,marginBottom:10}}>⚠️</div>
-            <div style={{fontSize:15,fontWeight:600,color:'#2e4a22',marginBottom:18}}>确认删除此批次？</div>
+            <div style={{fontSize:26,marginBottom:9}}>⚠️</div>
+            <div style={{fontSize:15,fontWeight:600,color:'#2e4a22',marginBottom:16}}>确认删除此批次？</div>
             <div style={{display:'flex',gap:10}}>
               <button className="btn btn-gray" style={{flex:1}} onClick={()=>setDelConfirm(false)}>取消</button>
               <button className="btn btn-red" style={{flex:1}} onClick={deleteBatch}>确认删除</button>
             </div>
           </div>
         </div>
-      )}
+      ,document.body)}
     </div>
   );
 }
@@ -3426,6 +3443,7 @@ function LibListPage({type,onClose}){
   const[editItem,setEditItem]=useState(null);
   const[addNew,setAddNew]=useState(false);
   const[delConfirm,setDelConfirm]=useState(null);
+  const[delAnchorY,setDelAnchorY]=useState(0);
   const isFert=type==='fert',isSoil=type==='soil';
   const arr=db.lib[type]||[];
   const label=isFert?'肥料':isSoil?'盆土/基质':'药品';
@@ -3522,16 +3540,16 @@ function LibListPage({type,onClose}){
                   }
                   <div style={{display:'flex',gap:8,marginTop:12}}>
                     <button className="btn btn-gray" style={{flex:1,fontSize:13,padding:'9px'}} onClick={()=>setEditItem(item)}>✏️ 修改</button>
-                    <button className="btn btn-red" style={{padding:'9px 14px',fontSize:13}} onClick={()=>setDelConfirm(item)}>删除</button>
+                    <button className="btn btn-red" style={{padding:'9px 14px',fontSize:13}} onClick={e=>{setDelAnchorY(e.currentTarget.getBoundingClientRect().top);setDelConfirm(item);}}>删除</button>
                   </div>
                 </div>}
               </div>;
             })
         }
       </div>
-      {delConfirm&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setDelConfirm(null)}>
-          <div style={{background:'#f5f8f2',borderRadius:18,padding:'24px 20px',width:'100%',maxWidth:320,textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+      {delConfirm&&ReactDOM.createPortal(
+        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200}} onClick={()=>setDelConfirm(null)}>
+          <div style={{position:'absolute',left:'50%',top:Math.min(Math.max(delAnchorY-30,86),(typeof window!=='undefined'?window.innerHeight:700)-190),transform:'translateX(-50%)',background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'calc(100% - 48px)',maxWidth:320,textAlign:'center',boxShadow:'0 10px 32px rgba(20,40,10,.3)'}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:15,fontWeight:600,color:'#2e4a22',marginBottom:18}}>确认删除「{delConfirm.name}」吗？</div>
             <div style={{display:'flex',gap:10}}>
               <button className="btn btn-gray" style={{flex:1}} onClick={()=>setDelConfirm(null)}>取消</button>
@@ -3539,7 +3557,7 @@ function LibListPage({type,onClose}){
             </div>
           </div>
         </div>
-      )}
+      ,document.body)}
     </div>
   );
 }
@@ -3791,6 +3809,7 @@ function RecipeListPage({onClose}){
   const[editItem,setEditItem]=useState(null);
   const[addNew,setAddNew]=useState(false);
   const[delConfirm,setDelConfirm]=useState(null);
+  const[delAnchorY,setDelAnchorY]=useState(0);
   const recipes=db.lib.recipe||[];
   useEffect(()=>{window.scrollTo(0,0)},[]);
   useSwipeBack(onClose);
@@ -3865,16 +3884,16 @@ function RecipeListPage({onClose}){
                   {item.note&&<div style={{fontSize:12,color:'#7a9060',marginBottom:8}}>📝 {item.note}</div>}
                   <div style={{display:'flex',gap:8,marginTop:10}}>
                     <button className="btn btn-gray" style={{flex:1,fontSize:13,padding:'9px'}} onClick={()=>setEditItem(item)}>✏️ 修改</button>
-                    <button className="btn btn-red" style={{padding:'9px 14px',fontSize:13}} onClick={()=>setDelConfirm(item)}>删除</button>
+                    <button className="btn btn-red" style={{padding:'9px 14px',fontSize:13}} onClick={e=>{setDelAnchorY(e.currentTarget.getBoundingClientRect().top);setDelConfirm(item);}}>删除</button>
                   </div>
                 </div>}
               </div>;
             })
         }
       </div>
-      {delConfirm&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setDelConfirm(null)}>
-          <div style={{background:'#f5f8f2',borderRadius:18,padding:'24px 20px',width:'100%',maxWidth:320,textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+      {delConfirm&&ReactDOM.createPortal(
+        <div style={{position:'fixed',inset:0,background:'rgba(40,65,25,.45)',zIndex:200}} onClick={()=>setDelConfirm(null)}>
+          <div style={{position:'absolute',left:'50%',top:Math.min(Math.max(delAnchorY-30,86),(typeof window!=='undefined'?window.innerHeight:700)-190),transform:'translateX(-50%)',background:'#f5f8f2',borderRadius:18,padding:'22px 20px',width:'calc(100% - 48px)',maxWidth:320,textAlign:'center',boxShadow:'0 10px 32px rgba(20,40,10,.3)'}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:15,fontWeight:600,color:'#2e4a22',marginBottom:18}}>确认删除「{delConfirm.name}」吗？</div>
             <div style={{display:'flex',gap:10}}>
               <button className="btn btn-gray" style={{flex:1}} onClick={()=>setDelConfirm(null)}>取消</button>
@@ -3882,7 +3901,7 @@ function RecipeListPage({onClose}){
             </div>
           </div>
         </div>
-      )}
+      ,document.body)}
     </div>
   );
 }
