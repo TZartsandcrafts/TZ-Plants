@@ -1772,13 +1772,18 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   const returnTabRef=useRef(null);
   // 长按拖拽排序相关
   const[draggingId,setDraggingId]=useState(null);
-  const[liveOrder,setLiveOrder]=useState(null);
-  const[dragY,setDragY]=useState(0);
+  const[dragOrder,setDragOrder]=useState(null); // 拖拽中的实时顺序（id 数组）
+  const[dragY,setDragY]=useState(0); // 被拖拽行相对"当前所在槽位"的可视偏移量（每次换槽后归零，避免跳跃感）
   const rowRefs=useRef({});
   const draggingIdRef=useRef(null);
-  const liveOrderRef=useRef(null);
-  const dragStartYRef=useRef(0);
+  const dragOrderRef=useRef(null);
+  const dragYRef=useRef(0);
+  const baseOrderIdsRef=useRef([]); // 每次渲染都镜像"未拖拽时的基础顺序"，供拖拽开始时取快照
+  const rowHeightRef=useRef(70);
   const longPressTimerRef=useRef(null);
+  const touchStartPosRef=useRef(null);
+  const autoScrollDirRef=useRef(0);
+  const autoScrollTimerRef=useRef(null);
   const justDraggedRef=useRef(false);
 
   // 打开分类详情：决定默认排序（有手动排序则用手动排序，否则按录入时间倒序）
@@ -1841,32 +1846,60 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   // 长按拖拽排序：手指移动/松开时的全局监听
   useEffect(()=>{
     if(!draggingId)return;
-    function findInsertIndex(clientY){
-      const draggedId=draggingIdRef.current;
-      const others=(liveOrderRef.current||[]).filter(id=>id!==draggedId);
-      let insertAt=others.length;
-      for(let i=0;i<others.length;i++){
-        const el=rowRefs.current[others[i]];
-        if(!el)continue;
-        const rect=el.getBoundingClientRect();
-        const mid=rect.top+rect.height/2;
-        if(clientY<mid){insertAt=i;break;}
+    // 提交一次"虚拟位移"：可能来自真实触摸移动，也可能来自边缘自动滚动
+    function commitDelta(dy){
+      dragYRef.current+=dy;
+      setDragY(dragYRef.current);
+      const rowH=rowHeightRef.current||70;
+      if(Math.abs(dragYRef.current)>=rowH/2){
+        const dir=dragYRef.current>0?1:-1;
+        const order=dragOrderRef.current||[];
+        const idx=order.indexOf(draggingIdRef.current);
+        const newIdx=idx+dir;
+        if(idx!==-1&&newIdx>=0&&newIdx<order.length){
+          const newOrder=order.slice();
+          newOrder.splice(idx,1);
+          newOrder.splice(newIdx,0,draggingIdRef.current);
+          dragOrderRef.current=newOrder;
+          setDragOrder(newOrder);
+        }
+        dragYRef.current=0;
+        setDragY(0);
       }
-      return{others,insertAt};
+    }
+    function stopAutoScroll(){
+      if(autoScrollTimerRef.current){clearInterval(autoScrollTimerRef.current);autoScrollTimerRef.current=null;}
+      autoScrollDirRef.current=0;
+    }
+    // 靠近视口上/下边缘时持续自动滚动，并把滚动量计入同一个位移累加器
+    function checkAutoScroll(clientY){
+      const vh=window.innerHeight;
+      const TOP=110,BOTTOM=130,SPEED=9;
+      let dir=0;
+      if(clientY<TOP)dir=-1;
+      else if(clientY>vh-BOTTOM)dir=1;
+      if(dir===autoScrollDirRef.current)return;
+      stopAutoScroll();
+      if(dir===0)return;
+      autoScrollDirRef.current=dir;
+      autoScrollTimerRef.current=setInterval(()=>{
+        const before=window.scrollY;
+        window.scrollBy(0,dir*SPEED);
+        const scrolled=window.scrollY-before;
+        if(scrolled!==0)commitDelta(scrolled);
+      },30);
     }
     function onMove(e){
       const t=e.touches&&e.touches[0];
       if(!t)return;
       e.preventDefault();
-      setDragY(t.clientY-dragStartYRef.current);
-      const{others,insertAt}=findInsertIndex(t.clientY);
-      const draggedId=draggingIdRef.current;
-      const newOrder=[...others.slice(0,insertAt),draggedId,...others.slice(insertAt)];
-      const changed=newOrder.length!==(liveOrderRef.current||[]).length||newOrder.some((id,i)=>id!==liveOrderRef.current[i]);
-      if(changed){liveOrderRef.current=newOrder;setLiveOrder(newOrder);}
+      commitDelta(t.clientY-(onMove._lastY??t.clientY));
+      onMove._lastY=t.clientY;
+      checkAutoScroll(t.clientY);
     }
     function onEnd(){
-      const finalOrder=liveOrderRef.current;
+      stopAutoScroll();
+      const finalOrder=dragOrderRef.current;
       if(finalOrder&&catView!=null){
         updateDb(prev=>({...prev,catOrder:{...(prev.catOrder||{}),[catView]:finalOrder}}));
       }
@@ -1874,6 +1907,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       setTimeout(()=>{justDraggedRef.current=false;},80);
       draggingIdRef.current=null;
       setDraggingId(null);
+      setDragOrder(null);
       setDragY(0);
     }
     document.addEventListener('touchmove',onMove,{passive:false});
@@ -1883,6 +1917,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       document.removeEventListener('touchmove',onMove);
       document.removeEventListener('touchend',onEnd);
       document.removeEventListener('touchcancel',onEnd);
+      stopAutoScroll();
     };
   },[draggingId]);
 
@@ -1891,15 +1926,33 @@ function PlantsTab({jumpPlantId,onJumpDone}){
     if(sortBy!=='custom')return;
     const t=e.touches&&e.touches[0];
     if(!t)return;
-    const startY=t.clientY;
+    touchStartPosRef.current={x:t.clientX,y:t.clientY};
     longPressTimerRef.current=setTimeout(()=>{
       longPressTimerRef.current=null;
       window.getSelection?.()?.removeAllRanges();
+      const el=rowRefs.current[id];
+      rowHeightRef.current=(el?el.getBoundingClientRect().height:70)+10; // +10 为 .plant-list 的 gap
+      const snapshot=baseOrderIdsRef.current.slice();
       draggingIdRef.current=id;
-      dragStartYRef.current=startY;
+      dragOrderRef.current=snapshot;
+      dragYRef.current=0;
       if(navigator.vibrate)navigator.vibrate(10);
       setDraggingId(id);
+      setDragOrder(snapshot);
+      setDragY(0);
     },500);
+  }
+  // 长按计时器触发前，若手指已明显移动（判定为滚动意图），取消长按
+  function handleRowTouchMove(e){
+    if(draggingIdRef.current)return; // 已在拖拽中，交给全局监听处理
+    if(!longPressTimerRef.current)return;
+    const t=e.touches&&e.touches[0];
+    const start=touchStartPosRef.current;
+    if(!t||!start)return;
+    if(Math.hypot(t.clientX-start.x,t.clientY-start.y)>10){
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current=null;
+    }
   }
   function handleRowTouchEnd(){
     if(longPressTimerRef.current){clearTimeout(longPressTimerRef.current);longPressTimerRef.current=null;}
@@ -2044,8 +2097,8 @@ function PlantsTab({jumpPlantId,onJumpDone}){
     const known=catOrderArr.filter(id=>filteredIds.includes(id));
     const unknownIds=filtered.filter(p=>!catOrderArr.includes(p.id)).sort((a,b)=>b.id.localeCompare(a.id)).map(p=>p.id);
     const fullOrderIds=[...known,...unknownIds];
-    if(!draggingId)liveOrderRef.current=fullOrderIds;
-    const orderIds=(draggingId&&liveOrder)?liveOrder:fullOrderIds;
+    baseOrderIdsRef.current=fullOrderIds;
+    const orderIds=(draggingId&&dragOrder)?dragOrder:fullOrderIds;
     sortedFiltered=orderIds.map(id=>filtered.find(p=>p.id===id)).filter(Boolean);
   }else{
     sortedFiltered=[...filtered].sort((a,b)=>{
@@ -2109,7 +2162,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
                 onTouchStart={sortBy==='custom'?(e=>handleRowTouchStart(p.id,e)):undefined}
                 onTouchEnd={sortBy==='custom'?handleRowTouchEnd:undefined}
                 onTouchCancel={sortBy==='custom'?handleRowTouchEnd:undefined}
-                onTouchMove={sortBy==='custom'?handleRowTouchEnd:undefined}>
+                onTouchMove={sortBy==='custom'?handleRowTouchMove:undefined}>
                 {sortBy==='custom'&&<span style={{fontSize:15,color:'#9aaa88',flexShrink:0,alignSelf:'center'}}>☰</span>}
                 {p.photo
                   ?<PlantPhoto src={p.photo} style={{width:52,height:52,borderRadius:10,objectFit:'cover',flexShrink:0,border:'1px solid rgba(150,185,130,.3)'}}/>
@@ -4255,6 +4308,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     var sel = {};
     var expanded = {};
     var allSel = false;
+    var formVals = {name:'', amount:'', reason:'', note:''}; // 批量记录内容，随选中植物一起写入历史
 
     var plants = _db.plants || [];
     var cats = [];
@@ -4380,6 +4434,95 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
       if (btn) btn.textContent = ICON[type] + ' 记录' + LABEL[type] + '（' + sc + '株）';
     }
 
+    // 记录内容表单（浇水/施肥/给药，字段与植物详情页护理记录页一致）
+    function buildFormSection() {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'padding:12px 18px 4px;border-bottom:1px solid rgba(150,185,130,0.25);flex-shrink:0;overflow-y:auto;max-height:38vh;';
+
+      var title = document.createElement('div');
+      title.textContent = '记录内容';
+      title.style.cssText = 'font-size:12px;color:#6a8858;font-weight:700;margin-bottom:8px;';
+      wrap.appendChild(title);
+
+      function makeLabel(text) {
+        var l = document.createElement('div'); l.textContent = text;
+        l.style.cssText = 'font-size:12px;color:#5a7848;font-weight:600;margin-bottom:4px;';
+        return l;
+      }
+      function makeInput(ph, val, onInput) {
+        var inp = document.createElement('input');
+        inp.className = 'input';
+        inp.placeholder = ph; inp.value = val || '';
+        inp.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:8px;';
+        inp.oninput = function() { onInput(inp.value); };
+        return inp;
+      }
+      function makeSelect(options, onChange) {
+        var sel2 = document.createElement('select');
+        sel2.className = 'input';
+        sel2.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:8px;';
+        var opt0 = document.createElement('option'); opt0.value = ''; opt0.textContent = '— 不从库存选择 —';
+        sel2.appendChild(opt0);
+        options.forEach(function(o) {
+          var opt = document.createElement('option'); opt.value = o.name; opt.textContent = o.label || o.name;
+          sel2.appendChild(opt);
+        });
+        sel2.onchange = function() { onChange(sel2.value); };
+        return sel2;
+      }
+
+      if (type === 'fert') {
+        var fertLib = (_db.lib && _db.lib.fert) || [];
+        var nameInput, amountInput;
+        if (fertLib.length) {
+          wrap.appendChild(makeLabel('从肥料库选择（可选）'));
+          wrap.appendChild(makeSelect(fertLib.map(function(f){ return {name:f.name, label:f.name+(f.npk?' ('+f.npk+')':'')}; }), function(v) {
+            var f = fertLib.filter(function(x){ return x.name===v; })[0];
+            if (f) { formVals.name = f.name; formVals.amount = f.dosage || formVals.amount; nameInput.value = formVals.name; amountInput.value = formVals.amount; }
+            else { formVals.name = ''; nameInput.value = ''; }
+          }));
+        }
+        wrap.appendChild(makeLabel('肥料名称'));
+        nameInput = makeInput('复合肥、磷酸二氢钾…', formVals.name, function(v){ formVals.name = v; });
+        wrap.appendChild(nameInput);
+        wrap.appendChild(makeLabel('用量/浓度'));
+        amountInput = makeInput('5g/L…', formVals.amount, function(v){ formVals.amount = v; });
+        wrap.appendChild(amountInput);
+      } else if (type === 'med') {
+        var medLib = (_db.lib && _db.lib.med) || [];
+        var nameInput2, amountInput2, reasonInput2;
+        if (medLib.length) {
+          wrap.appendChild(makeLabel('从药品库选择（可选）'));
+          wrap.appendChild(makeSelect(medLib.map(function(m){ return {name:m.name, label:m.name}; }), function(v) {
+            var m = medLib.filter(function(x){ return x.name===v; })[0];
+            if (m) { formVals.name = m.name; formVals.amount = m.dosage || formVals.amount; formVals.reason = m.target || formVals.reason;
+              nameInput2.value = formVals.name; amountInput2.value = formVals.amount; reasonInput2.value = formVals.reason; }
+            else { formVals.name = ''; nameInput2.value = ''; }
+          }));
+        }
+        wrap.appendChild(makeLabel('药品名称'));
+        nameInput2 = makeInput('多菌灵、吡虫啉…', formVals.name, function(v){ formVals.name = v; });
+        wrap.appendChild(nameInput2);
+        wrap.appendChild(makeLabel('病症/原因'));
+        reasonInput2 = makeInput('白粉病、蚜虫…', formVals.reason, function(v){ formVals.reason = v; });
+        wrap.appendChild(reasonInput2);
+        wrap.appendChild(makeLabel('用量/浓度'));
+        amountInput2 = makeInput('稀释800倍…', formVals.amount, function(v){ formVals.amount = v; });
+        wrap.appendChild(amountInput2);
+      }
+
+      wrap.appendChild(makeLabel(type === 'water' ? '备注（可选）' : '备注'));
+      var noteArea = document.createElement('textarea');
+      noteArea.className = 'input'; noteArea.rows = 2;
+      noteArea.placeholder = type === 'water' ? '浇水量、方式…' : type === 'fert' ? '施肥观察…' : '用药后观察…';
+      noteArea.value = formVals.note || '';
+      noteArea.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:10px;resize:vertical;line-height:1.6;';
+      noteArea.oninput = function() { formVals.note = noteArea.value; };
+      wrap.appendChild(noteArea);
+
+      return wrap;
+    }
+
     // 建 DOM
     var overlay = document.createElement('div');
     overlay.id = '__ql_overlay';
@@ -4396,6 +4539,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     var cls = document.createElement('button'); cls.textContent = '✕'; cls.style.cssText = 'background:none;border:none;cursor:pointer;font-size:22px;color:#7a9868;padding:0 4px;';
     cls.onclick = function() { document.body.removeChild(overlay); };
     hdr.appendChild(ttl); hdr.appendChild(cls);
+
+    // 记录内容表单
+    var formSection = buildFormSection();
 
     // 列表
     var listDiv = document.createElement('div');
@@ -4418,17 +4564,22 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
         var plants = prev.plants.map(function(p) {
           if (ids.indexOf(p.id) < 0) return p;
           var key = type==='water'?'waterLog':type==='fert'?'fertLog':'medLog';
+          var existing = p[key]||[];
           var entry = {date:today};
-          // 给药：自动附加当前疗程ID
-          if(type==='med') entry.courseId = (function(){
+          if (type==='fert') { entry.name=formVals.name; entry.amount=formVals.amount; entry.note=formVals.note; }
+          else if (type==='med') {
+            entry.name=formVals.name; entry.reason=formVals.reason; entry.amount=formVals.amount; entry.note=formVals.note;
+            // 给药：自动附加当前疗程ID
+            entry.courseId = (function(){
               var active=(p.activeCourses||[]).filter(function(c){
                 var total=Math.max(1,parseInt(c.total)||3);
-                var given=arr.filter(function(r){return !r.skip&&r.courseId===c.id;}).length;
+                var given=existing.filter(function(r){return !r.skip&&r.courseId===c.id;}).length;
                 return given<total;
               });
               return active.length===1?active[0].id:undefined;
             })();
-          var arr = (p[key]||[]).concat([entry]);
+          } else { entry.note=formVals.note; }
+          var arr = existing.concat([entry]);
           arr.sort(function(a,b){ return a.date.localeCompare(b.date); });
           var np = Object.assign({},p); np[key]=arr;
           if(type==='water')np.waterPause=null;
@@ -4455,7 +4606,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     };
     footer.appendChild(cnt); footer.appendChild(btn);
 
-    sheet.appendChild(hdr); sheet.appendChild(listDiv); sheet.appendChild(footer);
+    sheet.appendChild(hdr); sheet.appendChild(formSection); sheet.appendChild(listDiv); sheet.appendChild(footer);
     overlay.appendChild(sheet);
     document.body.appendChild(overlay);
     render();
