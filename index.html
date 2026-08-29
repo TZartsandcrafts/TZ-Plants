@@ -1874,7 +1874,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
     // 靠近视口上/下边缘时持续自动滚动，并把滚动量计入同一个位移累加器
     function checkAutoScroll(clientY){
       const vh=window.innerHeight;
-      const TOP=110,BOTTOM=130,SPEED=9;
+      const TOP=110,BOTTOM=155,SPEED=9; // 底部阈值留足余量，减少手指贴近 iOS Home 指示条触发系统手势的概率
       let dir=0;
       if(clientY<TOP)dir=-1;
       else if(clientY>vh-BOTTOM)dir=1;
@@ -1910,6 +1910,13 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       setDragOrder(null);
       setDragY(0);
     }
+    // 安全阀：手指若在屏幕边缘被系统手势（如 iOS 的 Home 指示条/多任务切换）"截走"，
+    // 页面可能永远收不到 touchend，导致拖拽状态、全局 touchmove 监听、自动滚动计时器卡死不释放，
+    // 表现为之后所有页面的滚动/吸顶都跟着错乱，直到重新打开 App。这里加几层保险，确保一定能收尾。
+    function onVisibilityChange(){ if(document.hidden) onEnd(); }
+    window.addEventListener('blur', onEnd);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const maxDurationTimer = setTimeout(onEnd, 20000);
     document.addEventListener('touchmove',onMove,{passive:false});
     document.addEventListener('touchend',onEnd);
     document.addEventListener('touchcancel',onEnd);
@@ -1917,6 +1924,9 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       document.removeEventListener('touchmove',onMove);
       document.removeEventListener('touchend',onEnd);
       document.removeEventListener('touchcancel',onEnd);
+      window.removeEventListener('blur', onEnd);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      clearTimeout(maxDurationTimer);
       stopAutoScroll();
     };
   },[draggingId]);
