@@ -4076,6 +4076,7 @@ function InventoryTab(){
       recipe:db.lib.recipe||[],prop:db.prop,
       archive:{...db.archive,plants:archivePlantsOut},
       courses:db.archive?.courses||[],
+      cats:db.cats,catOrder:db.catOrder||{},
       exportTime:new Date().toISOString()
     };
     dlJson(data,'植物志备份_'+toDay()+'.json');
@@ -4140,9 +4141,10 @@ function InventoryTab(){
         Promise.all([migrateAndLoad(data.plants),migrateAndLoad((data.archive||{}).plants)]).then(function(res){
           const migratedPlants=res[0];
           const migratedArchivePlants=res[1];
-          updateDb(function(){return{
+          updateDb(function(prev){return{
             plants:migratedPlants,
             cats:data.cats||DEFAULT_CATS,
+            catOrder:data.catOrder||prev.catOrder||{},
             lib:{fert:data.fert||[],med:data.med||[],soil:data.soil||[],recipe:data.recipe||[]},
             archive:{...(data.archive||{plants:[],batches:[]}),plants:migratedArchivePlants,courses:data.courses||[]},
             prop:data.prop||[]
