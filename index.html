@@ -150,6 +150,8 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // 1. 常量 & 数据
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
+// 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
+const APP_VERSION='2026-09-18（续4）';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -4248,6 +4250,7 @@ function InventoryTab(){
       <div style={{padding:'0 16px 20px'}}>
         <button style={{width:'100%',padding:'11px 16px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:600,background:'rgba(215,185,250,0.2)',border:'1px solid rgba(185,155,220,0.4)',color:'#4a2a68'}} onClick={()=>setView({type:'batchIntervalPicker'})}>⏱️ 批量设置护理周期</button>
       </div>
+      <div style={{textAlign:'center',fontSize:11,color:'#a0b090',paddingBottom:16}}>植物志 {APP_VERSION}</div>
       <input type="file" id="import-file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
       {/* 备份选项菜单 */}
       {showExportMenu&&<div style={{position:'fixed',inset:0,zIndex:58}} onClick={()=>setShowExportMenu(false)}/>}
