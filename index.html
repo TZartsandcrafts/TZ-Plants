@@ -2760,6 +2760,16 @@ function CalendarTab(){
           {calExp?<MonthGrid/>:<WeekRow/>}
         </div>
 
+        {/* 快捷操作 */}
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:'#5a8040',marginBottom:8}}>快捷操作</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+            <button style={{padding:'12px 6px',borderRadius:14,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(180,215,160,0.3)',border:'1.5px solid rgba(140,185,110,0.4)',color:'#2e4a22',display:'flex',flexDirection:'column',alignItems:'center',gap:4}} onClick={()=>window.__qlOpen('water')}><span style={{fontSize:22}}>💧</span><span>记录浇水</span></button>
+            <button style={{padding:'12px 6px',borderRadius:14,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(180,215,160,0.3)',border:'1.5px solid rgba(140,185,110,0.4)',color:'#2e4a22',display:'flex',flexDirection:'column',alignItems:'center',gap:4}} onClick={()=>window.__qlOpen('fert')}><span style={{fontSize:22}}>🌿</span><span>记录施肥</span></button>
+            <button style={{padding:'12px 6px',borderRadius:14,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(180,215,160,0.3)',border:'1.5px solid rgba(140,185,110,0.4)',color:'#2e4a22',display:'flex',flexDirection:'column',alignItems:'center',gap:4}} onClick={()=>window.__qlOpen('med')}><span style={{fontSize:22}}>💊</span><span>记录给药</span></button>
+          </div>
+        </div>
+
         {/* 任务列表 */}
         <DaySection label="逾期未做" tasks={overdue} urgent={true}/>
         <DaySection label={`今天 ${(todayD.getMonth()+1)}月${todayD.getDate()}日`} tasks={todayT} urgent={false}/>
@@ -2779,14 +2789,6 @@ function CalendarTab(){
         {overdue.length===0&&todayT.length===0&&soon1.length===0&&unlogged.length===0&&(
           <div style={{textAlign:'center',padding:'24px 0',color:'#7a9868',fontSize:13}}>🎉 近期无待办，植物状态良好！</div>
         )}
-        <div style={{marginTop:8,paddingBottom:8}}>
-          <div style={{fontSize:12,fontWeight:700,color:'#5a8040',marginBottom:8}}>快捷操作</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-            <button style={{padding:'12px 6px',borderRadius:14,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(180,215,160,0.3)',border:'1.5px solid rgba(140,185,110,0.4)',color:'#2e4a22',display:'flex',flexDirection:'column',alignItems:'center',gap:4}} onClick={()=>window.__qlOpen('water')}><span style={{fontSize:22}}>💧</span><span>记录浇水</span></button>
-            <button style={{padding:'12px 6px',borderRadius:14,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(180,215,160,0.3)',border:'1.5px solid rgba(140,185,110,0.4)',color:'#2e4a22',display:'flex',flexDirection:'column',alignItems:'center',gap:4}} onClick={()=>window.__qlOpen('fert')}><span style={{fontSize:22}}>🌿</span><span>记录施肥</span></button>
-            <button style={{padding:'12px 6px',borderRadius:14,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(180,215,160,0.3)',border:'1.5px solid rgba(140,185,110,0.4)',color:'#2e4a22',display:'flex',flexDirection:'column',alignItems:'center',gap:4}} onClick={()=>window.__qlOpen('med')}><span style={{fontSize:22}}>💊</span><span>记录给药</span></button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -3969,7 +3971,9 @@ function RecipeListPage({onClose}){
   );
 }
 
-function ExportPlantPicker({onSelect,onClose}){
+function ExportPlantPicker({onSelect,onClose,title,actionLabel}){
+  title=title||'选择植物 · 自选备份';
+  actionLabel=actionLabel||'💾 导出备份';
   const{db}=useApp();
   const[search,setSearch]=useState('');
   const[selected,setSelected]=useState(()=>new Set());
@@ -4004,7 +4008,7 @@ function ExportPlantPicker({onSelect,onClose}){
       <div className="page-header" style={{flexDirection:'column',alignItems:'stretch',gap:8}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <button className="back-btn" onClick={onClose}>‹</button>
-          <div className="page-header-title">选择植物 · 自选备份</div>
+          <div className="page-header-title">{title}</div>
           {filtered.length>0&&<button style={{background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12,color:'#5a8040',flexShrink:0,fontWeight:600,padding:'4px 2px'}} onClick={toggleAllFiltered}>{allFilteredSelected?'取消全选':'全选'}</button>}
         </div>
         <input className="input" placeholder="搜索名称、品种…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
@@ -4029,17 +4033,78 @@ function ExportPlantPicker({onSelect,onClose}){
       {selected.size>0&&ReactDOM.createPortal(
         <div style={{position:'fixed',left:'50%',transform:'translateX(-50%)',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px))',zIndex:90,padding:'10px 16px',background:'rgba(220,232,216,0.98)',borderTop:'1px solid rgba(90,120,70,0.2)',boxShadow:'0 -2px 10px rgba(40,70,20,.1)',display:'flex',alignItems:'center',gap:10,width:'100%',maxWidth:460,boxSizing:'border-box'}}>
           <div style={{fontSize:13,color:'#4a6a38',fontWeight:600,flexShrink:0}}>已选 {selected.size} 株</div>
-          <button className="btn btn-green" style={{flex:1,padding:'10px'}} onClick={doExport}>💾 导出备份</button>
+          <button className="btn btn-green" style={{flex:1,padding:'10px'}} onClick={doExport}>{actionLabel}</button>
         </div>
       ,document.body)}
     </div>
   );
 }
 
+function BatchIntervalForm({plants,onClose}){
+  const{updateDb,toast}=useApp();
+  const[wi,setWi]=useState('');
+  const[fi,setFi]=useState('');
+  const[startDate,setStartDate]=useState('');
+  useSwipeBack(onClose);
+  const ids=new Set((plants||[]).map(function(p){return p.id;}));
+  function apply(){
+    const wiVal=wi.trim();
+    const fiVal=fi.trim();
+    const sd=startDate.trim();
+    if(!wiVal&&!fiVal){toast.show('请至少填写一项间隔');return;}
+    const parts=[];
+    if(wiVal)parts.push('浇水间隔 '+wiVal+' 天');
+    if(fiVal)parts.push('施肥间隔 '+fiVal+' 天');
+    let msg='将把 '+parts.join('、')+' 应用到 '+ids.size+' 株植物，现有周期设置将被覆盖';
+    if(sd)msg+='；并在 '+sd+' 各追加一条「跳过」记录作为新周期起始点（不算作真实浇水/施肥）';
+    msg+='，确认？';
+    if(!confirm(msg))return;
+    updateDb(function(prev){return{...prev,plants:prev.plants.map(function(p){
+      if(!ids.has(p.id))return p;
+      const next={...p};
+      if(wiVal){
+        next.wi=+wiVal;
+        if(sd)next.waterLog=[...(p.waterLog||[]),{date:sd,skip:true,note:'批量设置周期起始点'}].sort(function(a,b){return a.date.localeCompare(b.date);});
+      }
+      if(fiVal){
+        next.fi=+fiVal;
+        if(sd)next.fertLog=[...(p.fertLog||[]),{date:sd,skip:true,note:'批量设置周期起始点'}].sort(function(a,b){return a.date.localeCompare(b.date);});
+      }
+      return next;
+    })}});
+    toast.show('✅ 已更新 '+ids.size+' 株植物的护理周期');
+    onClose();
+  }
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onClose}>‹</button>
+        <div className="page-header-title">批量设置周期</div>
+      </div>
+      <div style={{padding:16}}>
+        <div style={{fontSize:12,color:'#5a8040',marginBottom:16,padding:'10px 12px',background:'rgba(180,215,160,0.2)',borderRadius:10}}>已选 {ids.size} 株植物 · 留空的项不会被修改</div>
+        <div style={{marginBottom:16}}>
+          <label className="field-label">💧 浇水间隔（天）</label>
+          <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#2266aa'}} placeholder="留空不改" value={wi} onChange={function(e){setWi(e.target.value);}}/>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label className="field-label">🌿 施肥间隔（天）</label>
+          <input type="number" min={1} className="input" style={{width:100,textAlign:'center',fontSize:15,fontWeight:700,color:'#3a7a28'}} placeholder="留空不改" value={fi} onChange={function(e){setFi(e.target.value);}}/>
+        </div>
+        <div style={{marginBottom:22}}>
+          <label className="field-label">📅 起始日期（可选）</label>
+          <input type="date" className="input" style={{width:160}} max={toDay()} value={startDate} onChange={function(e){setStartDate(e.target.value);}}/>
+          <div style={{fontSize:11,color:'#7a9868',marginTop:5}}>不填则只改间隔天数，下次到期日仍按各植物原有的最后一次记录推算；填写后会给上面填了间隔的那一项各追加一条这天的「跳过」记录（不计入真实浇水/施肥历史统计），让下次到期日统一从这天+新周期开始算</div>
+        </div>
+        <button className="btn btn-green" style={{width:'100%'}} onClick={apply}>应用到 {ids.size} 株植物</button>
+      </div>
+    </div>
+  );
+}
+
+
 function InventoryTab(){
   const{db,updateDb,toast}=useApp();
-  const[view,setView]=useState(null);
-  const[fabOpen,setFabOpen]=useState(false);
   const[showExportMenu,setShowExportMenu]=useState(false);
   useEffect(()=>{
     function onTabReset(e){if(e.detail==='inventory'){setView(null);setFabOpen(false);setShowExportMenu(false);}}
@@ -4054,6 +4119,8 @@ function InventoryTab(){
   if(view?.type==='add_recipe')return<RecipeForm initItem={null} onClose={()=>setView(null)}/>;
   if(view&&view.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
   if(view&&view.type==='plantPicker')return<ExportPlantPicker onSelect={function(plants){doExportPlants(plants);}} onClose={()=>setView(null)}/>;
+  if(view&&view.type==='batchIntervalPicker')return<ExportPlantPicker title="选择植物 · 批量设置周期" actionLabel="下一步 ›" onSelect={function(plants){setView({type:'batchIntervalForm',plants:plants});}} onClose={()=>setView(null)}/>;
+  if(view&&view.type==='batchIntervalForm')return<BatchIntervalForm plants={view.plants} onClose={()=>setView(null)}/>;
   async function withPhotos(plants){
     return Promise.all((plants||[]).map(async function(p){
       if(!p.photo||!PHOTO_IDB.isRef(p.photo))return p;
@@ -4177,6 +4244,9 @@ function InventoryTab(){
       <div style={{padding:'0 16px 20px',display:'flex',gap:8}}>
         <button className="btn btn-green" style={{flex:1}} onClick={()=>setShowExportMenu(v=>!v)}>💾 备份数据 ›</button>
         <button style={{flex:1,padding:'11px 16px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:600,background:'rgba(165,195,220,0.25)',border:'1px solid rgba(140,175,210,0.4)',color:'#384a68'}} onClick={importData}>📂 恢复数据</button>
+      </div>
+      <div style={{padding:'0 16px 20px'}}>
+        <button style={{width:'100%',padding:'11px 16px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:600,background:'rgba(215,185,250,0.2)',border:'1px solid rgba(185,155,220,0.4)',color:'#4a2a68'}} onClick={()=>setView({type:'batchIntervalPicker'})}>⏱️ 批量设置护理周期</button>
       </div>
       <input type="file" id="import-file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
       {/* 备份选项菜单 */}
@@ -4320,7 +4390,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     var sel = {};
     var expanded = {};
     var allSel = false;
-    var formVals = {name:'', amount:'', reason:'', note:''}; // 批量记录内容，随选中植物一起写入历史
+    var formVals = {name:'', amount:'', reason:'', note:'', date: toDay()}; // 批量记录内容，随选中植物一起写入历史
 
     var plants = _db.plants || [];
     var cats = [];
@@ -4461,6 +4531,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
         l.style.cssText = 'font-size:12px;color:#5a7848;font-weight:600;margin-bottom:4px;';
         return l;
       }
+
+      wrap.appendChild(makeLabel('日期'));
+      var dateInput = document.createElement('input');
+      dateInput.type = 'date';
+      dateInput.className = 'input';
+      dateInput.value = formVals.date || toDay();
+      dateInput.max = toDay();
+      dateInput.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:8px;';
+      dateInput.onchange = function() { formVals.date = dateInput.value || toDay(); };
+      wrap.appendChild(dateInput);
       function makeInput(ph, val, onInput) {
         var inp = document.createElement('input');
         inp.className = 'input';
@@ -4570,7 +4650,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     btn.onclick = function() {
       var ids = Object.keys(sel).filter(function(k){ return sel[k]; });
       if (!ids.length) { alert('请先选择植物'); return; }
-      var today = toDay();
+      var today = formVals.date || toDay();
       _updateDb(function(prev) {
         var newCourses = (prev.archive&&prev.archive.courses)||[];
         var plants = prev.plants.map(function(p) {
