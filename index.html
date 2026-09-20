@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='2026-09-18（续5）';
+const APP_VERSION='2026-09-18（续6）';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -3979,11 +3979,28 @@ function ExportPlantPicker({onSelect,onClose,title,actionLabel}){
   const{db}=useApp();
   const[search,setSearch]=useState('');
   const[selected,setSelected]=useState(()=>new Set());
+  const[expanded,setExpanded]=useState({});
   useSwipeBack(onClose);
-  // ② 按建卡时间正序（id 含时间戳，数值越小越早）
-  const plants=[...(db.plants||[])].sort(function(a,b){return(parseInt(b.id)||0)-(parseInt(a.id)||0);});
+  const plants=db.plants||[];
   const q=search.trim().toLowerCase();
-  const filtered=q?plants.filter(function(p){return(p.name||'').toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q);}):plants;
+  function matches(p){return !q||(p.name||'').toLowerCase().includes(q)||(p.variety||'').toLowerCase().includes(q);}
+  const filtered=plants.filter(matches);
+  // 分类推导：与植物页保持一致（db.cats ∪ 已使用分类，按裸名去重，优先带 emoji 前缀的写法）
+  const usedCats=[...new Set(plants.map(function(p){return p.category;}).filter(Boolean))];
+  const rawCats=[...new Set([...(db.cats||[]),...usedCats])];
+  const byBare={};
+  rawCats.forEach(function(c){
+    const bare=catBare(c);
+    const cur=byBare[bare];
+    const curHasIcon=catIcon(cur||'')!=='🏷️';
+    const newHasIcon=catIcon(c)!=='🏷️';
+    if(!cur||(!curHasIcon&&newHasIcon))byBare[bare]=c;
+  });
+  const groups=Object.values(byBare).map(function(c){
+    return{key:c,label:c,plants:plants.filter(function(p){return catBare(p.category)===catBare(c);})};
+  }).filter(function(g){return g.plants.length>0;});
+  const uncatPlants=plants.filter(function(p){return !p.category;});
+  if(uncatPlants.length>0)groups.push({key:'__none__',label:'📦 未分类',plants:uncatPlants});
   function toggle(id){
     setSelected(function(prev){
       const next=new Set(prev);
@@ -3997,6 +4014,14 @@ function ExportPlantPicker({onSelect,onClose,title,actionLabel}){
       const next=new Set(prev);
       if(allFilteredSelected){filtered.forEach(function(p){next.delete(p.id);});}
       else{filtered.forEach(function(p){next.add(p.id);});}
+      return next;
+    });
+  }
+  function toggleGroup(gp){
+    const allGSel=gp.length>0&&gp.every(function(p){return selected.has(p.id);});
+    setSelected(function(prev){
+      const next=new Set(prev);
+      gp.forEach(function(p){if(allGSel)next.delete(p.id);else next.add(p.id);});
       return next;
     });
   }
@@ -4015,19 +4040,40 @@ function ExportPlantPicker({onSelect,onClose,title,actionLabel}){
         </div>
         <input className="input" placeholder="搜索名称、品种…" value={search} onChange={function(e){setSearch(e.target.value);}}/>
       </div>
-      <div style={{paddingBottom:selected.size>0?90:16}}>
+      <div style={{padding:'12px 16px',paddingBottom:selected.size>0?90:16}}>
         {plants.length===0&&<div style={{padding:'40px 16px',textAlign:'center',color:'#9aaa88'}}>暂无植物数据</div>}
-        {filtered.length===0&&plants.length>0&&<div style={{padding:'30px 16px',textAlign:'center',color:'#9aaa88'}}>未找到匹配植物</div>}
-        {filtered.map(function(p){
-          const checked=selected.has(p.id);
+        {plants.length>0&&filtered.length===0&&<div style={{padding:'30px 16px',textAlign:'center',color:'#9aaa88'}}>未找到匹配植物</div>}
+        {groups.map(function(g){
+          const gp=q?g.plants.filter(matches):g.plants;
+          if(gp.length===0)return null;
+          const exp=q?true:!!expanded[g.key];
+          const allGSel=gp.length>0&&gp.every(function(p){return selected.has(p.id);});
           return(
-            <div key={p.id} onClick={function(){toggle(p.id);}}
-              style={{display:'flex',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid rgba(90,120,70,0.12)',cursor:'pointer',gap:11,background:checked?'rgba(140,185,110,0.18)':'rgba(255,255,255,0.35)'}}>
-              <div style={{width:22,height:22,borderRadius:6,flexShrink:0,border:'2px solid '+(checked?'rgba(80,140,50,0.9)':'rgba(150,185,130,0.5)'),background:checked?'rgba(90,150,60,0.9)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:14,fontWeight:700}}>{checked?'✓':''}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,fontSize:15,color:'#2e4a22'}}>{p.name}</div>
-                {p.variety?<div style={{fontSize:13,color:'#7a9060',marginTop:2}}>{p.variety}</div>:null}
+            <div key={g.key} style={{marginBottom:8}}>
+              <div style={{display:'flex',alignItems:'center',background:'rgba(255,255,255,0.6)',borderRadius:12,border:'1.5px solid rgba(150,185,130,0.3)',overflow:'hidden'}}>
+                <div style={{padding:'12px 10px 12px 14px',cursor:'pointer',flexShrink:0}} onClick={function(e){e.stopPropagation();toggleGroup(gp);}}>
+                  <div style={{width:22,height:22,borderRadius:6,border:'2px solid '+(allGSel?'rgba(80,140,50,0.9)':'rgba(150,185,130,0.5)'),background:allGSel?'rgba(90,150,60,0.9)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:14,fontWeight:700}}>{allGSel?'✓':''}</div>
+                </div>
+                <div style={{flex:1,padding:'12px 10px 12px 0',cursor:'pointer',display:'flex',alignItems:'center'}} onClick={function(){if(!q)setExpanded(function(prev){return{...prev,[g.key]:!prev[g.key]};});}}>
+                  <span style={{fontSize:14,fontWeight:600,color:'#2e4a22'}}>{g.label}</span>
+                  <span style={{fontSize:12,color:'#7a9060',marginLeft:8}}>{gp.length}株</span>
+                  {!q&&<span style={{marginLeft:'auto',fontSize:14,color:'#8aaa78',marginRight:4}}>{exp?'▲':'▼'}</span>}
+                </div>
               </div>
+              {exp&&(
+                <div style={{padding:'4px 0 4px 14px',display:'flex',flexDirection:'column',gap:5,marginTop:5}}>
+                  {gp.map(function(p){
+                    const checked=selected.has(p.id);
+                    return(
+                      <div key={p.id} onClick={function(){toggle(p.id);}} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',background:checked?'rgba(140,185,110,0.18)':'rgba(255,255,255,0.55)',borderRadius:10,cursor:'pointer',border:'1.5px solid '+(checked?'rgba(100,160,70,0.5)':'rgba(150,185,130,0.25)')}}>
+                        <div style={{width:20,height:20,borderRadius:6,flexShrink:0,border:'2px solid '+(checked?'rgba(80,140,50,0.9)':'rgba(150,185,130,0.5)'),background:checked?'rgba(90,150,60,0.9)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:13,fontWeight:700}}>{checked?'✓':''}</div>
+                        <span style={{fontSize:14,color:'#2e4a22'}}>{p.name}</span>
+                        {p.variety?<span style={{fontSize:12,color:'#7a9060',marginLeft:2}}>{p.variety}</span>:null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
