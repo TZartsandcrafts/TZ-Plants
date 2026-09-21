@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='2026-09-18（续7，Bug 修复）';
+const APP_VERSION='2026-09-18（续8）';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -3538,13 +3538,12 @@ function LibListPage({type,onClose}){
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           <button className="back-btn" onClick={onClose}>‹</button>
           <div className="page-header-title">{icon} {label}库</div>
-          <button className="btn btn-green" style={{padding:'5px 12px',fontSize:12,flexShrink:0}} onClick={()=>setAddNew(true)}>＋ 添加</button>
         </div>
         <input className="input" placeholder={'搜索'+label+'…'} value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       <div style={{padding:'4px 16px 40px'}}>
         {arr.length===0
-          ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:14,lineHeight:2.2}}>库存为空<br/>点击右上角「＋ 添加」开始录入</div>
+          ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:14,lineHeight:2.2}}>库存为空<br/>点击右下角「＋」开始录入</div>
           :filtered.length===0
             ?<div style={{textAlign:'center',padding:'30px 0',color:'#9aaa88',fontSize:13}}>未找到匹配项</div>
             :filtered.map(item=>{
@@ -3626,6 +3625,9 @@ function LibListPage({type,onClose}){
             </div>
           </div>
         </div>
+      ,document.body)}
+      {ReactDOM.createPortal(
+        <button className="fab" onClick={()=>setAddNew(true)}>＋</button>
       ,document.body)}
     </div>
   );
@@ -3904,13 +3906,12 @@ function RecipeListPage({onClose}){
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           <button className="back-btn" onClick={onClose}>‹</button>
           <div className="page-header-title">🧪 配方库</div>
-          <button className="btn btn-green" style={{padding:'5px 12px',fontSize:12,flexShrink:0}} onClick={()=>setAddNew(true)}>＋ 添加</button>
         </div>
         <input className="input" placeholder="搜索配方名称、材料…" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       <div style={{padding:'4px 16px 40px'}}>
         {recipes.length===0
-          ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:14,lineHeight:2.2}}>暂无配方<br/>点击右上角「＋ 添加」创建第一个配方</div>
+          ?<div style={{textAlign:'center',padding:'60px 0',color:'#9aaa88',fontSize:14,lineHeight:2.2}}>暂无配方<br/>点击右下角「＋」创建第一个配方</div>
           :filtered.length===0
             ?<div style={{textAlign:'center',padding:'30px 0',color:'#9aaa88',fontSize:13}}>未找到匹配项</div>
             :filtered.map(item=>{
@@ -3970,6 +3971,9 @@ function RecipeListPage({onClose}){
             </div>
           </div>
         </div>
+      ,document.body)}
+      {ReactDOM.createPortal(
+        <button className="fab" onClick={()=>setAddNew(true)}>＋</button>
       ,document.body)}
     </div>
   );
