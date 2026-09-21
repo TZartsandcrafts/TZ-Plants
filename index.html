@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='2026-09-18（续6）';
+const APP_VERSION='2026-09-18（续7，Bug 修复）';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -2196,7 +2196,9 @@ function PlantsTab({jumpPlantId,onJumpDone}){
         }
         {sortedFiltered.length>0&&<div style={{fontSize:11,color:'#9aaa88',textAlign:'center',marginTop:14,paddingBottom:8}}>共 {sortedFiltered.length}{sortedFiltered.length<filtered.length?`/${filtered.length}`:''} 株植物</div>}
       </div>
-      <button className="fab" onClick={()=>setView({type:'form',plant:catView==='__none__'?null:{category:catView}})}>＋</button>
+      {ReactDOM.createPortal(
+        <button className="fab" onClick={()=>setView({type:'form',plant:catView==='__none__'?null:{category:catView}})}>＋</button>
+      ,document.body)}
     </div>
   );
 }
