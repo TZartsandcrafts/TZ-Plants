@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='2026-09-25（AI护理计划·Worker部署）';
+const APP_VERSION='2026-09-25（AI护理计划·修复模型下线问题）';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -326,8 +326,13 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast}){
       headers:{'Content-Type':'application/json','x-plantlog-key':AI_SHARED_SECRET},
       body:JSON.stringify({mode,today,plants:targets.map(p=>buildAiPlantPayload(p,today)),weather}),
     });
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    const data=await res.json();
+    let data=null;
+    try{data=await res.json();}catch(e){/* 响应不是合法JSON，走下面兜底提示 */}
+    if(!res.ok){
+      const detail=data&&(data.error||data.detail);
+      throw new Error('HTTP '+res.status+(detail?`：${typeof detail==='string'?detail:JSON.stringify(detail).slice(0,200)}`:''));
+    }
+    if(!data)throw new Error('响应内容为空或不是合法JSON');
     const plans=Array.isArray(data.plans)?data.plans:[];
     if(!plans.length)throw new Error('返回结果为空');
     updateDb(prev=>({
