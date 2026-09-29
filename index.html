@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.42';
+const APP_VERSION='v1.44';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -185,8 +185,10 @@ const BLANK=()=>({
   // ── AI 护理计划相关（2026-09-23 起）──
   env:{orientation:'',potType:'potted',potSize:'medium'}, // 环境结构化字段：朝向/栽种方式/容器规格，仅作AI初始估算兜底
   aiEnabled:false,   // 是否为该植物开启AI护理规划
-  aiNote:'',         // 独立于 notes 的AI专属备注，长期生效，喂给AI用
+  aiNote:'',         // 独立于 notes 的AI专属备注，长期生效，喂给AI用；也用于Lynn手动补充本地气候/小气候经验
   aiPlan:null,       // {generatedAt,validUntil,tasks:[{id,date,type,note,priority,skipped}]}
+  aiNoteDigest:{summary:'',through:''}, // 自由文本日志(noteLog)的AI摘要：summary=累积摘要文本，through=已摘要覆盖到的日期；每次规划只发摘要+之后的新笔记，不重复发全部历史
+  aiCourseDrafts:[], // AI建议的"待确认"给药疗程草稿：[{id,drugName,reason,amount,interval,total,startDate,note}]，接受后转为正式activeCourses条目，忽略则直接删除
 });
 
 const STATUS_MAP={
@@ -239,6 +241,10 @@ function aiTaskCompleted(p,task){
   if(!log||!log.length)return false;
   return log.some(l=>Math.abs(daysDiff(task.date,l.date))<=2);
 }
+// 该植物是否存在"未过期"的AI计划：存在则月历浇水/施肥点完全来自aiPlan.tasks，不再叠加wi/fi投影
+function hasActiveAiPlan(p,today){
+  return !!(p.aiEnabled&&p.aiPlan&&p.aiPlan.validUntil&&p.aiPlan.validUntil>=today&&Array.isArray(p.aiPlan.tasks));
+}
 // 汇总某植物最近的真实浇水/施肥记录（合并排序，供AI判断实际间隔）
 function aiRecentLogs(p,limit){
   const merged=[
@@ -267,28 +273,35 @@ function aiPastPlanDiff(p,today){
 }
 // 组装单株植物喂给 Worker/Gemini 的数据
 function buildAiPlantPayload(p,today){
+  const digest=p.aiNoteDigest||{summary:'',through:''};
+  // 笔记摘要机制：有摘要就只发摘要覆盖日期之后的新笔记；没有摘要（首次）则发全部历史笔记
+  const newNotes=(p.noteLog||[]).filter(n=>!digest.through||n.date>digest.through)
+    .map(n=>({date:n.date,text:n.note||''}));
   return{
     id:p.id,name:p.name,variety:p.variety||'',category:p.category||'',
     env:p.env||{orientation:'',potType:'potted',potSize:'medium'},
+    location:{finalPlantLocation:p.finalPlantLocation||'',indoorStart:p.indoorStart||''}, // 小气候线索：定植位置描述、室内外
     aiNote:p.aiNote||'',
     wi:p.wi,fi:p.fi,
     recentLogs:aiRecentLogs(p,20),
     pastPlanDiff:aiPastPlanDiff(p,today),
+    noteDigestSummary:digest.summary||'',
+    newNotes, // 摘要覆盖日期之后的新笔记（首次规划时=全部历史笔记）
   };
 }
-// 拉取未来14天天气预报（仅在触发AI规划时调用，不影响日常天气卡片）
-async function fetchAi14dForecast(){
-  const res=await fetch('https://api.open-meteo.com/v1/forecast?latitude=49.1042&longitude=-122.8231&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America/Vancouver&forecast_days=14');
+// 拉取天气上下文：近60天实际历史 + 未来14天预报，同一次请求返回连续时间线（仅在触发AI规划时调用，不影响日常天气卡片）
+async function fetchAiWeatherContext(){
+  const res=await fetch('https://api.open-meteo.com/v1/forecast?latitude=49.1042&longitude=-122.8231&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America/Vancouver&past_days=60&forecast_days=14');
   if(!res.ok)throw new Error('weather http '+res.status);
   const j=await res.json();
   const d=j.daily||{};
-  const forecast14d=(d.time||[]).map((date,i)=>({
+  const series=(d.time||[]).map((date,i)=>({
     date,
     precipMm:d.precipitation_sum?.[i]??null,
     tMax:d.temperature_2m_max?.[i]??null,
     tMin:d.temperature_2m_min?.[i]??null,
   }));
-  return{forecast14d};
+  return{series}; // 前60天为实际历史，后14天为预报，靠date和today自行区分
 }
 // 是否存在"逾期较久的critical任务"（用于App打开自动检查）
 function aiHasOverdueCritical(plants,today,thresholdDays){
@@ -318,13 +331,14 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast}){
   const targets=db.plants.filter(p=>p.aiEnabled&&plantIds.includes(p.id));
   if(!targets.length){toast.show('⚠️ 没有可规划的植物，请先在植物表单里开启AI规划');return false;}
   toast.show('🤖 正在生成AI护理计划…');
-  let weather={forecast14d:[]};
-  try{weather=await fetchAi14dForecast();}catch(e){/* 天气获取失败不阻断规划，Worker端仍可依据记录/备注判断 */}
+  let weather={series:[]};
+  try{weather=await fetchAiWeatherContext();}catch(e){/* 天气获取失败不阻断规划，Worker端仍可依据记录/备注判断 */}
+  const medLib=(db.lib.med||[]).map(m=>({name:m.name,target:m.target||'',dosage:m.dosage||'',interval:m.interval||'',safetyDays:m.safetyDays||''}));
   try{
     const res=await fetch(AI_WORKER_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','x-plantlog-key':AI_SHARED_SECRET},
-      body:JSON.stringify({mode,today,plants:targets.map(p=>buildAiPlantPayload(p,today)),weather}),
+      body:JSON.stringify({mode,today,plants:targets.map(p=>buildAiPlantPayload(p,today)),weather,medLib}),
     });
     let data=null;
     try{data=await res.json();}catch(e){/* 响应不是合法JSON，走下面兜底提示 */}
@@ -340,14 +354,23 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast}){
       plants:prev.plants.map(p=>{
         const plan=plans.find(x=>x.plantId===p.id);
         if(!plan)return p;
-        return{...p,aiPlan:{
-          generatedAt:today,
-          validUntil:plan.validUntil||addDays(today,90),
-          tasks:(plan.tasks||[]).map(t=>({
-            id:'ai_'+uid(),date:t.date,type:t.type==='fert'?'fert':'water',
-            note:t.note||'',priority:t.priority==='critical'?'critical':'normal',skipped:false,
+        const prevDigest=p.aiNoteDigest||{summary:'',through:''};
+        return{...p,
+          aiPlan:{
+            generatedAt:today,
+            validUntil:plan.validUntil||addDays(today,90),
+            tasks:(plan.tasks||[]).map(t=>({
+              id:'ai_'+uid(),date:t.date,type:t.type==='fert'?'fert':'water',
+              note:t.note||'',priority:t.priority==='critical'?'critical':'normal',skipped:false,
+            })),
+          },
+          aiNoteDigest:{summary:(plan.noteDigest||prevDigest.summary||'').trim(),through:today},
+          aiCourseDrafts:(plan.courseDrafts||[]).map(c=>({
+            id:'aicd_'+uid(),drugName:c.drugName||'',reason:c.reason||'',amount:c.amount||'',
+            interval:Math.max(1,parseInt(c.interval)||7),total:Math.max(1,parseInt(c.total)||1),
+            startDate:c.startDate||today,note:c.note||'',
           })),
-        }};
+        };
       }),
       ...(mode==='global'?{aiLastGlobalPlan:today,aiLastPromptDate:today}:{}),
     }));
@@ -1263,6 +1286,30 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
   addT('🔄','移栽',plant.transplantDate,plant.transplantNotes?`备注：${plant.transplantNotes}`:'','#5a9888');
   addT('📍','定植',plant.finalPlantDate,[plant.finalPlantLocation?`位置：${plant.finalPlantLocation}`:'',plant.finalPlantNotes?`备注：${plant.finalPlantNotes}`:''].filter(Boolean).join('\n'),'#5a7898');
 
+  // AI建议疗程草稿：接受→转为正式疗程并从草稿里移除；忽略→直接删除草稿
+  function acceptCourseDraft(draftId){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==plantId)return p;
+      const draft=(p.aiCourseDrafts||[]).find(d=>d.id===draftId);
+      if(!draft)return p;
+      const newCourse={
+        id:'c'+Date.now()+Math.random().toString(36).slice(2,6),
+        drugName:draft.drugName,reason:draft.reason,amount:draft.amount,
+        noInterval:draft.total<=1,interval:draft.total<=1?0:draft.interval,total:draft.total,
+        startDate:draft.startDate,
+      };
+      return{...p,activeCourses:[...(p.activeCourses||[]),newCourse],
+        aiCourseDrafts:(p.aiCourseDrafts||[]).filter(d=>d.id!==draftId)};
+    })}));
+    toast.show('💊 已接受，加入当前疗程');
+  }
+  function dismissCourseDraft(draftId){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==plantId)return p;
+      return{...p,aiCourseDrafts:(p.aiCourseDrafts||[]).filter(d=>d.id!==draftId)};
+    })}));
+  }
+
   function handlePhoto(e){
     const file=e.target.files?.[0];if(!file)return;
     if(file.size>5*1024*1024){toast.show('⚠️ 图片超过5MB');return}
@@ -1473,6 +1520,26 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {(plant.aiCourseDrafts||[]).length>0&&(
+              <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#7a3018'}}>💊 AI建议的预防性用药（待确认）</div>
+                {plant.aiCourseDrafts.map(d=>(
+                  <div key={d.id} style={{background:'rgba(255,245,240,.8)',border:'1px solid rgba(200,120,90,.3)',borderRadius:8,padding:'8px 10px'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#7a3018'}}>{d.drugName||'（未指定药品，需自行判断）'}</div>
+                    {d.reason&&<div style={{fontSize:11,color:'#8a5838',marginTop:2}}>针对：{d.reason}</div>}
+                    {d.note&&<div style={{fontSize:11,color:'#9a7050',marginTop:2}}>{d.note}</div>}
+                    <div style={{fontSize:11,color:'#9a7050',marginTop:2}}>
+                      {d.amount&&`用量：${d.amount}　`}
+                      建议开始：{fmtDate(d.startDate)}{d.total>1?`　共${d.total}次，间隔${d.interval}天`:'　单次'}
+                    </div>
+                    <div style={{display:'flex',gap:6,marginTop:6}}>
+                      <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:'rgba(90,160,90,.85)',border:'1px solid rgba(60,130,60,.6)',color:'#fff'}} onClick={()=>acceptCourseDraft(d.id)}>✓ 接受，开启疗程</button>
+                      <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:11,cursor:'pointer',fontFamily:'inherit',background:'rgba(180,190,200,.3)',border:'1px solid rgba(150,160,170,.4)',color:'#5a6a78'}} onClick={()=>dismissCourseDraft(d.id)}>忽略</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             <button
@@ -2553,8 +2620,15 @@ function buildDotMap(plants){
         if(maxCount!=null&&added>=maxCount)break;
       }
     }
-    if(!getIsPaused(p,'water'))planDots(getEffLogDate(p,'water'),parseIntervalMin(p.wi),'water');
-    if(!getIsPaused(p,'fert'))planDots(getEffLogDate(p,'fert'),parseIntervalMin(p.fi),'fert');
+    if(hasActiveAiPlan(p,today)){
+      // 存在未过期AI计划：浇水/施肥点完全来自aiPlan.tasks，不再叠加wi/fi投影
+      p.aiPlan.tasks.forEach(t=>{
+        if((t.type==='water'||t.type==='fert')&&!t.skipped&&!aiTaskCompleted(p,t))addPlan(t.date,t.type);
+      });
+    }else{
+      if(!getIsPaused(p,'water'))planDots(getEffLogDate(p,'water'),parseIntervalMin(p.wi),'water');
+      if(!getIsPaused(p,'fert'))planDots(getEffLogDate(p,'fert'),parseIntervalMin(p.fi),'fert');
+    }
     // 给药计划点：遍历所有活跃未完成疗程，每个疗程用自己的间隔和最后给药日期独立投射
     allMedCourseInfos(p).forEach(info=>{
       if(!info.done){
@@ -2797,6 +2871,11 @@ function CalendarTab(){
               if(diff>0&&diff%interval===0&&Math.round(diff/interval)<=info.remain)
                 plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
             });
+            return;
+          }
+          if(hasActiveAiPlan(p,today)){
+            const match=p.aiPlan.tasks.find(t=>t.date===ds&&t.type===e.type&&!t.skipped&&!aiTaskCompleted(p,t));
+            if(match)plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
             return;
           }
           if(getIsPaused(p,e.type))return;
