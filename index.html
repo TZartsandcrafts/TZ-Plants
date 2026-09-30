@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.46';
+const APP_VERSION='v1.47';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -239,17 +239,24 @@ const AI_CRITICAL_OVERDUE_DAYS=3;        // critical任务逾期超过多少天�
 function aiTaskCompleted(p,task){
   const log=task.type==='fert'?p.fertLog:p.waterLog;
   if(!log||!log.length)return false;
-  return log.some(l=>Math.abs(daysDiff(task.date,l.date))<=2);
+  // v1.47：原来是"前后±2天内有记录"，逾期很久的任务补做/跳过后永远对不上日期，会一直挂在逾期列表里；
+  // 改为"计划日期前2天之后出现过记录（含跳过）就算完成"——未来任务仍不受影响（今天的记录不会提前消掉10天后的任务）
+  return log.some(l=>l.date>=addDays(task.date,-2));
 }
 // 该植物是否存在"未过期"的AI计划：存在则月历浇水/施肥点完全来自aiPlan.tasks，不再叠加wi/fi投影
 function hasActiveAiPlan(p,today){
-  return !!(p.aiEnabled&&p.aiPlan&&p.aiPlan.validUntil&&p.aiPlan.validUntil>=today&&Array.isArray(p.aiPlan.tasks));
+  // v1.47：reviewed===false 表示新计划还在"待审核"，此时不接管日历/任务页（沿用旧逻辑），审核确认后才生效；旧版计划没有reviewed字段，视为已审核
+  return !!(p.aiEnabled&&p.aiPlan&&p.aiPlan.validUntil&&p.aiPlan.validUntil>=today&&Array.isArray(p.aiPlan.tasks)&&p.aiPlan.reviewed!==false);
 }
+// v1.47：任务审核状态。旧版任务没有status字段，视为已同意；pending=待审核，rejected=用户未采纳
+function aiTaskApproved(t){return !t.status||t.status==='approved';}
+function aiApprovedTasks(p){return(p.aiPlan&&Array.isArray(p.aiPlan.tasks))?p.aiPlan.tasks.filter(aiTaskApproved):[];}
+function aiPlanNeedsReview(p){return !!(p.aiEnabled&&p.aiPlan&&p.aiPlan.reviewed===false);}
 // 汇总某植物最近的真实浇水/施肥记录（合并排序，供AI判断实际间隔）
 function aiRecentLogs(p,limit){
   const merged=[
-    ...(p.waterLog||[]).map(l=>({date:l.date,type:'water'})),
-    ...(p.fertLog||[]).map(l=>({date:l.date,type:'fert'})),
+    ...(p.waterLog||[]).map(l=>({date:l.date,type:'water',...(l.skip?{skipped:true}:{}),...(l.note&&l.note!=='跳过'?{note:String(l.note).slice(0,80)}:{})})),
+    ...(p.fertLog||[]).map(l=>({date:l.date,type:'fert',...(l.skip?{skipped:true}:{}),...(l.note&&l.note!=='跳过'?{note:String(l.note).slice(0,80)}:{})})),
   ];
   merged.sort((a,b)=>b.date.localeCompare(a.date));
   return merged.slice(0,limit||20);
@@ -257,7 +264,7 @@ function aiRecentLogs(p,limit){
 // 对比"上一版AI计划"和实际记录的执行情况，喂给AI用于修正下一版计划
 function aiPastPlanDiff(p,today){
   if(!p.aiPlan||!Array.isArray(p.aiPlan.tasks))return[];
-  return p.aiPlan.tasks.filter(t=>t.date<=today).map(t=>{
+  return aiApprovedTasks(p).filter(t=>t.date<=today).map(t=>{
     const log=t.type==='fert'?p.fertLog:p.waterLog;
     const match=(log||[]).find(l=>Math.abs(daysDiff(t.date,l.date))<=2);
     let actual;
@@ -270,6 +277,41 @@ function aiPastPlanDiff(p,today){
     }
     return{date:t.date,type:t.type,expected:t.type,actual};
   });
+}
+// v1.47：当前系统里"挂着"的待办快照——逾期提醒/即将到来的任务/手动暂停，让AI判断哪些还有效、哪些该取消
+function aiPendingSnapshot(p,today){
+  const out={overdue:[],upcoming:[],pause:{}};
+  ['water','fert'].forEach(type=>{
+    const pause=type==='water'?p.waterPause:p.fertPause;
+    if(pause&&getIsPaused(p,type))out.pause[type]={start:pause.start||'',end:pause.end||'无限期'};
+  });
+  if(hasActiveAiPlan(p,today)){
+    aiApprovedTasks(p).forEach(t=>{
+      if(t.skipped||aiTaskCompleted(p,t))return;
+      const d=daysDiff(today,t.date);
+      const it={date:t.date,type:t.type,source:'ai_plan',reason:t.reason||t.note||''};
+      if(d<0)out.overdue.push({...it,overdueDays:-d});
+      else if(d<=21)out.upcoming.push(it);
+    });
+  }else{
+    ['water','fert'].forEach(type=>{
+      if(getIsPaused(p,type))return;
+      const iv=parseIntervalMin(type==='water'?p.wi:p.fi);
+      if(iv>=900)return;
+      const ld=getEffLogDate(p,type);
+      if(ld==null)return;
+      const due=iv-daysSince(ld);
+      if(due<0)out.overdue.push({type,source:'interval',lastLog:ld,intervalDays:iv,overdueDays:-due});
+    });
+  }
+  return out;
+}
+// v1.47：繁殖/生长阶段日期（播种→发芽→操作→生根→炼苗→假植→移栽→定植），供AI预判换盆/定植等窗口
+function aiLifecycle(p){
+  const o={source:p.source||''};
+  ['buyDate','sowDate','germDate','opDate','rootDate','hardeningDate','prePlantDate','transplantDate','finalPlantDate'].forEach(k=>{if(p[k])o[k]=p[k];});
+  ['opNotes','prePlantNotes','transplantNotes','finalPlantNotes','buySpec'].forEach(k=>{if(p[k])o[k]=String(p[k]).slice(0,120);});
+  return o;
 }
 // 组装单株植物喂给 Worker/Gemini 的数据
 function buildAiPlantPayload(p,today){
@@ -285,6 +327,9 @@ function buildAiPlantPayload(p,today){
     wi:p.wi,fi:p.fi,
     recentLogs:aiRecentLogs(p,20),
     pastPlanDiff:aiPastPlanDiff(p,today),
+    pending:aiPendingSnapshot(p,today),
+    lifecycle:aiLifecycle(p),
+    advisoryHistory:(p.aiAdvisories||[]).filter(a=>a.status!=='pending').map(a=>({title:a.title,status:a.status,windowStart:a.windowStart||'',windowEnd:a.windowEnd||'',resolvedAt:a.resolvedAt||''})),
     noteDigestSummary:digest.summary||'',
     newNotes, // 摘要覆盖日期之后的新笔记（首次规划时=全部历史笔记）
   };
@@ -305,7 +350,7 @@ async function fetchAiWeatherContext(){
 }
 // 是否存在"逾期较久的critical任务"（用于App打开自动检查）
 function aiHasOverdueCritical(plants,today,thresholdDays){
-  return plants.some(p=>p.aiPlan&&Array.isArray(p.aiPlan.tasks)&&p.aiPlan.tasks.some(t=>
+  return plants.some(p=>aiApprovedTasks(p).some(t=>
     t.priority==='critical'&&t.date<today&&daysDiff(t.date,today)>thresholdDays&&!aiTaskCompleted(p,t)
   ));
 }
@@ -326,7 +371,7 @@ function aiPromptReasonText(db,today){
   return`距上次AI规划已超过${AI_GLOBAL_REPLAN_INTERVAL_DAYS}天，是否重新规划？`;
 }
 // 实际调用 Worker 生成/刷新AI护理计划。mode:'global'（所有开启AI规划的植物）或'single'（仅指定植物）
-async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes}){
+async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
   const today=toDay();
   const targets=db.plants.filter(p=>p.aiEnabled&&plantIds.includes(p.id));
   if(!targets.length){toast.show('⚠️ 没有可规划的植物，请先在植物表单里开启AI规划');return false;}
@@ -340,6 +385,9 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes}){
     const payload=buildAiPlantPayload(p,today);
     const extra=extraNotes&&extraNotes[p.id]&&extraNotes[p.id].trim();
     if(extra)payload.newNotes=[...payload.newNotes,{date:today,text:'【本次调整意见】'+extra}];
+    // v1.47：逐条审核后的第二轮——把已同意/不同意（含意见）的条目发给AI
+    const fbk=feedback&&feedback[p.id];
+    if(fbk)payload.reviewFeedback={general:fbk.general||'',keep:fbk.keep||[],revise:fbk.items||[]};
     return payload;
   });
   try{
@@ -364,17 +412,35 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes}){
         if(!plan)return p;
         const prevDigest=p.aiNoteDigest||{summary:'',through:''};
         const extra=extraNotes&&extraNotes[p.id]&&extraNotes[p.id].trim();
+        const fb=feedback&&feedback[p.id];
+        // 建议窗口：已采纳/已完成等保留，AI重新给出的待审核建议整体替换（标题重复的跳过）
+        const keptAdv=(p.aiAdvisories||[]).filter(a=>a.status!=='pending');
+        const newAdv=(plan.advisories||[]).filter(a=>a&&a.title&&!keptAdv.some(k=>k.title===a.title)).map(a=>({
+          id:'aiadv_'+uid(),status:'pending',title:a.title,kind:a.kind||'other',
+          windowStart:a.windowStart||'',windowEnd:a.windowEnd||'',
+          conditions:a.conditions||'',soil:a.soil||'',afterCare:a.afterCare||'',reason:a.reason||'',
+        }));
         return{...p,
           ...(extra?{noteLog:[...(p.noteLog||[]),{date:today,note:'【本次调整意见】'+extra}]}:{}),
           aiPlan:{
-            generatedAt:today,
+            generatedAt:today,planId:'pl_'+uid(),
+            reviewed:false, // v1.47：新计划先进入待审核，用户逐条勾选确认后才接管日历/任务页
+            round:fb?(((p.aiPlan&&p.aiPlan.round)||1)+1):1,
             validUntil:plan.validUntil||addDays(today,90),
-            tasks:(plan.tasks||[]).map(t=>({
-              id:'ai_'+uid(),date:t.date,type:t.type==='fert'?'fert':'water',
-              note:t.note||'',priority:t.priority==='critical'?'critical':'normal',skipped:false,
-              fertName:t.type==='fert'?(t.fertName||''):'', // AI从肥料库里建议的具体产品，仅fert任务可能有
-            })),
+            tasks:(plan.tasks||[]).map(t=>{
+              const type=t.type==='fert'?'fert':'water';
+              const kept=!!(fb&&(fb.keep||[]).some(k=>k.date===t.date&&k.type===type)); // 第二轮里用户已同意且AI原样保留的任务，继续视为已同意
+              return{
+                id:'ai_'+uid(),date:t.date,type,
+                note:t.note||'',reason:t.reason||'',priority:t.priority==='critical'?'critical':'normal',skipped:false,
+                status:kept?'approved':'pending',
+                fertName:type==='fert'?(t.fertName||''):'', // AI从肥料库里建议的具体产品，仅fert任务可能有
+              };
+            }),
+            notScheduled:(plan.notScheduled||[]).map(n=>({type:n.type||'other',from:n.from||'',until:n.until||'',reason:n.reason||''})),
+            dropped:(plan.dropped||[]).map(n=>({type:n.type||'other',originalDate:n.originalDate||'',reason:n.reason||''})),
           },
+          aiAdvisories:[...keptAdv,...newAdv],
           aiNoteDigest:{summary:(plan.noteDigest||prevDigest.summary||'').trim(),through:today},
           aiCourseDrafts:(plan.courseDrafts||[]).map(c=>({
             id:'aicd_'+uid(),drugName:c.drugName||'',reason:c.reason||'',amount:c.amount||'',
@@ -385,7 +451,7 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes}){
       }),
       ...(mode==='global'?{aiLastGlobalPlan:today,aiLastPromptDate:today}:{}),
     }));
-    toast.show(`✅ 已为${plans.length}株植物生成新的护理计划`);
+    toast.show(`✅ 已为${plans.length}株植物生成新的护理计划，请逐条审核后生效`);
     return true;
   }catch(e){
     console.error('AI护理规划请求失败：',e);
@@ -1078,7 +1144,7 @@ function PlantCareCalendarBody({plantId}){
     if(!dotMap[ds].find(x=>x.type===type))dotMap[ds].push({type,skip:false,plan:true});
   }
   if(hasActiveAiPlan(plant,today)){
-    (plant.aiPlan.tasks||[]).forEach(t=>{
+    aiApprovedTasks(plant).forEach(t=>{
       if((t.type==='water'||t.type==='fert')&&!t.skipped&&!aiTaskCompleted(plant,t))addPlanDot(t.date,t.type);
     });
   }
@@ -1154,7 +1220,7 @@ function PlantCareCalendarBody({plantId}){
   const selNotes=(plant.noteLog||[]).map((n,i)=>({...n,idx:i})).filter(n=>n.date===selDate);
   const selMilestone=selDate?milestones[selDate]:null;
   const selPlanTasks=(selDate&&hasActiveAiPlan(plant,today))
-    ?plant.aiPlan.tasks.filter(t=>t.date===selDate&&(t.type==='water'||t.type==='fert')&&!t.skipped&&!aiTaskCompleted(plant,t))
+    ?aiApprovedTasks(plant).filter(t=>t.date===selDate&&(t.type==='water'||t.type==='fert')&&!t.skipped&&!aiTaskCompleted(plant,t))
     :[];
 
   return(
@@ -1277,15 +1343,170 @@ function PlantCareCalendarBody({plantId}){
 // ═══════════════════════════════════════════════
 // 8. 植物详情页（全屏）
 // ═══════════════════════════════════════════════
-function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
+// ── v1.47：AI计划逐条审核页（全页）：每条任务带原因和勾选框，勾选=同意加入日历；不勾可写意见，提交后AI做第二轮修订 ──
+function AiPlanReviewPage({plantId,onBack}){
+  const{db,updateDb,toast}=useApp();
+  const plant=db.plants.find(p=>p.id===plantId);
+  const plan=plant&&plant.aiPlan;
+  const today=toDay();
+  const visible=((plan&&plan.tasks)||[]).filter(t=>t.date>=today).sort((a,b)=>a.date.localeCompare(b.date)||a.type.localeCompare(b.type));
+  const pendingAdv=((plant&&plant.aiAdvisories)||[]).filter(a=>a.status==='pending');
+  const[sel,setSel]=useState(()=>{const o={};visible.forEach(t=>{o[t.id]=t.status!=='rejected';});return o;});
+  const[advSel,setAdvSel]=useState(()=>{const o={};pendingAdv.forEach(a=>{o[a.id]=true;});return o;});
+  const[cmt,setCmt]=useState({});
+  const[general,setGeneral]=useState('');
+  const[busy,setBusy]=useState(false);
+  if(!plant||!plan)return null;
+  const uncheckedCnt=visible.filter(t=>!sel[t.id]).length+pendingAdv.filter(a=>!advSel[a.id]).length;
+  const TL={water:'浇水',fert:'施肥'};
+  function Box({on,onClick}){
+    return<div onClick={onClick} style={{width:24,height:24,borderRadius:7,flexShrink:0,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',
+      background:on?'#5a9040':'rgba(200,220,185,.5)',border:'2px solid '+(on?'#4a8030':'rgba(150,185,130,.6)'),color:'#fff',fontSize:15,lineHeight:1}}>{on?'✓':''}</div>;
+  }
+  function setAll(v){const o={};visible.forEach(t=>{o[t.id]=v;});setSel(o);const a={};pendingAdv.forEach(x=>{a[x.id]=v;});setAdvSel(a);}
+  function confirmAll(){
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==plantId||!p.aiPlan)return p;
+      return{...p,
+        aiPlan:{...p.aiPlan,reviewed:true,reviewedAt:toDay(),
+          tasks:p.aiPlan.tasks.map(t=>(t.id in sel)?{...t,status:sel[t.id]?'approved':'rejected'}:t)},
+        aiAdvisories:(p.aiAdvisories||[]).map(a=>a.status==='pending'?{...a,status:advSel[a.id]?'adopted':'ignored'}:a),
+        // AI计划接管后，之前手动设置的暂停已由AI在计划里统一处理（不安排的时段都写了原因），清除以免和AI计划冲突
+        waterPause:null,fertPause:null,
+      };
+    })}));
+    toast.show('✅ 已确认，勾选的任务已加入日历');
+    onBack();
+  }
+  async function revise(){
+    if(busy)return;
+    setBusy(true);
+    const keep=[],items=[];
+    visible.forEach(t=>{
+      if(sel[t.id])keep.push({date:t.date,type:t.type,reason:t.reason||t.note||''});
+      else items.push({date:t.date,type:t.type,originalReason:t.reason||t.note||'',comment:(cmt[t.id]||'').trim()});
+    });
+    pendingAdv.forEach(a=>{
+      if(!advSel[a.id])items.push({kind:'advisory',title:a.title,comment:(cmt['a'+a.id]||'').trim()});
+    });
+    // 已勾选的建议窗口先直接采纳，其余交给AI按意见修订
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>p.id!==plantId?p:{...p,
+      aiAdvisories:(p.aiAdvisories||[]).map(a=>(a.status==='pending'&&advSel[a.id])?{...a,status:'adopted'}:a)})}));
+    await runAiPlan({mode:'single',plantIds:[plantId],db,updateDb,toast,feedback:{[plantId]:{general:general.trim(),keep,items}}});
+    setBusy(false);
+  }
+  const cardStyle={background:'rgba(255,255,255,.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,.3)'};
+  let lastDate='';
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onBack}>‹</button>
+        <div className="page-header-title">📝 审核AI计划 · {plant.name}</div>
+        <div style={{width:60}}/>
+      </div>
+      <div style={{maxWidth:460,margin:'0 auto',padding:'12px 16px 40px'}}>
+        <div style={{fontSize:12,color:'#5a7a48',lineHeight:1.7,marginBottom:10}}>
+          每条任务后面有勾选框：<b>勾选=同意，会加入日历，我会照做</b>；不勾选=不（完全）同意，可以写想法/建议。全部同意直接点「确认」；有不同意的，点「提交意见，让AI修订」，AI会保留你已同意的、按你的意见改其余的。
+        </div>
+        <div style={{display:'flex',gap:8,marginBottom:10}}>
+          <button style={{flex:1,padding:'6px 0',borderRadius:10,fontFamily:'inherit',fontSize:12,cursor:'pointer',background:'rgba(180,215,160,.3)',border:'1px solid rgba(140,185,110,.5)',color:'#4a6a38'}} onClick={()=>setAll(true)}>全部勾选</button>
+          <button style={{flex:1,padding:'6px 0',borderRadius:10,fontFamily:'inherit',fontSize:12,cursor:'pointer',background:'rgba(180,190,200,.25)',border:'1px solid rgba(150,160,170,.4)',color:'#5a6a78'}} onClick={()=>setAll(false)}>全部取消</button>
+        </div>
+        {(plan.notScheduled||[]).length>0&&<div style={{...cardStyle,marginBottom:10,background:'rgba(240,238,248,.7)'}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#6a5a78',marginBottom:4}}>🚫 本周期不安排的护理及原因</div>
+          {plan.notScheduled.map((n,i)=><div key={i} style={{fontSize:12,color:'#6a6a88',lineHeight:1.7}}>
+            {({water:'💧浇水',fert:'🌿施肥',med:'💊给药'})[n.type]||'其他'}
+            {(n.from||n.until)?`（${n.from?fmtDate(n.from):'即日'} ~ ${n.until?fmtDate(n.until):'计划结束'}）`:''}：{n.reason}
+          </div>)}
+        </div>}
+        {(plan.dropped||[]).length>0&&<div style={{...cardStyle,marginBottom:10,background:'rgba(248,240,236,.7)'}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#8a5a38',marginBottom:4}}>🧹 AI清理掉的旧提醒及原因（确认后不再出现）</div>
+          {plan.dropped.map((n,i)=><div key={i} style={{fontSize:12,color:'#8a6a58',lineHeight:1.7}}>
+            {TL[n.type]||'其他'}{n.originalDate?`（原定${fmtDate(n.originalDate)}）`:''}：{n.reason}
+          </div>)}
+        </div>}
+        {visible.length===0&&<div style={{textAlign:'center',color:'#9aaa88',fontSize:13,padding:'20px 0'}}>这版计划里没有今天及以后的浇水/施肥任务</div>}
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {visible.map(t=>{
+            const showDate=t.date!==lastDate;lastDate=t.date;
+            return<div key={t.id}>
+              {showDate&&<div style={{fontSize:11,fontWeight:700,color:'#5a8040',margin:'6px 0 4px'}}>{fmtDate(t.date)}</div>}
+              <div style={cardStyle}>
+                <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                  <Box on={!!sel[t.id]} onClick={()=>setSel(v=>({...v,[t.id]:!v[t.id]}))}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:'#2e4a22'}}>
+                      {t.type==='fert'?'🌿 ':'💧 '}{TL[t.type]}
+                      {t.fertName&&<span style={{fontSize:11,fontWeight:400,color:'#5a7a40',background:'rgba(120,180,100,.15)',borderRadius:6,padding:'1px 6px',marginLeft:6}}>{t.fertName}</span>}
+                      {t.priority==='critical'&&<span style={{fontSize:11,color:'#b85c3c',marginLeft:6}}>⚠️关键</span>}
+                      {t.status==='approved'&&<span style={{fontSize:10,color:'#5a9850',marginLeft:6}}>已同意</span>}
+                    </div>
+                    {(t.reason||t.note)&&<div style={{fontSize:12,color:'#6a8058',lineHeight:1.65,marginTop:3}}>原因：{t.reason||t.note}</div>}
+                    {t.reason&&t.note&&<div style={{fontSize:11,color:'#8a9a78',lineHeight:1.6,marginTop:2}}>{t.note}</div>}
+                  </div>
+                </div>
+                {!sel[t.id]&&<textarea className="input" style={{marginTop:8,minHeight:44,fontSize:12}} placeholder="不同意的想法/建议（可不填，不填则视为单纯不要这条）"
+                  value={cmt[t.id]||''} onChange={e=>setCmt(v=>({...v,[t.id]:e.target.value}))}/>}
+              </div>
+            </div>;
+          })}
+        </div>
+        {pendingAdv.length>0&&<div style={{marginTop:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#2a5a48',marginBottom:6}}>🪴 AI预判的建议窗口（勾选=采纳，做不做、何时做仍由你决定）</div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {pendingAdv.map(a=><div key={a.id} style={{...cardStyle,background:'rgba(235,248,240,.75)'}}>
+              <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                <Box on={!!advSel[a.id]} onClick={()=>setAdvSel(v=>({...v,[a.id]:!v[a.id]}))}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'#2a5a48'}}>{a.title}</div>
+                  {(a.windowStart||a.windowEnd)&&<div style={{fontSize:12,color:'#4a7a60',marginTop:2}}>建议窗口：{a.windowStart?fmtDate(a.windowStart):'现在起'} ~ {a.windowEnd?fmtDate(a.windowEnd):'视情况'}</div>}
+                  {a.conditions&&<div style={{fontSize:12,color:'#5a7a68',lineHeight:1.65,marginTop:2}}>满足条件：{a.conditions}</div>}
+                  {a.soil&&<div style={{fontSize:12,color:'#5a7a68',lineHeight:1.65,marginTop:2}}>用土/用盆：{a.soil}</div>}
+                  {a.afterCare&&<div style={{fontSize:12,color:'#5a7a68',lineHeight:1.65,marginTop:2}}>之后怎么养：{a.afterCare}</div>}
+                  {a.reason&&<div style={{fontSize:12,color:'#6a8a78',lineHeight:1.65,marginTop:2}}>原因：{a.reason}</div>}
+                </div>
+              </div>
+              {!advSel[a.id]&&<textarea className="input" style={{marginTop:8,minHeight:44,fontSize:12}} placeholder="不采纳的想法/建议（可不填）"
+                value={cmt['a'+a.id]||''} onChange={e=>setCmt(v=>({...v,['a'+a.id]:e.target.value}))}/>}
+            </div>)}
+          </div>
+        </div>}
+        <div style={{marginTop:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#4a6a38',marginBottom:4}}>💬 对整体计划的补充意见（可选）</div>
+          <textarea className="input" style={{minHeight:54,fontSize:13}} placeholder="比如：这周我出差，施肥都往后挪；或者这几棵果树希望同一天施肥"
+            value={general} onChange={e=>setGeneral(e.target.value)}/>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:14}}>
+          <button disabled={busy} onClick={confirmAll} style={{padding:'11px 0',borderRadius:12,fontFamily:'inherit',fontSize:14,fontWeight:700,cursor:busy?'default':'pointer',opacity:busy?.6:1,
+            background:'rgba(90,160,90,.9)',border:'1px solid rgba(60,130,60,.6)',color:'#fff'}}>
+            ✅ 确认：加入已勾选的{visible.filter(t=>sel[t.id]).length}项{uncheckedCnt>0?`（其余${uncheckedCnt}项不采纳）`:''}
+          </button>
+          <button disabled={busy||(uncheckedCnt===0&&!general.trim())} onClick={revise} style={{padding:'10px 0',borderRadius:12,fontFamily:'inherit',fontSize:13,fontWeight:700,
+            cursor:(busy||(uncheckedCnt===0&&!general.trim()))?'default':'pointer',opacity:(busy||(uncheckedCnt===0&&!general.trim()))?.45:1,
+            background:'rgba(90,130,200,.88)',border:'1px solid rgba(60,100,170,.6)',color:'#fff'}}>
+            {busy?'🤖 AI修订中…':'🔄 提交意见，让AI修订（保留已勾选的）'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,onDelete}){
   const{db,updateDb,toast}=useApp();
   const plant=db.plants.find(p=>p.id===plantId);
   const[aiSingleLoading,setAiSingleLoading]=useState(false);
   const[showAiAdjust,setShowAiAdjust]=useState(false);
   const[aiAdjustNote,setAiAdjustNote]=useState('');
   const[showAiTasks,setShowAiTasks]=useState(false);
+  const[showReview,setShowReview]=useState(!!initialReview);
+  const[advNote,setAdvNote]=useState({});
+  const detailScrollRef=useRef(0);
   useEffect(()=>{window.scrollTo(0,0)},[]);
-  useSwipeBack(onClose);
+  // 审核页是全页：进入前记住详情页滚动位置，返回时恢复到原位置
+  function openReview(){detailScrollRef.current=window.scrollY||0;setShowReview(true);setTimeout(()=>window.scrollTo(0,0),0);}
+  function closeReview(){setShowReview(false);const y=detailScrollRef.current;setTimeout(()=>window.scrollTo(0,y),0);}
+  useSwipeBack(showReview?closeReview:onClose);
   if(!plant)return null;
 
   const st=STATUS_MAP[plant.status]||STATUS_MAP.healthy;
@@ -1335,6 +1556,21 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
     })}));
     toast.show('💊 已接受，加入当前疗程');
   }
+  // v1.47：AI建议窗口（换盆/定植等）——用户做完或决定不做后，把实际情况记进笔记，下次规划时AI会读到并据此调整
+  function resolveAdvisory(id,status){
+    const a=(plant.aiAdvisories||[]).find(x=>x.id===id);
+    if(!a)return;
+    const txt=(advNote[id]||'').trim();
+    updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
+      if(p.id!==plantId)return p;
+      return{...p,
+        aiAdvisories:(p.aiAdvisories||[]).map(x=>x.id===id?{...x,status,resolvedAt:toDay()}:x),
+        noteLog:[...(p.noteLog||[]),{date:toDay(),note:`【AI建议「${a.title}」${status==='done'?'已执行':'暂不执行/推迟'}】${txt}`}],
+      };
+    })}));
+    setAdvNote(v=>({...v,[id]:''}));
+    toast.show(status==='done'?'✅ 已记入笔记，重新规划时AI会参考':'📝 已记入笔记');
+  }
   function dismissCourseDraft(draftId){
     updateDb(prev=>({...prev,plants:prev.plants.map(p=>{
       if(p.id!==plantId)return p;
@@ -1367,6 +1603,8 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
     })}));
     toast.show('▶ 已恢复护理');
   }
+
+  if(showReview&&plant.aiPlan)return<AiPlanReviewPage key={plant.aiPlan.planId||'legacy'} plantId={plantId} onBack={closeReview}/>;
 
   if(showGrowth) return(
     <div className="fullpage">
@@ -1532,27 +1770,70 @@ function PlantDetail({plantId,onClose,onEdit,onOpenLog,onArchive,onDelete}){
             </div>
             {plant.aiNote&&<div style={{fontSize:13,color:'#3a4a68',lineHeight:1.7,whiteSpace:'pre-wrap',marginBottom:8}}>{plant.aiNote}</div>}
             {plant.aiPlan?.validUntil
-              ?<div style={{fontSize:11,color:'#5a6a88',marginBottom:8,cursor:'pointer'}} onClick={()=>setShowAiTasks(v=>!v)}>
-                 📋 计划有效至 {fmtDate(plant.aiPlan.validUntil)}（{(plant.aiPlan.tasks||[]).length}项任务）{showAiTasks?' ▲收起':' ▼查看清单'}
+              ?<div style={{marginBottom:8}}>
+                 <div style={{fontSize:11,color:'#5a6a88',cursor:'pointer',marginBottom:6}} onClick={()=>setShowAiTasks(v=>!v)}>
+                   📋 计划有效至 {fmtDate(plant.aiPlan.validUntil)}（{(plant.aiPlan.tasks||[]).filter(t=>t.status!=='rejected').length}项任务）{showAiTasks?' ▲收起':' ▼查看清单'}
+                 </div>
+                 <button style={{width:'100%',padding:'7px 0',borderRadius:10,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:700,
+                   background:aiPlanNeedsReview(plant)?'rgba(230,150,60,.9)':'rgba(120,150,210,.18)',
+                   border:aiPlanNeedsReview(plant)?'1px solid rgba(200,120,30,.7)':'1px solid rgba(120,150,210,.4)',
+                   color:aiPlanNeedsReview(plant)?'#fff':'#2a4a78'}} onClick={openReview}>
+                   {aiPlanNeedsReview(plant)?'📝 这版计划待审核：逐条勾选是否同意':'📝 查看/调整逐条审核'}
+                 </button>
                </div>
               :<div style={{fontSize:11,color:'#9aaa88',marginBottom:8}}>尚未生成AI护理计划</div>}
+            {(plant.aiPlan?.notScheduled||[]).length>0&&(
+              <div style={{marginBottom:8,padding:'6px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#6a5a78',marginBottom:3}}>🚫 本计划周期未安排的护理及原因</div>
+                {plant.aiPlan.notScheduled.map((n,i)=>(
+                  <div key={i} style={{fontSize:11,color:'#6a6a88',lineHeight:1.6}}>
+                    {({water:'💧浇水',fert:'🌿施肥',med:'💊给药'})[n.type]||'其他'}
+                    {(n.from||n.until)?`（${n.from?fmtDate(n.from):'即日'} ~ ${n.until?fmtDate(n.until):'计划结束'}）`:''}：{n.reason}
+                  </div>
+                ))}
+              </div>
+            )}
             {showAiTasks&&(plant.aiPlan?.tasks||[]).length>0&&(
               <div style={{display:'flex',flexDirection:'column',gap:2,marginBottom:8,maxHeight:280,overflowY:'auto',padding:'6px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
                 {[...plant.aiPlan.tasks].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>{
                   const done=aiTaskCompleted(plant,t);
-                  const overdue=!done&&t.date<toDay();
+                  const overdue=!done&&t.date<toDay()&&aiTaskApproved(t);
+                  const rejected=t.status==='rejected';
                   return(
-                    <div key={t.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,padding:'4px 0',borderBottom:'1px solid rgba(120,150,210,.12)'}}>
+                    <div key={t.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,padding:'4px 0',borderBottom:'1px solid rgba(120,150,210,.12)',opacity:rejected?.5:1,textDecoration:rejected?'line-through':'none'}}>
                       <span>{t.type==='fert'?'🌿':'💧'}</span>
                       <span style={{color:overdue?'#b85c3c':'#3a4a68',fontWeight:t.priority==='critical'?700:400,whiteSpace:'nowrap'}}>{fmtDate(t.date)}</span>
                       {t.priority==='critical'&&<span style={{fontSize:10,color:'#b85c3c',whiteSpace:'nowrap'}}>⚠️关键</span>}
-                      {done&&<span style={{fontSize:10,color:'#5a9850',whiteSpace:'nowrap'}}>✓已完成</span>}
+                      {t.status==='pending'&&<span style={{fontSize:10,color:'#c07020',whiteSpace:'nowrap'}}>待审核</span>}
+                      {rejected&&<span style={{fontSize:10,color:'#8898a8',whiteSpace:'nowrap'}}>未采纳</span>}
+                      {done&&aiTaskApproved(t)&&<span style={{fontSize:10,color:'#5a9850',whiteSpace:'nowrap'}}>✓已完成</span>}
                       {overdue&&<span style={{fontSize:10,color:'#b85c3c',whiteSpace:'nowrap'}}>逾期</span>}
                       {t.fertName&&<span style={{fontSize:10,color:'#5a7a40',whiteSpace:'nowrap',background:'rgba(120,180,100,.15)',borderRadius:6,padding:'1px 5px'}}>{t.fertName}</span>}
-                      {t.note&&<span style={{fontSize:11,color:'#8898a8',marginLeft:'auto',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis'}}>{t.note}</span>}
+                      {(t.reason||t.note)&&<span style={{fontSize:11,color:'#8898a8',marginLeft:'auto',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis'}}>{t.reason||t.note}</span>}
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {(plant.aiAdvisories||[]).filter(a=>a.status==='adopted').length>0&&(
+              <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#2a5a48'}}>🪴 AI建议窗口（已采纳，做不做、何时做由你决定）</div>
+                {plant.aiAdvisories.filter(a=>a.status==='adopted').map(a=>(
+                  <div key={a.id} style={{background:'rgba(235,248,240,.85)',border:'1px solid rgba(90,160,120,.35)',borderRadius:8,padding:'8px 10px'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#2a5a48'}}>{a.title}</div>
+                    {(a.windowStart||a.windowEnd)&&<div style={{fontSize:11,color:'#4a7a60',marginTop:2}}>建议窗口：{a.windowStart?fmtDate(a.windowStart):'现在起'} ~ {a.windowEnd?fmtDate(a.windowEnd):'视情况'}</div>}
+                    {a.conditions&&<div style={{fontSize:11,color:'#5a7a68',marginTop:2,lineHeight:1.6}}>满足条件：{a.conditions}</div>}
+                    {a.soil&&<div style={{fontSize:11,color:'#5a7a68',marginTop:2,lineHeight:1.6}}>用土/用盆：{a.soil}</div>}
+                    {a.afterCare&&<div style={{fontSize:11,color:'#5a7a68',marginTop:2,lineHeight:1.6}}>之后怎么养：{a.afterCare}</div>}
+                    {a.reason&&<div style={{fontSize:11,color:'#7a9080',marginTop:2,lineHeight:1.6}}>原因：{a.reason}</div>}
+                    <textarea className="input" style={{marginTop:6,minHeight:44,fontSize:12}} placeholder="实际怎么做的/有什么想法（会记入笔记，AI重新规划时参考）"
+                      value={advNote[a.id]||''} onChange={e=>setAdvNote(v=>({...v,[a.id]:e.target.value}))}/>
+                    <div style={{display:'flex',gap:6,marginTop:6}}>
+                      <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:'rgba(90,160,90,.85)',border:'1px solid rgba(60,130,60,.6)',color:'#fff'}} onClick={()=>resolveAdvisory(a.id,'done')}>已执行</button>
+                      <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:11,cursor:'pointer',fontFamily:'inherit',background:'rgba(180,190,200,.3)',border:'1px solid rgba(150,160,170,.4)',color:'#5a6a78'}} onClick={()=>resolveAdvisory(a.id,'postponed')}>暂不做/推迟</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             {(plant.aiCourseDrafts||[]).length>0&&(
@@ -2212,7 +2493,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       if(lt){
         setView({type:'log',plantId:id,logType:lt,returnTab:rt});
       } else {
-        setView({type:'detail',id});
+        setView({type:'detail',id,review:!!jumpPlantId.review});
       }
       if(onJumpDone)onJumpDone();
     }
@@ -2383,6 +2664,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
   if(view?.type==='detail')
     return<PlantDetail
       plantId={view.id}
+      initialReview={!!view.review}
       onClose={closeDetail}
       onEdit={p=>setView({type:'form',plant:p})}
       onOpenLog={(pid,lt)=>setView({type:'log',plantId:pid,logType:lt})}
@@ -2678,7 +2960,7 @@ function buildDotMap(plants){
     }
     if(hasActiveAiPlan(p,today)){
       // 存在未过期AI计划：浇水/施肥点完全来自aiPlan.tasks，不再叠加wi/fi投影
-      p.aiPlan.tasks.forEach(t=>{
+      aiApprovedTasks(p).forEach(t=>{
         if((t.type==='water'||t.type==='fert')&&!t.skipped&&!aiTaskCompleted(p,t))addPlan(t.date,t.type);
       });
     }else{
@@ -2930,7 +3212,7 @@ function CalendarTab(){
             return;
           }
           if(hasActiveAiPlan(p,today)){
-            const match=p.aiPlan.tasks.find(t=>t.date===ds&&t.type===e.type&&!t.skipped&&!aiTaskCompleted(p,t));
+            const match=aiApprovedTasks(p).find(t=>t.date===ds&&t.type===e.type&&!t.skipped&&!aiTaskCompleted(p,t));
             if(match)plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
             return;
           }
@@ -2977,6 +3259,24 @@ function CalendarTab(){
     const overdue=[],todayT=[],soon1=[],soon2=[],soon3=[],unlogged=[],paused=[];
     db.plants.forEach(p=>{
       ['water','fert'].forEach(type=>{
+        // v1.47：AI计划已审核生效的植物，浇水/施肥的逾期/今明后完全来自aiPlan.tasks，不再按wi/fi间隔推算
+        // （之前杏树已进入断肥期，但按14天间隔推算仍一直挂着施肥逾期）
+        if(hasActiveAiPlan(p,toDay())){
+          if(getIsPaused(p,type)){
+            paused.push({type,plant:p,pause:type==='water'?p.waterPause:p.fertPause});
+            return;
+          }
+          const tdy=toDay();
+          const open=aiApprovedTasks(p).filter(t=>t.type===type&&!t.skipped&&!aiTaskCompleted(p,t));
+          const pastOpen=open.filter(t=>t.date<tdy).sort((a,b)=>b.date.localeCompare(a.date));
+          if(pastOpen.length)overdue.push({type,plant:p,overdueDays:daysDiff(pastOpen[0].date,tdy),aiReason:pastOpen[0].reason||pastOpen[0].note||'',fertName:pastOpen[0].fertName||''});
+          open.filter(t=>t.date>=tdy).forEach(t=>{
+            const d=daysDiff(tdy,t.date);
+            const item={type,plant:p,aiReason:t.reason||t.note||'',fertName:t.fertName||''};
+            if(d===0)todayT.push(item);else if(d===1)soon1.push(item);else if(d===2)soon2.push(item);else if(d===3)soon3.push(item);
+          });
+          return;
+        }
         const interval=type==='water'?parseIntervalMin(p.wi):parseIntervalMin(p.fi);
         if(interval>=900)return;
         if(getIsPaused(p,type)){
@@ -3102,6 +3402,7 @@ function CalendarTab(){
           ?<div style={{fontSize:11,color:'#c05020',fontWeight:600}}>逾期 {t.overdueDays} 天</div>
           :<div style={{fontSize:11,color:'#7a9060'}}>{isMed&&t.course?t.course.drugName:TYPE_LABEL[t.type]}</div>
         }
+        {(t.fertName||t.aiReason)&&<div style={{fontSize:11,color:'#6a8a9a',marginTop:2,lineHeight:1.5}}>🤖 {t.fertName?`【${t.fertName}】`:''}{t.aiReason}</div>}
       </div>
       <div style={{display:'flex',gap:5}}>
         {!isMed&&<button onClick={()=>window.__showPauseMenu(t.plant.id,t.type,t.plant.name)}
@@ -3129,6 +3430,11 @@ function CalendarTab(){
   }
 
   const{overdue,todayT,soon1,soon2,soon3,unlogged,paused}=buildTasks();
+  const needReview=db.plants.filter(p=>aiPlanNeedsReview(p));
+  const advWindow=[];
+  db.plants.forEach(p=>(p.aiAdvisories||[]).forEach(a=>{
+    if(a.status==='adopted'&&(!a.windowEnd||a.windowEnd>=toDay())&&(!a.windowStart||a.windowStart<=addDays(toDay(),14)))advWindow.push({plant:p,adv:a});
+  }));
   const d1=new Date(todayD);d1.setDate(d1.getDate()+1);
   const d2=new Date(todayD);d2.setDate(d2.getDate()+2);
   const d3=new Date(todayD);d3.setDate(d3.getDate()+3);
@@ -3226,6 +3532,21 @@ function CalendarTab(){
             <button style={{padding:'12px 6px',borderRadius:14,cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(180,215,160,0.3)',border:'1.5px solid rgba(140,185,110,0.4)',color:'#2e4a22',display:'flex',flexDirection:'column',alignItems:'center',gap:4}} onClick={()=>window.__qlOpen('med')}><span style={{fontSize:22}}>💊</span><span>记录给药</span></button>
           </div>
         </div>
+
+        {/* v1.47：AI计划待审核提示 + AI建议窗口（换盆/定植等） */}
+        {needReview.length>0&&<div style={{marginBottom:14,padding:'10px 12px',borderRadius:12,background:'rgba(255,240,215,.85)',border:'1px solid rgba(220,150,60,.45)'}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#9a5a10',marginBottom:6}}>📝 {needReview.length}株植物的AI计划待审核（勾选同意的才会加入日历）</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {needReview.map(p=><button key={p.id} onClick={()=>navToPlant(p.id,'calendar',undefined,true)}
+              style={{padding:'4px 10px',borderRadius:16,fontFamily:'inherit',fontSize:12,cursor:'pointer',background:'rgba(255,255,255,.8)',border:'1px solid rgba(220,150,60,.5)',color:'#8a4a10'}}>{p.name}</button>)}
+          </div>
+        </div>}
+        {advWindow.length>0&&<div style={{marginBottom:14,padding:'10px 12px',borderRadius:12,background:'rgba(230,246,238,.85)',border:'1px solid rgba(90,160,120,.4)'}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#2a5a48',marginBottom:6}}>🪴 AI建议窗口（做不做、何时做由你决定）</div>
+          {advWindow.map((x,i)=><div key={i} style={{fontSize:12,color:'#3a6a55',lineHeight:1.7,cursor:'pointer'}} onClick={()=>navToPlant(x.plant.id,'calendar')}>
+            {x.plant.name}：{x.adv.title}（{x.adv.windowStart?fmtDate(x.adv.windowStart):'现在起'} ~ {x.adv.windowEnd?fmtDate(x.adv.windowEnd):'视情况'}）
+          </div>)}
+        </div>}
 
         {/* 任务列表 */}
         <DaySection label="逾期未做" tasks={overdue} urgent={true}/>
@@ -4889,7 +5210,7 @@ function App(){
     });
   },[]);
 
-  function navToPlant(id,returnTab,logType){setJumpPlantId({id,returnTab:returnTab||null,logType:logType||null});setTab('plants');}
+  function navToPlant(id,returnTab,logType,review){setJumpPlantId({id,returnTab:returnTab||null,logType:logType||null,review:!!review});setTab('plants');}
 
   const badge=db.plants.filter(p=>careAlerts(p).length>0).length;
   const ctx={db,updateDb,toast,navToPlant,setTab};
