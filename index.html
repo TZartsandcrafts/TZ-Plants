@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.50';
+const APP_VERSION='v1.51';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -382,6 +382,26 @@ function aiPromptReasonText(db,today){
   return`距上次AI规划已超过${AI_GLOBAL_REPLAN_INTERVAL_DAYS}天，是否重新规划？`;
 }
 // 实际调用 Worker 生成/刷新AI护理计划。mode:'global'（所有开启AI规划的植物）或'single'（仅指定植物）
+// v1.51：被新计划清理掉的旧逾期提醒/手动暂停，每一条都要有说明。AI给了就用AI的；AI没说明的，系统按规则补一条，保证"删了什么、为什么"可见
+function aiBuildDropped(p,plan,today){
+  const out=(plan.dropped||[]).map(n=>({type:n.type||'other',originalDate:n.originalDate||'',reason:n.reason||''}));
+  const tasks=plan.tasks||[];
+  const notSched=plan.notScheduled||[];
+  const snap=aiPendingSnapshot(p,today);
+  snap.overdue.forEach(o=>{
+    if(o.type!=='water'&&o.type!=='fert')return;
+    if(out.some(d=>d.type===o.type&&(!d.originalDate||!o.date||d.originalDate===o.date)))return; // AI已说明
+    if(notSched.some(n=>n.type===o.type&&(!n.from||n.from<=today)))return; // 已在"未安排及原因"里说明
+    // 新计划3天内已重新安排了同类任务，视为补做/重排，不算删除
+    if(tasks.some(t=>(t.type==='fert'?'fert':'water')===o.type&&daysDiff(today,t.date)>=0&&daysDiff(today,t.date)<=3))return;
+    out.push({type:o.type,originalDate:o.date||'',reason:'已过最佳操作时间，新计划从今天起重新安排，不再补做（AI未单独说明，系统按规则注明）'});
+  });
+  ['water','fert'].forEach(type=>{
+    const ps=snap.pause[type];
+    if(ps)out.push({type,originalDate:'',reason:`你手动设置的暂停（${ps.start?ps.start+' 起，':''}至${ps.end}）已由新计划取代，确认计划后清除；暂停期间的安排见本计划的任务和"未安排"说明`});
+  });
+  return out;
+}
 function aiSoilLib(db){return(db.lib.soil||[]).map(s=>({name:s.name,composition:s.composition||'',suitable:s.suitable||'',ph:s.ph||'',drainage:s.drainage||''}));}
 async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
   const today=toDay();
@@ -450,7 +470,7 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
               };
             }),
             notScheduled:(plan.notScheduled||[]).map(n=>({type:n.type||'other',from:n.from||'',until:n.until||'',reason:n.reason||''})),
-            dropped:(plan.dropped||[]).map(n=>({type:n.type||'other',originalDate:n.originalDate||'',reason:n.reason||''})),
+            dropped:aiBuildDropped(p,plan,today),
           },
           aiAdvisories:[...keptAdv,...newAdv],
           aiNoteDigest:{summary:(plan.noteDigest||prevDigest.summary||'').trim(),through:today},
@@ -555,8 +575,30 @@ function archiveCourseInUpdate(prev,plantId,courseId,status,today){
   return{...prev,plants,archive:{...prev.archive,courses:archCourses}};
 }
 
+// v1.51：AI计划已审核生效的植物，"逾期"只来自AI任务（已同意、没做也没跳过、日期早于今天）；返回最近一条逾期任务已逾期几天，没有则null
+function aiOverdueDays(p,type){
+  const tdy=toDay();
+  const past=aiApprovedTasks(p).filter(t=>t.type===type&&!t.skipped&&t.date<tdy&&!aiTaskCompleted(p,t)).sort((a,b)=>b.date.localeCompare(a.date));
+  return past.length?daysDiff(past[0].date,tdy):null;
+}
 function careAlerts(p){
   const a=[];
+  if(hasActiveAiPlan(p,toDay())){
+    // 手动暂停的类型不提醒；其余按AI计划里的逾期任务提醒（旧的按间隔推算的逾期已被新计划取代，不再出现）
+    if(!getIsPaused(p,'water')){const od=aiOverdueDays(p,'water');if(od!=null)a.push({type:'water',icon:'💧',label:'浇水（AI计划已逾期'+od+'天）',color:'#1a5a99'});}
+    if(!getIsPaused(p,'fert')){const od=aiOverdueDays(p,'fert');if(od!=null)a.push({type:'fert',icon:'🌿',label:'施肥（AI计划已逾期'+od+'天）',color:'#2a7020'});}
+    allMedCourseInfos(p).forEach(info=>{
+      if(info.done)return;
+      const course=info.course;
+      if(course.noInterval||parseInt(course.total)===1){
+        if(info.given===0&&course.startDate&&daysSince(course.startDate)>=0)a.push({type:'med',icon:'💊',label:`给药（${course.drugName}·单次）`,color:'#882010'});
+      }else{
+        const lm=lastLogForCourse(p,course.id);const md=lm!=null?daysSince(lm):null;const interval=parseInt(course.interval)||7;
+        if(lm!=null&&md!=null&&md>=interval)a.push({type:'med',icon:'💊',label:`给药（${course.drugName}·已${md}天·第${info.given+1}/${info.total}次）`,color:'#882010'});
+      }
+    });
+    return a;
+  }
   // 浇水：暂停中则不报警
   if(!getIsPaused(p,'water')){
     const lw=getEffLogDate(p,'water');
@@ -1756,8 +1798,8 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
               });
               const medSub=activeInfos.length>0?`${activeInfos.length}个疗程进行中`:null;
               return[
-                {type:'water',icon:'💧',days:wd,urgent:!getIsPaused(plant,'water')&&(wd!=null?wd:999)>=(parseInt(plant.wi)||7),cnt:(plant.waterLog||[]).length,sub:null},
-                {type:'fert', icon:'🌿',days:fd,urgent:!getIsPaused(plant,'fert')&&(fd!=null?fd:999)>=(parseInt(plant.fi)||14),cnt:(plant.fertLog||[]).length,sub:null},
+                {type:'water',icon:'💧',days:wd,urgent:!getIsPaused(plant,'water')&&(hasActiveAiPlan(plant,toDay())?aiOverdueDays(plant,'water')!=null:(wd!=null?wd:999)>=(parseInt(plant.wi)||7)),cnt:(plant.waterLog||[]).length,sub:null},
+                {type:'fert', icon:'🌿',days:fd,urgent:!getIsPaused(plant,'fert')&&(hasActiveAiPlan(plant,toDay())?aiOverdueDays(plant,'fert')!=null:(fd!=null?fd:999)>=(parseInt(plant.fi)||14)),cnt:(plant.fertLog||[]).length,sub:null},
                 {type:'med',  icon:'💊',days:md,urgent:medUrgent,cnt:(plant.medLog||[]).length,sub:medSub},
               ].map(item=>(
                 <button key={item.type}
@@ -1825,24 +1867,37 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
                 ))}
               </div>
             )}
+            {(plant.aiPlan?.dropped||[]).length>0&&(
+              <div style={{marginBottom:8,padding:'6px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#8a5a38',marginBottom:3}}>🧹 新计划清理掉的旧提醒/暂停及原因</div>
+                {plant.aiPlan.dropped.map((n,i)=>(
+                  <div key={i} style={{fontSize:11,color:'#8a6a58',lineHeight:1.6}}>
+                    {({water:'💧浇水',fert:'🌿施肥',med:'💊给药'})[n.type]||'其他'}{n.originalDate?`（原定${fmtDate(n.originalDate)}）`:''}：{n.reason}
+                  </div>
+                ))}
+              </div>
+            )}
             {showAiTasks&&(plant.aiPlan?.tasks||[]).length>0&&(
-              <div style={{display:'flex',flexDirection:'column',gap:2,marginBottom:8,maxHeight:280,overflowY:'auto',padding:'6px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
-                {[...plant.aiPlan.tasks].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>{
+              <div style={{marginBottom:8,maxHeight:380,overflowY:'auto',padding:'4px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
+                {[...plant.aiPlan.tasks].sort((a,b)=>a.date.localeCompare(b.date)||a.type.localeCompare(b.type)).map(t=>{
                   const done=aiTaskCompleted(plant,t);
                   const overdue=!done&&t.date<toDay()&&aiTaskApproved(t);
                   const rejected=t.status==='rejected';
+                  const tag=(txt,bg,col)=><span style={{fontSize:10,color:col,background:bg,borderRadius:6,padding:'1px 6px',whiteSpace:'nowrap'}}>{txt}</span>;
                   return(
-                    <div key={t.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,padding:'4px 0',borderBottom:'1px solid rgba(120,150,210,.12)',opacity:rejected?.5:1,textDecoration:rejected?'line-through':'none'}}>
-                      <span>{t.type==='fert'?'🌿':'💧'}</span>
-                      <span style={{color:overdue?'#b85c3c':'#3a4a68',fontWeight:t.priority==='critical'?700:400,whiteSpace:'nowrap'}}>{fmtDate(t.date)}</span>
-                      {t.priority==='critical'&&<span style={{fontSize:10,color:'#b85c3c',whiteSpace:'nowrap'}}>⚠️关键</span>}
-                      {t.status==='pending'&&<span style={{fontSize:10,color:'#c07020',whiteSpace:'nowrap'}}>待审核</span>}
-                      {rejected&&<span style={{fontSize:10,color:'#8898a8',whiteSpace:'nowrap'}}>未采纳</span>}
-                      {done&&aiTaskApproved(t)&&<span style={{fontSize:10,color:'#5a9850',whiteSpace:'nowrap'}}>✓已完成</span>}
-                      {overdue&&<span style={{fontSize:10,color:'#b85c3c',whiteSpace:'nowrap'}}>逾期</span>}
-                      {t.fertName&&<span style={{fontSize:10,color:'#5a7a40',whiteSpace:'nowrap',background:'rgba(120,180,100,.15)',borderRadius:6,padding:'1px 5px'}}>{t.fertName}</span>}
-                      {aiUsageText(t)&&<span style={{fontSize:10,color:'#3a6a8a',whiteSpace:'nowrap'}}>{aiUsageText(t)}</span>}
-                      {(t.reason||t.note)&&<span style={{fontSize:11,color:'#8898a8',marginLeft:'auto',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis'}}>{t.reason||t.note}</span>}
+                    <div key={t.id} style={{padding:'6px 0',borderBottom:'1px solid rgba(120,150,210,.15)',opacity:rejected?.5:1}}>
+                      <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:5,textDecoration:rejected?'line-through':'none'}}>
+                        <span style={{fontSize:14}}>{t.type==='fert'?'🌿':'💧'}</span>
+                        <span style={{fontSize:13,fontWeight:t.priority==='critical'?700:600,color:overdue?'#b85c3c':'#3a4a68'}}>{fmtDate(t.date)}</span>
+                        {t.priority==='critical'&&tag('⚠️关键','rgba(230,150,120,.2)','#b85c3c')}
+                        {t.status==='pending'&&tag('待审核','rgba(240,190,100,.3)','#a06010')}
+                        {rejected&&tag('未采纳','rgba(150,160,170,.25)','#6a7a88')}
+                        {done&&aiTaskApproved(t)&&tag('✓已完成','rgba(120,190,110,.22)','#4a8840')}
+                        {overdue&&tag('逾期','rgba(230,150,120,.25)','#b85c3c')}
+                        {t.fertName&&tag(t.fertName,'rgba(120,180,100,.18)','#4a6a30')}
+                      </div>
+                      {aiUsageText(t)&&<div style={{fontSize:11,color:'#3a6a8a',marginTop:3,paddingLeft:22,lineHeight:1.6,wordBreak:'break-word'}}>用量：{aiUsageText(t)}</div>}
+                      {(t.reason||t.note)&&<div style={{fontSize:11,color:'#7a8aa0',marginTop:2,paddingLeft:22,lineHeight:1.6,wordBreak:'break-word'}}>{t.reason||t.note}</div>}
                     </div>
                   );
                 })}
@@ -3057,8 +3112,15 @@ function AiPlanExpiryChip({t}){
   </div>;
 }
 
+// v1.51：任务页月历选中日详情里点条目进植物详情，返回时恢复月历展开/月份/选中日和滚动位置
+let _calNavState=null;
 function CalendarTab(){
   const{db,updateDb,toast,setTab}=useApp();
+  const calRestore=useRef(_calNavState); // 只在首次挂载时取一次
+  useEffect(()=>{
+    if(calRestore.current){const y=calRestore.current.scrollY||0;setTimeout(()=>window.scrollTo(0,y),40);}
+    _calNavState=null;
+  },[]);
   const today=toDay();
   const todayD=new Date();todayD.setHours(0,0,0,0);
 
@@ -3132,10 +3194,10 @@ function CalendarTab(){
   const{navToPlant}=useApp();
 
   // 日历展开/折叠
-  const[calExp,setCalExp]=useState(false);
-  const[calYr,setCalYr]=useState(()=>new Date().getFullYear());
-  const[calMo,setCalMo]=useState(()=>new Date().getMonth());
-  const[calSel,setCalSel]=useState(null);
+  const[calExp,setCalExp]=useState(()=>calRestore.current?!!calRestore.current.calExp:false);
+  const[calYr,setCalYr]=useState(()=>calRestore.current?calRestore.current.calYr:new Date().getFullYear());
+  const[calMo,setCalMo]=useState(()=>calRestore.current?calRestore.current.calMo:new Date().getMonth());
+  const[calSel,setCalSel]=useState(()=>calRestore.current?calRestore.current.calSel:null);
 
   // 月份导航
   function navMo(dir){
@@ -3254,7 +3316,7 @@ function CalendarTab(){
               if(course.noInterval||parseInt(course.total)===1){
                 // 单次给药：只在计划日期当天出现
                 if(info.given===0&&course.startDate&&course.startDate===ds)
-                  plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
+                  plantLines.push({id:p.id,name:p.name,variety:p.variety||'',type:e.type,plan:true});
                 return;
               }
               const interval=parseIntervalMin(course.interval);
@@ -3267,13 +3329,13 @@ function CalendarTab(){
               const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
               const diff=Math.round((selT-base)/86400000);
               if(diff>0&&diff%interval===0&&Math.round(diff/interval)<=info.remain)
-                plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
+                plantLines.push({id:p.id,name:p.name,variety:p.variety||'',type:e.type,plan:true});
             });
             return;
           }
           if(hasActiveAiPlan(p,today)){
             const match=aiApprovedTasks(p).find(t=>t.date===ds&&t.type===e.type&&!t.skipped&&!aiTaskCompleted(p,t));
-            if(match)plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
+            if(match)plantLines.push({id:p.id,name:p.name,variety:p.variety||'',type:e.type,plan:true});
             return;
           }
           if(getIsPaused(p,e.type))return;
@@ -3283,17 +3345,18 @@ function CalendarTab(){
           const selT=(()=>{const pts=ds.split('-');return new Date(+pts[0],+pts[1]-1,+pts[2]);})();
           const diff=Math.round((selT-base)/86400000);
           if(diff>0&&diff%interval===0&&(courseRemain==null||Math.round(diff/interval)<=courseRemain))
-            plantLines.push({name:p.name,variety:p.variety||'',type:e.type,plan:true});
+            plantLines.push({id:p.id,name:p.name,variety:p.variety||'',type:e.type,plan:true});
         } else {
-          (log||[]).forEach(r=>{if(r.date===ds)plantLines.push({name:p.name,variety:p.variety||'',type:e.type,skip:r.skip});});
+          (log||[]).forEach(r=>{if(r.date===ds)plantLines.push({id:p.id,name:p.name,variety:p.variety||'',type:e.type,skip:r.skip});});
         }
       });
     });
     const noteLines=[];
-    db.plants.forEach(p=>(p.noteLog||[]).forEach(n=>{if(n.date===ds)noteLines.push({name:p.name,variety:p.variety||'',text:n.text});}));
+    db.plants.forEach(p=>(p.noteLog||[]).forEach(n=>{if(n.date===ds)noteLines.push({id:p.id,name:p.name,variety:p.variety||'',text:n.text});}));
     const seen={};
     const deduped=plantLines.filter(l=>{const k=l.name+'|'+l.variety+'|'+l.type;if(seen[k])return false;seen[k]=true;return true;});
     const total=deduped.length+noteLines.length;
+    function goPlant(id){_calNavState={calExp:true,calYr,calMo,calSel:ds,scrollY:window.scrollY||0};navToPlant(id,'calendar');}
     return <div style={{background:'rgba(240,248,235,0.8)',borderRadius:10,padding:'10px 12px',border:'1px solid rgba(140,180,110,0.3)'}}>
       <div style={{fontSize:12,fontWeight:700,color:'#2e4a22',marginBottom:6}}>
         {ds.slice(5).replace('-','/')}　{total>0?`共${total}项`:''}
@@ -3301,12 +3364,12 @@ function CalendarTab(){
       {deduped.map((l,i)=>{
         const col=DOT_COLOR[l.type]||'#888';
         const suffix=l.skip?' (跳过)':l.plan?' (计划)':'';
-        return <div key={i} style={{fontSize:12,color:'#3a6028',display:'flex',alignItems:'center',gap:6,padding:'2px 0'}}>
+        return <div key={i} onClick={()=>goPlant(l.id)} style={{fontSize:12,color:'#3a6028',display:'flex',alignItems:'center',gap:6,padding:'4px 0',cursor:'pointer'}}>
           <span style={{color:col}}>{TYPE_ICON[l.type]||'●'}</span>
-          <span>{l.name}{l.variety&&<span style={{color:'#9aaa88',fontSize:11}}> · {l.variety}</span>}<span style={{color:'#9aaa88',fontSize:11}}>{suffix}</span></span>
+          <span>{l.name}{l.variety&&<span style={{color:'#9aaa88',fontSize:11}}> · {l.variety}</span>}<span style={{color:'#9aaa88',fontSize:11}}>{suffix}</span></span><span style={{marginLeft:'auto',color:'#a8bc98',fontSize:14}}>›</span>
         </div>;
       })}
-      {noteLines.map((n,i)=><div key={'n'+i} style={{fontSize:12,color:'#7a4a10',display:'flex',alignItems:'flex-start',gap:6,padding:'3px 0',borderTop:'1px solid rgba(208,128,48,0.15)',marginTop:2}}>
+      {noteLines.map((n,i)=><div key={'n'+i} onClick={()=>goPlant(n.id)} style={{cursor:'pointer',fontSize:12,color:'#7a4a10',display:'flex',alignItems:'flex-start',gap:6,padding:'5px 0',borderTop:'1px solid rgba(208,128,48,0.15)',marginTop:2}}>
         <span style={{color:'#d08030',flexShrink:0}}>📝</span>
         <span><span style={{color:'#9aaa88',fontSize:11}}>{n.name}{n.variety&&` · ${n.variety}`}　</span>{n.text}</span>
       </div>)}
