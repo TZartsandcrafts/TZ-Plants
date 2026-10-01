@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.47';
+const APP_VERSION='v1.50';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -233,6 +233,7 @@ const POT_SIZES=[
 const AI_WORKER_URL='https://plantlog.taizaibook.workers.dev/plantlog-ai';
 const AI_SHARED_SECRET='sk_plantlog_8f3a9d2e1b'; // 需与 Worker 端 PLANTLOG_AI_KEY 完全一致
 const AI_GLOBAL_REPLAN_INTERVAL_DAYS=28; // 距上次全局规划超过多少天，自动检查时提示
+const AI_PLAN_EXPIRY_LEAD_DAYS=3;        // v1.50：AI计划到期前多少天开始在任务页提醒更新（计划最后有效日 validUntil 的前N天起，每天出现在"今天"，直到更新）
 const AI_CRITICAL_OVERDUE_DAYS=3;        // critical任务逾期超过多少天，自动检查时提示
 
 // 判断某条AI计划任务是否已"完成"：用真实记录反推，不单独存状态字段
@@ -251,12 +252,22 @@ function hasActiveAiPlan(p,today){
 // v1.47：任务审核状态。旧版任务没有status字段，视为已同意；pending=待审核，rejected=用户未采纳
 function aiTaskApproved(t){return !t.status||t.status==='approved';}
 function aiApprovedTasks(p){return(p.aiPlan&&Array.isArray(p.aiPlan.tasks))?p.aiPlan.tasks.filter(aiTaskApproved):[];}
+// v1.48：任务的结构化用量（amount=浇水量/每株施用量，dilution=施肥稀释倍数）
+function aiUsageText(t){return[t.dilution?('稀释'+String(t.dilution).replace(/^稀释/,'')):'',t.amount||''].filter(Boolean).join('，');}
+// 当前最该做的那条AI任务（已同意、未完成、日期≤今天+2，取离今天最近的），用于记录时预填用量
+function aiMatchTask(p,type){
+  if(!p||!hasActiveAiPlan(p,toDay()))return null;
+  const tdy=toDay();
+  const c=aiApprovedTasks(p).filter(t=>t.type===type&&!t.skipped&&!aiTaskCompleted(p,t)&&t.date<=addDays(tdy,2));
+  c.sort((a,b)=>Math.abs(daysDiff(tdy,a.date))-Math.abs(daysDiff(tdy,b.date)));
+  return c[0]||null;
+}
 function aiPlanNeedsReview(p){return !!(p.aiEnabled&&p.aiPlan&&p.aiPlan.reviewed===false);}
 // 汇总某植物最近的真实浇水/施肥记录（合并排序，供AI判断实际间隔）
 function aiRecentLogs(p,limit){
   const merged=[
     ...(p.waterLog||[]).map(l=>({date:l.date,type:'water',...(l.skip?{skipped:true}:{}),...(l.note&&l.note!=='跳过'?{note:String(l.note).slice(0,80)}:{})})),
-    ...(p.fertLog||[]).map(l=>({date:l.date,type:'fert',...(l.skip?{skipped:true}:{}),...(l.note&&l.note!=='跳过'?{note:String(l.note).slice(0,80)}:{})})),
+    ...(p.fertLog||[]).map(l=>({date:l.date,type:'fert',...(l.name?{name:String(l.name).slice(0,40)}:{}),...(l.amount?{amount:String(l.amount).slice(0,40)}:{}),...(l.skip?{skipped:true}:{}),...(l.note&&l.note!=='跳过'?{note:String(l.note).slice(0,80)}:{})})),
   ];
   merged.sort((a,b)=>b.date.localeCompare(a.date));
   return merged.slice(0,limit||20);
@@ -318,7 +329,7 @@ function buildAiPlantPayload(p,today){
   const digest=p.aiNoteDigest||{summary:'',through:''};
   // 笔记摘要机制：有摘要就只发摘要覆盖日期之后的新笔记；没有摘要（首次）则发全部历史笔记
   const newNotes=(p.noteLog||[]).filter(n=>!digest.through||n.date>=digest.through) // >=而非>：避免同一天多次重新规划时，当天新增的笔记因日期等于through而被漏发
-    .map(n=>({date:n.date,text:n.note||''}));
+    .map(n=>({date:n.date,text:n.text||n.note||''}));
   return{
     id:p.id,name:p.name,variety:p.variety||'',category:p.category||'',
     env:p.env||{orientation:'',potType:'potted',potSize:'medium'},
@@ -371,6 +382,7 @@ function aiPromptReasonText(db,today){
   return`距上次AI规划已超过${AI_GLOBAL_REPLAN_INTERVAL_DAYS}天，是否重新规划？`;
 }
 // 实际调用 Worker 生成/刷新AI护理计划。mode:'global'（所有开启AI规划的植物）或'single'（仅指定植物）
+function aiSoilLib(db){return(db.lib.soil||[]).map(s=>({name:s.name,composition:s.composition||'',suitable:s.suitable||'',ph:s.ph||'',drainage:s.drainage||''}));}
 async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
   const today=toDay();
   const targets=db.plants.filter(p=>p.aiEnabled&&plantIds.includes(p.id));
@@ -394,7 +406,7 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
     const res=await fetch(AI_WORKER_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','x-plantlog-key':AI_SHARED_SECRET},
-      body:JSON.stringify({mode,today,plants:plantsPayload,weather,medLib,fertLib}),
+      body:JSON.stringify({mode,today,plants:plantsPayload,weather,medLib,fertLib,soilLib:aiSoilLib(db)}),
     });
     let data=null;
     try{data=await res.json();}catch(e){/* 响应不是合法JSON，走下面兜底提示 */}
@@ -421,7 +433,7 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
           conditions:a.conditions||'',soil:a.soil||'',afterCare:a.afterCare||'',reason:a.reason||'',
         }));
         return{...p,
-          ...(extra?{noteLog:[...(p.noteLog||[]),{date:today,note:'【本次调整意见】'+extra}]}:{}),
+          ...(extra?{noteLog:[...(p.noteLog||[]),{date:today,text:'【本次调整意见】'+extra}]}:{}),
           aiPlan:{
             generatedAt:today,planId:'pl_'+uid(),
             reviewed:false, // v1.47：新计划先进入待审核，用户逐条勾选确认后才接管日历/任务页
@@ -432,7 +444,7 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
               const kept=!!(fb&&(fb.keep||[]).some(k=>k.date===t.date&&k.type===type)); // 第二轮里用户已同意且AI原样保留的任务，继续视为已同意
               return{
                 id:'ai_'+uid(),date:t.date,type,
-                note:t.note||'',reason:t.reason||'',priority:t.priority==='critical'?'critical':'normal',skipped:false,
+                note:t.note||'',reason:t.reason||'',amount:String(t.amount||'').slice(0,60),dilution:type==='fert'?String(t.dilution||'').slice(0,40):'',priority:t.priority==='critical'?'critical':'normal',skipped:false,
                 status:kept?'approved':'pending',
                 fertName:type==='fert'?(t.fertName||''):'', // AI从肥料库里建议的具体产品，仅fert任务可能有
               };
@@ -662,10 +674,20 @@ async function savePhotoToIDB(base64){
   return id;
 }
 
+// v1.49：noteLog的正确格式是{date,text}。v1.44~v1.48里AI相关代码误写/误读成了note字段：①"本次调整意见"和"AI建议已执行"备注写成{date,note}，
+// 界面按text显示就成了空白备注（但日历仍有橙点）②发给AI的笔记按note读，导致你手写的备注（text）发给AI时全是空串。这里把历史数据里的note统一迁移成text
+function normNoteLog(p){
+  if(!p||!Array.isArray(p.noteLog)||!p.noteLog.some(n=>n&&n.text===undefined&&n.note!==undefined))return p;
+  return{...p,noteLog:p.noteLog.map(n=>{
+    if(!n||n.text!==undefined||n.note===undefined)return n;
+    const{note,...rest}=n;
+    return{...rest,text:String(note||'')};
+  })};
+}
 function loadAll(){
   const arc=rLS('plant_archive',{plants:[],batches:[]});
   return{
-    plants: rLS(SK,[]),
+    plants: rLS(SK,[]).map(normNoteLog),
     cats:   rLS('plant_cats',DEFAULT_CATS),
     lib:{fert:rLS('lib_fert',[]),med:rLS('lib_med',[]),soil:rLS('lib_soil',[]),recipe:rLS('lib_recipe',[])},
     archive:{plants:arc.plants||[],batches:arc.batches||[],courses:rLS('course_archive',[])},
@@ -765,7 +787,15 @@ function LogPage({plantId,logType,onClose}){
   const meta=LOG_META[logType];
   const log=plant?.[meta.key]||[];
   const blank=()=>({date:toDay(),note:'',name:'',reason:'',amount:''});
-  const[form,setForm]=useState(blank());
+  // v1.48：AI计划里有对应任务时，把AI建议的肥料/用量/稀释倍数预填进新增记录（只是预填，可以随便改，以你实际填的为准）
+  const aiPre=(logType==='water'||logType==='fert')?aiMatchTask(plant,logType):null;
+  const aiPreUsage=aiPre?aiUsageText(aiPre):'';
+  const[form,setForm]=useState(()=>{
+    const b=blank();
+    if(!aiPre||(!aiPreUsage&&!aiPre.fertName))return b;
+    if(logType==='fert')return{...b,name:aiPre.fertName||'',amount:aiPreUsage};
+    return{...b,note:aiPreUsage?('浇水量：'+aiPreUsage):''};
+  });
   const[editIdx,setEditIdx]=useState(null);
   const[delIdx,setDelIdx]=useState(null);
   const[delAnchorY,setDelAnchorY]=useState(0);
@@ -994,6 +1024,7 @@ function LogPage({plantId,logType,onClose}){
         {/* 表单 */}
         <div className="card" style={{marginBottom:14}}>
           <div style={{fontSize:12,color:'#6a8858',fontWeight:700,marginBottom:10}}>{editIdx!==null?'修改记录':'新增记录'}</div>
+          {editIdx===null&&aiPre&&(aiPreUsage||aiPre.fertName)&&<div style={{fontSize:11,color:'#3a6a8a',background:'rgba(120,160,210,.14)',borderRadius:8,padding:'6px 10px',marginBottom:8,lineHeight:1.6}}>🤖 已按AI计划预填{aiPre.fertName?`【${aiPre.fertName}】`:''}{aiPreUsage?`用量：${aiPreUsage}`:''}——和实际不一样直接改，AI下次规划以你记录的为准</div>}
           <label className="field-label">日期</label>
           <input type="date" key={'date-'+editIdx} className="input" style={{marginBottom:8}} defaultValue={form.date} max={toDay()} onBlur={e=>sf('date',e.target.value)}/>
           {logType==='fert'&&<>
@@ -1441,6 +1472,7 @@ function AiPlanReviewPage({plantId,onBack}){
                       {t.priority==='critical'&&<span style={{fontSize:11,color:'#b85c3c',marginLeft:6}}>⚠️关键</span>}
                       {t.status==='approved'&&<span style={{fontSize:10,color:'#5a9850',marginLeft:6}}>已同意</span>}
                     </div>
+                    {aiUsageText(t)&&<div style={{fontSize:12,color:'#3a6a8a',lineHeight:1.65,marginTop:3}}>用量：{aiUsageText(t)}</div>}
                     {(t.reason||t.note)&&<div style={{fontSize:12,color:'#6a8058',lineHeight:1.65,marginTop:3}}>原因：{t.reason||t.note}</div>}
                     {t.reason&&t.note&&<div style={{fontSize:11,color:'#8a9a78',lineHeight:1.6,marginTop:2}}>{t.note}</div>}
                   </div>
@@ -1565,7 +1597,7 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
       if(p.id!==plantId)return p;
       return{...p,
         aiAdvisories:(p.aiAdvisories||[]).map(x=>x.id===id?{...x,status,resolvedAt:toDay()}:x),
-        noteLog:[...(p.noteLog||[]),{date:toDay(),note:`【AI建议「${a.title}」${status==='done'?'已执行':'暂不执行/推迟'}】${txt}`}],
+        noteLog:[...(p.noteLog||[]),{date:toDay(),text:`【AI建议「${a.title}」${status==='done'?'已执行':'暂不执行/推迟'}】${txt}`}],
       };
     })}));
     setAdvNote(v=>({...v,[id]:''}));
@@ -1809,6 +1841,7 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
                       {done&&aiTaskApproved(t)&&<span style={{fontSize:10,color:'#5a9850',whiteSpace:'nowrap'}}>✓已完成</span>}
                       {overdue&&<span style={{fontSize:10,color:'#b85c3c',whiteSpace:'nowrap'}}>逾期</span>}
                       {t.fertName&&<span style={{fontSize:10,color:'#5a7a40',whiteSpace:'nowrap',background:'rgba(120,180,100,.15)',borderRadius:6,padding:'1px 5px'}}>{t.fertName}</span>}
+                      {aiUsageText(t)&&<span style={{fontSize:10,color:'#3a6a8a',whiteSpace:'nowrap'}}>{aiUsageText(t)}</span>}
                       {(t.reason||t.note)&&<span style={{fontSize:11,color:'#8898a8',marginLeft:'auto',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis'}}>{t.reason||t.note}</span>}
                     </div>
                   );
@@ -2997,8 +3030,35 @@ function buildDotMap(plants){
 // ═══════════════════════════════════════════════
 // 日历 Tab 组件
 // ═══════════════════════════════════════════════
+// ── v1.50：AI计划到期提醒卡片（任务页今/明/后/大后天/逾期列表里） ──
+function AiPlanExpiryChip({t}){
+  const{db,updateDb,toast,navToPlant}=useApp();
+  const[busy,setBusy]=useState(false);
+  const p=t.plant;
+  const expired=t.left<0;
+  const when=expired?`已到期 ${-t.left} 天`:t.left===0?'今天是最后有效日':`还有 ${t.left} 天到期`;
+  async function replan(e){
+    e.stopPropagation();
+    if(busy)return;
+    setBusy(true);
+    const ok=await runAiPlan({mode:'single',plantIds:[p.id],db,updateDb,toast});
+    setBusy(false);
+    if(ok)navToPlant(p.id,'calendar',undefined,true); // 生成成功后直接进审核页
+  }
+  return <div style={{display:'flex',alignItems:'center',gap:8,background:expired?'rgba(255,235,225,.8)':'rgba(235,242,255,.8)',borderRadius:12,padding:'10px 12px',border:'1px solid '+(expired?'rgba(220,120,80,.45)':'rgba(120,150,210,.4)')}}>
+    <span style={{fontSize:18}}>🤖</span>
+    <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>navToPlant(p.id,'calendar')}>
+      <div style={{fontSize:14,fontWeight:600,color:'#2e4a22',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}{p.variety?' · '+p.variety:''}</div>
+      <div style={{fontSize:11,color:expired?'#c05020':'#4a6a98',fontWeight:600}}>AI护理计划{when}（有效至 {fmtDate(t.validUntil)}）</div>
+      <div style={{fontSize:11,color:'#7a8aa0',marginTop:2,lineHeight:1.5}}>{expired?'已退回按浇水/施肥间隔机械提醒，建议尽快重新规划':'请在到期前更新计划，更新后需逐条审核才生效'}</div>
+    </div>
+    <button disabled={busy} onClick={replan}
+      style={{padding:'5px 12px',borderRadius:20,cursor:busy?'default':'pointer',fontFamily:'inherit',fontSize:12,fontWeight:600,background:'rgba(90,130,200,.9)',border:'none',color:'white',whiteSpace:'nowrap',opacity:busy?.6:1}}>{busy?'规划中…':'重新规划'}</button>
+  </div>;
+}
+
 function CalendarTab(){
-  const{db,updateDb,toast}=useApp();
+  const{db,updateDb,toast,setTab}=useApp();
   const today=toDay();
   const todayD=new Date();todayD.setHours(0,0,0,0);
 
@@ -3269,10 +3329,10 @@ function CalendarTab(){
           const tdy=toDay();
           const open=aiApprovedTasks(p).filter(t=>t.type===type&&!t.skipped&&!aiTaskCompleted(p,t));
           const pastOpen=open.filter(t=>t.date<tdy).sort((a,b)=>b.date.localeCompare(a.date));
-          if(pastOpen.length)overdue.push({type,plant:p,overdueDays:daysDiff(pastOpen[0].date,tdy),aiReason:pastOpen[0].reason||pastOpen[0].note||'',fertName:pastOpen[0].fertName||''});
+          if(pastOpen.length)overdue.push({type,plant:p,overdueDays:daysDiff(pastOpen[0].date,tdy),aiReason:pastOpen[0].reason||pastOpen[0].note||'',fertName:pastOpen[0].fertName||'',usage:aiUsageText(pastOpen[0])});
           open.filter(t=>t.date>=tdy).forEach(t=>{
             const d=daysDiff(tdy,t.date);
-            const item={type,plant:p,aiReason:t.reason||t.note||'',fertName:t.fertName||''};
+            const item={type,plant:p,aiReason:t.reason||t.note||'',fertName:t.fertName||'',usage:aiUsageText(t)};
             if(d===0)todayT.push(item);else if(d===1)soon1.push(item);else if(d===2)soon2.push(item);else if(d===3)soon3.push(item);
           });
           return;
@@ -3330,6 +3390,21 @@ function CalendarTab(){
         else if(due===3)soon3.push(task);
       });
     });
+  // v1.50：AI计划即将到期/已到期提醒。提醒日=计划最后有效日(validUntil)往前推AI_PLAN_EXPIRY_LEAD_DAYS天；
+    // 提醒日之前3天内按"明天/后天/大后天"预告，到了提醒日起每天出现在"今天"，到期后进"逾期未做"（到期后该植物会退回按wi/fi间隔推算提醒，所以要尽早更新）。
+    // 已有一版待审核的新计划时不提醒（说明已经更新过了，审核提示条会提醒你确认）
+    const tdyE=toDay();
+    db.plants.forEach(p=>{
+      if(!p.aiEnabled||!p.aiPlan||!p.aiPlan.validUntil||aiPlanNeedsReview(p))return;
+      const left=daysDiff(tdyE,p.aiPlan.validUntil); // 距最后有效日还有几天，<0=已到期
+      const item={type:'aiplan',plant:p,left,validUntil:p.aiPlan.validUntil};
+      if(left<0){overdue.push({...item,overdueDays:-left});return;}
+      const dueIn=left-AI_PLAN_EXPIRY_LEAD_DAYS; // 距提醒日还有几天
+      if(dueIn<=0)todayT.push(item);
+      else if(dueIn===1)soon1.push(item);
+      else if(dueIn===2)soon2.push(item);
+      else if(dueIn===3)soon3.push(item);
+    });
     overdue.sort((a,b)=>b.overdueDays-a.overdueDays);
     return{overdue,todayT,soon1,soon2,soon3,unlogged,paused};
   }
@@ -3349,7 +3424,13 @@ function CalendarTab(){
       if(p.id!==pid)return p;
       const key=type==='water'?'waterLog':'fertLog';
       const pauseKey=type==='water'?'waterPause':'fertPause';
-      const arr=[...(p[key]||[]),{date:toDay(),note:''}];
+      // v1.48：AI计划里有对应任务时，快捷记录带上AI建议的肥料/用量，并标注"按AI计划"（想改实际用量，到记录页修改这条）
+      const mt=aiMatchTask(p,type);
+      const us=mt?aiUsageText(mt):'';
+      const rec=type==='fert'&&mt&&(mt.fertName||us)
+        ?{date:toDay(),name:mt.fertName||'',amount:us,note:'按AI计划'}
+        :type==='water'&&us?{date:toDay(),note:'按AI计划，浇水量：'+us}:{date:toDay(),note:''};
+      const arr=[...(p[key]||[]),rec];
       arr.sort((a,b)=>a.date.localeCompare(b.date));
       return{...p,[key]:arr,[pauseKey]:null}; // 记录操作自动解除暂停
     })}));
@@ -3393,6 +3474,7 @@ function CalendarTab(){
   }
 
   function TaskChip({t,showOverdue}){
+    if(t.type==='aiplan')return <AiPlanExpiryChip t={t}/>;
     const isMed=t.type==='med';
     return <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.65)',borderRadius:12,padding:'10px 12px',border:'1px solid rgba(150,185,130,0.3)'}}>
       <span style={{fontSize:18}}>{TYPE_ICON[t.type]}</span>
@@ -3402,7 +3484,7 @@ function CalendarTab(){
           ?<div style={{fontSize:11,color:'#c05020',fontWeight:600}}>逾期 {t.overdueDays} 天</div>
           :<div style={{fontSize:11,color:'#7a9060'}}>{isMed&&t.course?t.course.drugName:TYPE_LABEL[t.type]}</div>
         }
-        {(t.fertName||t.aiReason)&&<div style={{fontSize:11,color:'#6a8a9a',marginTop:2,lineHeight:1.5}}>🤖 {t.fertName?`【${t.fertName}】`:''}{t.aiReason}</div>}
+        {(t.fertName||t.aiReason||t.usage)&&<div style={{fontSize:11,color:'#6a8a9a',marginTop:2,lineHeight:1.5}}>🤖 {t.fertName?`【${t.fertName}】`:''}{t.usage?`用量：${t.usage}。`:''}{t.aiReason}</div>}
       </div>
       <div style={{display:'flex',gap:5}}>
         {!isMed&&<button onClick={()=>window.__showPauseMenu(t.plant.id,t.type,t.plant.name)}
@@ -3434,6 +3516,9 @@ function CalendarTab(){
   const advWindow=[];
   db.plants.forEach(p=>(p.aiAdvisories||[]).forEach(a=>{
     if(a.status==='adopted'&&(!a.windowEnd||a.windowEnd>=toDay())&&(!a.windowStart||a.windowStart<=addDays(toDay(),14)))advWindow.push({plant:p,adv:a});
+  }));
+  (db.prop||[]).forEach(b=>(b.aiAdvisories||[]).forEach(a=>{
+    if(a.status==='adopted'&&(!a.windowEnd||a.windowEnd>=toDay())&&(!a.windowStart||a.windowStart<=addDays(toDay(),14)))advWindow.push({batch:b,adv:a});
   }));
   const d1=new Date(todayD);d1.setDate(d1.getDate()+1);
   const d2=new Date(todayD);d2.setDate(d2.getDate()+2);
@@ -3543,8 +3628,8 @@ function CalendarTab(){
         </div>}
         {advWindow.length>0&&<div style={{marginBottom:14,padding:'10px 12px',borderRadius:12,background:'rgba(230,246,238,.85)',border:'1px solid rgba(90,160,120,.4)'}}>
           <div style={{fontSize:12,fontWeight:700,color:'#2a5a48',marginBottom:6}}>🪴 AI建议窗口（做不做、何时做由你决定）</div>
-          {advWindow.map((x,i)=><div key={i} style={{fontSize:12,color:'#3a6a55',lineHeight:1.7,cursor:'pointer'}} onClick={()=>navToPlant(x.plant.id,'calendar')}>
-            {x.plant.name}：{x.adv.title}（{x.adv.windowStart?fmtDate(x.adv.windowStart):'现在起'} ~ {x.adv.windowEnd?fmtDate(x.adv.windowEnd):'视情况'}）
+          {advWindow.map((x,i)=><div key={i} style={{fontSize:12,color:'#3a6a55',lineHeight:1.7,cursor:'pointer'}} onClick={()=>x.plant?navToPlant(x.plant.id,'calendar'):setTab('breeding')}>
+            {x.plant?x.plant.name:('🌱'+(x.batch.parentName||'繁育批次'))}：{x.adv.title}{x.batch&&x.adv.appliesTo?`（${BATCH_APPLIES[x.adv.appliesTo]||''}）`:''}（{x.adv.windowStart?fmtDate(x.adv.windowStart):'现在起'} ~ {x.adv.windowEnd?fmtDate(x.adv.windowEnd):'视情况'}）
           </div>)}
         </div>}
 
@@ -3722,6 +3807,67 @@ function SeedlingNoteTextarea({note,onSave}){
     onBlur={e=>onSave(e.target.value)}/>;
 }
 
+// ── v1.48：繁育批次（毕业前）AI建议窗口：整批一份，按幼苗状态（等待中/已成活/失败）区分说明；不排浇水施肥任务 ──
+function aiBatchPayload(b,db,today,feedbackText){
+  const sl=(b.seedlings||[]).filter(s=>!s.graduated);
+  const by=st=>sl.filter(s=>s.status===st);
+  const parent=b.parentId?db.plants.find(p=>p.id===b.parentId):null;
+  const cut=(s,n)=>String(s||'').slice(0,n);
+  return{
+    method:b.method,parentName:b.parentName||'',
+    parent:parent?{name:parent.name,variety:parent.variety||'',category:parent.category||''}:null,
+    date:b.date,daysSinceOp:b.date?daysSince(b.date):null,medium:b.medium||'',note:cut(b.note,200),
+    successLabel:getSuccessLabel(b),total:b.total||0,
+    counts:{waiting:by('waiting').length,success:by('success').length,failed:by('fail').length,graduated:(b.seedlings||[]).filter(s=>s.graduated).length},
+    groups:{
+      success:by('success').map(s=>({label:s.label,successDate:s.successDate||'',...(s.note?{note:cut(s.note,60)}:{})})),
+      waiting:{count:by('waiting').length},
+      failed:by('fail').map(s=>({label:s.label,...(s.note?{note:cut(s.note,60)}:{})})),
+    },
+    userLog:(b.aiLog||[]).slice(-10),
+    advisoryHistory:(b.aiAdvisories||[]).filter(a=>a.status!=='pending').map(a=>({title:a.title,appliesTo:a.appliesTo,status:a.status,windowStart:a.windowStart||'',windowEnd:a.windowEnd||''})),
+    ...(feedbackText?{reviewFeedback:{general:feedbackText}}:{}),
+  };
+}
+async function runAiBatchPlan({batch,db,updateDb,toast,feedbackText}){
+  const today=toDay();
+  toast.show('🤖 正在生成批次建议…');
+  let weather={series:[]};
+  try{weather=await fetchAiWeatherContext();}catch(e){}
+  try{
+    const res=await fetch(AI_WORKER_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-plantlog-key':AI_SHARED_SECRET},
+      body:JSON.stringify({mode:'batch',today,batch:aiBatchPayload(batch,db,today,feedbackText),weather,soilLib:aiSoilLib(db)}),
+    });
+    let data=null;
+    try{data=await res.json();}catch(e){}
+    if(!res.ok){
+      const detail=data&&(data.error||data.detail);
+      throw new Error('HTTP '+res.status+(detail?`：${typeof detail==='string'?detail:JSON.stringify(detail).slice(0,200)}`:''));
+    }
+    const plan=data&&data.batchPlan;
+    if(!plan||!Array.isArray(plan.advisories))throw new Error('返回结果格式不对');
+    updateDb(prev=>({...prev,prop:prev.prop.map(b=>{
+      if(b.id!==batch.id)return b;
+      const kept=(b.aiAdvisories||[]).filter(a=>a.status!=='pending');
+      const fresh=plan.advisories.filter(a=>a&&a.title&&!kept.some(k=>k.title===a.title)).map(a=>({
+        id:'aibadv_'+uid(),status:'pending',title:a.title,kind:a.kind||'other',
+        appliesTo:['waiting','success','failed','all'].includes(a.appliesTo)?a.appliesTo:'all',
+        windowStart:a.windowStart||'',windowEnd:a.windowEnd||'',
+        conditions:a.conditions||'',soil:a.soil||'',afterCare:a.afterCare||'',reason:a.reason||'',
+      }));
+      return{...b,aiAdvisories:[...kept,...fresh],aiSummary:plan.summary||'',aiPlannedAt:today};
+    })}));
+    toast.show(`✅ 已生成${plan.advisories.length}条批次建议，请审核`);
+    return true;
+  }catch(e){
+    toast.show('⚠️ 批次建议生成失败：'+e.message);
+    return false;
+  }
+}
+const BATCH_APPLIES={waiting:'⏳ 等待中的苗',success:'✅ 已成活的苗',failed:'❌ 失败的苗',all:'🌱 整批'};
+
 function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
   const{db,updateDb,toast}=useApp();
   const batch=db.prop.find(b=>b.id===batchId);
@@ -3731,6 +3877,9 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
   const[datePickIdx,setDatePickIdx]=useState(null); // 正在选日期的幼苗 idx
   const[datePickVal,setDatePickVal]=useState(toDay());
   const[datePickAnchorY,setDatePickAnchorY]=useState(0);
+  const[aiBusy,setAiBusy]=useState(false);
+  const[aiFeedback,setAiFeedback]=useState('');
+  const[advNote,setAdvNote]=useState({});
   useEffect(()=>{window.scrollTo(0,0)},[]);
   useSwipeBack(onClose);
 
@@ -3822,6 +3971,29 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
     toast.show('🗑 已删除');onClose();
   }
 
+  async function genAi(withFeedback){
+    if(aiBusy)return;
+    setAiBusy(true);
+    const ok=await runAiBatchPlan({batch,db,updateDb,toast,feedbackText:withFeedback?aiFeedback.trim():''});
+    if(ok&&withFeedback)setAiFeedback('');
+    setAiBusy(false);
+  }
+  function setAdvStatus(id,status){
+    updateDb(prev=>({...prev,prop:prev.prop.map(b=>b.id!==batchId?b:{...b,aiAdvisories:(b.aiAdvisories||[]).map(a=>a.id===id?{...a,status,resolvedAt:status==='adopted'||status==='ignored'?a.resolvedAt:toDay()}:a)})}));
+  }
+  // 做完/推迟：把实际情况记进批次的AI笔记，下次规划AI会读到
+  function resolveAdv(id,status){
+    const a=(batch.aiAdvisories||[]).find(x=>x.id===id);
+    if(!a)return;
+    const txt=(advNote[id]||'').trim();
+    updateDb(prev=>({...prev,prop:prev.prop.map(b=>b.id!==batchId?b:{...b,
+      aiAdvisories:(b.aiAdvisories||[]).map(x=>x.id===id?{...x,status,resolvedAt:toDay()}:x),
+      aiLog:[...(b.aiLog||[]),{date:toDay(),note:`【AI建议「${a.title}」${status==='done'?'已执行':'暂不执行/推迟'}】${txt}`}],
+    })}));
+    setAdvNote(v=>({...v,[id]:''}));
+    toast.show(status==='done'?'✅ 已记下，重新规划时AI会参考':'📝 已记下');
+  }
+
   // 建卡：跳转到植物表单页
   function graduateBatch(){
     const isCutting=['cutting','graft','division','layering'].includes(batch.method);
@@ -3903,6 +4075,55 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
           {batch.note&&<div style={{fontSize:12,color:'#7a9060',marginTop:4}}>📝 {batch.note}</div>}
           {linkedPlants.length>0&&<div style={{marginTop:8,display:'flex',gap:5,flexWrap:'wrap'}}>
             {linkedPlants.map(p=><span key={p.id} style={{fontSize:11,background:'rgba(165,195,220,0.25)',color:'#384a68',borderRadius:8,padding:'2px 8px'}}>🪴 {p.name}</span>)}
+          </div>}
+        </div>
+
+        {/* AI建议窗口（整批一份，按幼苗状态区分） */}
+        <div className="card" style={{background:'rgba(235,245,255,.7)',border:'1px solid rgba(120,160,210,.35)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+            <div style={{fontSize:12,fontWeight:700,color:'#2a4a78',flex:1}}>🤖 AI建议窗口（做不做、何时做由你决定）</div>
+            <button disabled={aiBusy} onClick={()=>genAi(false)} style={{padding:'5px 10px',borderRadius:8,fontFamily:'inherit',fontSize:11,fontWeight:700,cursor:aiBusy?'default':'pointer',opacity:aiBusy?.6:1,background:'rgba(90,130,200,.88)',border:'1px solid rgba(60,100,170,.6)',color:'#fff'}}>
+              {aiBusy?'生成中…':((batch.aiAdvisories||[]).length?'🔄 重新生成':'✨ 生成建议')}
+            </button>
+          </div>
+          {batch.aiSummary&&<div style={{fontSize:12,color:'#4a6a88',lineHeight:1.65,marginBottom:6}}>{batch.aiSummary}</div>}
+          {(batch.aiAdvisories||[]).filter(a=>a.status==='pending').map(a=>(
+            <div key={a.id} style={{background:'rgba(255,255,255,.75)',border:'1px dashed rgba(200,140,60,.55)',borderRadius:8,padding:'8px 10px',marginBottom:8}}>
+              <div style={{fontSize:11,color:'#c07020',marginBottom:2}}>待审核 · {BATCH_APPLIES[a.appliesTo]||'整批'}</div>
+              <div style={{fontSize:13,fontWeight:700,color:'#2a4a78'}}>{a.title}</div>
+              {(a.windowStart||a.windowEnd)&&<div style={{fontSize:12,color:'#4a6a88',marginTop:2}}>建议窗口：{a.windowStart?fmtDate(a.windowStart):'现在起'} ~ {a.windowEnd?fmtDate(a.windowEnd):'视情况'}</div>}
+              {a.conditions&&<div style={{fontSize:12,color:'#5a7a88',lineHeight:1.6,marginTop:2}}>满足条件：{a.conditions}</div>}
+              {a.soil&&<div style={{fontSize:12,color:'#5a7a88',lineHeight:1.6,marginTop:2}}>用土/介质：{a.soil}</div>}
+              {a.afterCare&&<div style={{fontSize:12,color:'#5a7a88',lineHeight:1.6,marginTop:2}}>之后怎么养：{a.afterCare}</div>}
+              {a.reason&&<div style={{fontSize:12,color:'#7a8a98',lineHeight:1.6,marginTop:2}}>原因：{a.reason}</div>}
+              <div style={{display:'flex',gap:6,marginTop:6}}>
+                <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:'rgba(90,160,90,.88)',border:'1px solid rgba(60,130,60,.6)',color:'#fff'}} onClick={()=>setAdvStatus(a.id,'adopted')}>✓ 采纳</button>
+                <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:12,cursor:'pointer',fontFamily:'inherit',background:'rgba(180,190,200,.3)',border:'1px solid rgba(150,160,170,.4)',color:'#5a6a78'}} onClick={()=>setAdvStatus(a.id,'ignored')}>不采纳</button>
+              </div>
+            </div>
+          ))}
+          {(batch.aiAdvisories||[]).filter(a=>a.status==='adopted').map(a=>(
+            <div key={a.id} style={{background:'rgba(235,248,240,.85)',border:'1px solid rgba(90,160,120,.35)',borderRadius:8,padding:'8px 10px',marginBottom:8}}>
+              <div style={{fontSize:11,color:'#3a7a58',marginBottom:2}}>已采纳 · {BATCH_APPLIES[a.appliesTo]||'整批'}</div>
+              <div style={{fontSize:13,fontWeight:700,color:'#2a5a48'}}>{a.title}</div>
+              {(a.windowStart||a.windowEnd)&&<div style={{fontSize:12,color:'#4a7a60',marginTop:2}}>建议窗口：{a.windowStart?fmtDate(a.windowStart):'现在起'} ~ {a.windowEnd?fmtDate(a.windowEnd):'视情况'}</div>}
+              {a.conditions&&<div style={{fontSize:12,color:'#5a7a68',lineHeight:1.6,marginTop:2}}>满足条件：{a.conditions}</div>}
+              {a.soil&&<div style={{fontSize:12,color:'#5a7a68',lineHeight:1.6,marginTop:2}}>用土/介质：{a.soil}</div>}
+              {a.afterCare&&<div style={{fontSize:12,color:'#5a7a68',lineHeight:1.6,marginTop:2}}>之后怎么养：{a.afterCare}</div>}
+              {a.reason&&<div style={{fontSize:12,color:'#7a9080',lineHeight:1.6,marginTop:2}}>原因：{a.reason}</div>}
+              <textarea className="input" style={{marginTop:6,minHeight:44,fontSize:12}} placeholder="实际怎么做的/有什么想法（会记下来，AI重新规划时参考）"
+                value={advNote[a.id]||''} onChange={e=>setAdvNote(v=>({...v,[a.id]:e.target.value}))}/>
+              <div style={{display:'flex',gap:6,marginTop:6}}>
+                <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:'rgba(90,160,90,.85)',border:'1px solid rgba(60,130,60,.6)',color:'#fff'}} onClick={()=>resolveAdv(a.id,'done')}>已执行</button>
+                <button style={{flex:1,padding:'5px 0',borderRadius:8,fontSize:12,cursor:'pointer',fontFamily:'inherit',background:'rgba(180,190,200,.3)',border:'1px solid rgba(150,160,170,.4)',color:'#5a6a78'}} onClick={()=>resolveAdv(a.id,'postponed')}>暂不做/推迟</button>
+              </div>
+            </div>
+          ))}
+          {(batch.aiAdvisories||[]).length===0&&!aiBusy&&<div style={{fontSize:12,color:'#8aa0b8',lineHeight:1.6}}>点「生成建议」，AI会按这批苗的繁殖方式、天数、成活/等待/失败情况，预判检查、炼苗、上盆、移栽、毕业等窗口。</div>}
+          {(batch.aiAdvisories||[]).length>0&&<div style={{marginTop:4}}>
+            <textarea className="input" style={{minHeight:44,fontSize:12}} placeholder="对建议有意见？写下来，让AI按你的意见重新规划（已采纳/已执行的会保留）"
+              value={aiFeedback} onChange={e=>setAiFeedback(e.target.value)}/>
+            <button disabled={aiBusy||!aiFeedback.trim()} onClick={()=>genAi(true)} style={{marginTop:6,width:'100%',padding:'6px 0',borderRadius:8,fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:(aiBusy||!aiFeedback.trim())?'default':'pointer',opacity:(aiBusy||!aiFeedback.trim())?.45:1,background:'rgba(90,130,200,.88)',border:'1px solid rgba(60,100,170,.6)',color:'#fff'}}>🔄 按意见重新规划</button>
           </div>}
         </div>
 
@@ -5088,7 +5309,7 @@ function InventoryTab(){
           const migratedPlants=res[0];
           const migratedArchivePlants=res[1];
           updateDb(function(prev){return{
-            plants:migratedPlants,
+            plants:migratedPlants.map(normNoteLog),
             cats:data.cats||DEFAULT_CATS,
             catOrder:data.catOrder||prev.catOrder||{},
             lib:{fert:data.fert||[],med:data.med||[],soil:data.soil||[],recipe:data.recipe||[]},
