@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.52';
+const APP_VERSION='v1.54';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -445,6 +445,7 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
         const prevDigest=p.aiNoteDigest||{summary:'',through:''};
         const extra=extraNotes&&extraNotes[p.id]&&extraNotes[p.id].trim();
         const fb=feedback&&feedback[p.id];
+        const genFb=fb&&fb.general?String(fb.general).trim():'';
         // 建议窗口：已采纳/已完成等保留，AI重新给出的待审核建议整体替换（标题重复的跳过）
         const keptAdv=(p.aiAdvisories||[]).filter(a=>a.status!=='pending');
         const newAdv=(plan.advisories||[]).filter(a=>a&&a.title&&!keptAdv.some(k=>k.title===a.title)).map(a=>({
@@ -453,7 +454,10 @@ async function runAiPlan({mode,plantIds,db,updateDb,toast,extraNotes,feedback}){
           conditions:a.conditions||'',soil:a.soil||'',afterCare:a.afterCare||'',reason:a.reason||'',
         }));
         return{...p,
-          ...(extra?{noteLog:[...(p.noteLog||[]),{date:today,text:'【本次调整意见】'+extra}]}:{}),
+          // v1.54：审核页"对整体计划的补充意见"也和旧版调整意见一样，规划成功后写进笔记长期保留（前缀不同：这条不再触发Worker里"本次调整意见"的最高优先级规则，之后由笔记摘要带着走）
+          ...((extra||genFb)?{noteLog:[...(p.noteLog||[]),
+            ...(extra?[{date:today,text:'【本次调整意见】'+extra}]:[]),
+            ...(genFb?[{date:today,text:'【审核计划时的整体意见】'+genFb}]:[])]}:{}),
           aiPlan:{
             generatedAt:today,planId:'pl_'+uid(),
             reviewed:false, // v1.47：新计划先进入待审核，用户逐条勾选确认后才接管日历/任务页
@@ -1570,9 +1574,6 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
   const{db,updateDb,toast}=useApp();
   const plant=db.plants.find(p=>p.id===plantId);
   const[aiSingleLoading,setAiSingleLoading]=useState(false);
-  const[showAiAdjust,setShowAiAdjust]=useState(false);
-  const[aiAdjustNote,setAiAdjustNote]=useState('');
-  const[showAiTasks,setShowAiTasks]=useState(false);
   const[showReview,setShowReview]=useState(!!initialReview);
   const[showAiPage,setShowAiPage]=useState(false);
   const[advNote,setAdvNote]=useState({});
@@ -1684,69 +1685,46 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
 
   if(showReview&&plant.aiPlan)return<AiPlanReviewPage key={plant.aiPlan.planId||'legacy'} plantId={plantId} onBack={closeReview}/>;
 
+  // v1.53：计划已过期或还没生成过时，才需要页面上的"生成/重新生成"按钮；有有效计划时，重新规划统一走逐条审核页底部的按钮
+  const aiPlanExpired=!plant.aiPlan?.validUntil||plant.aiPlan.validUntil<toDay();
   if(showAiPage) return(
     <div className="fullpage">
       <div className="page-header">
         <button className="back-btn" onClick={closeAiPage}>‹</button>
-        <div className="page-header-title">🤖 AI 护理计划<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:15.5}}>{plant.name}</span></div>
+        <div className="page-header-title">🤖 AI 护理计划 · {plant.name}{plant.variety?<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:15.5}}>{plant.variety}</span>:''}</div>
         <div style={{width:28}}/>
       </div>
-      <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
-        {plant.aiEnabled?(
-          <div className="card" style={{borderColor:'rgba(120,150,210,.35)',background:'rgba(220,228,248,.15)'}}>
-          <div style={{fontSize:13.5,fontWeight:700,color:'#2a4a78',marginBottom:6}}>🤖 AI 护理规划</div>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:plant.aiNote?8:0}}>
-            {plant.env?.orientation&&<span style={{fontSize:12.5,background:'rgba(120,150,210,.15)',color:'#2a4a78',borderRadius:8,padding:'2px 8px'}}>🧭 {ORIENTATIONS.find(o=>o.key===plant.env.orientation)?.label||plant.env.orientation}</span>}
-            {plant.env?.potType&&<span style={{fontSize:12.5,background:'rgba(120,150,210,.15)',color:'#2a4a78',borderRadius:8,padding:'2px 8px'}}>{POT_TYPES.find(t=>t.key===plant.env.potType)?.icon||''} {POT_TYPES.find(t=>t.key===plant.env.potType)?.label||plant.env.potType}</span>}
-            {plant.env?.potType==='potted'&&plant.env?.potSize&&<span style={{fontSize:12.5,background:'rgba(120,150,210,.15)',color:'#2a4a78',borderRadius:8,padding:'2px 8px'}}>{POT_SIZES.find(s=>s.key===plant.env.potSize)?.label||plant.env.potSize}</span>}
-          </div>
-          {plant.aiNote&&<div style={{fontSize:14.5,color:'#3a4a68',lineHeight:1.7,whiteSpace:'pre-wrap',marginBottom:8}}>{plant.aiNote}</div>}
+      <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px 40px',display:'flex',flexDirection:'column',gap:18}}>
+        {plant.aiEnabled?(<>
+          {(plant.env?.orientation||plant.env?.potType||plant.aiNote)&&(
+            <div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:plant.aiNote?8:0}}>
+                {plant.env?.orientation&&<span style={{fontSize:12.5,background:'rgba(120,150,210,.15)',color:'#2a4a78',borderRadius:8,padding:'2px 8px'}}>🧭 {ORIENTATIONS.find(o=>o.key===plant.env.orientation)?.label||plant.env.orientation}</span>}
+                {plant.env?.potType&&<span style={{fontSize:12.5,background:'rgba(120,150,210,.15)',color:'#2a4a78',borderRadius:8,padding:'2px 8px'}}>{POT_TYPES.find(t=>t.key===plant.env.potType)?.icon||''} {POT_TYPES.find(t=>t.key===plant.env.potType)?.label||plant.env.potType}</span>}
+                {plant.env?.potType==='potted'&&plant.env?.potSize&&<span style={{fontSize:12.5,background:'rgba(120,150,210,.15)',color:'#2a4a78',borderRadius:8,padding:'2px 8px'}}>{POT_SIZES.find(s=>s.key===plant.env.potSize)?.label||plant.env.potSize}</span>}
+              </div>
+              {plant.aiNote&&<div style={{fontSize:14.5,color:'#3a4a68',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{plant.aiNote}</div>}
+            </div>
+          )}
+
+          {/* 小标题1：计划有效期至 + 逐条计划（默认展开，无收起开关） */}
           {plant.aiPlan?.validUntil
-            ?<div style={{marginBottom:8}}>
-               <div style={{fontSize:12.5,color:'#5a6a88',cursor:'pointer',marginBottom:6}} onClick={()=>setShowAiTasks(v=>!v)}>
-                 📋 计划有效至 {fmtDate(plant.aiPlan.validUntil)}（{(plant.aiPlan.tasks||[]).filter(t=>t.status!=='rejected').length}项任务）{showAiTasks?' ▲收起':' ▼查看清单'}
-               </div>
-               <button style={{width:'100%',padding:'7px 0',borderRadius:10,cursor:'pointer',fontFamily:'inherit',fontSize:13.5,fontWeight:700,
-                 background:aiPlanNeedsReview(plant)?'rgba(230,150,60,.9)':'rgba(120,150,210,.18)',
-                 border:aiPlanNeedsReview(plant)?'1px solid rgba(200,120,30,.7)':'1px solid rgba(120,150,210,.4)',
-                 color:aiPlanNeedsReview(plant)?'#fff':'#2a4a78'}} onClick={openReview}>
-                 {aiPlanNeedsReview(plant)?'📝 这版计划待审核：逐条勾选是否同意':'📝 查看/调整逐条审核'}
-               </button>
-             </div>
-            :<div style={{fontSize:12.5,color:'#9aaa88',marginBottom:8}}>尚未生成AI护理计划</div>}
-          {(plant.aiPlan?.notScheduled||[]).length>0&&(
-            <div style={{marginBottom:8,padding:'6px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
-              <div style={{fontSize:12.5,fontWeight:700,color:'#6a5a78',marginBottom:3}}>🚫 本计划周期未安排的护理及原因</div>
-              {plant.aiPlan.notScheduled.map((n,i)=>(
-                <div key={i} style={{fontSize:12.5,color:'#6a6a88',lineHeight:1.6}}>
-                  {({water:'💧浇水',fert:'🌿施肥',med:'💊给药'})[n.type]||'其他'}
-                  {(n.from||n.until)?`（${n.from?fmtDate(n.from):'即日'} ~ ${n.until?fmtDate(n.until):'计划结束'}）`:''}：{n.reason}
-                </div>
-              ))}
-            </div>
-          )}
-          {(plant.aiPlan?.dropped||[]).length>0&&(
-            <div style={{marginBottom:8,padding:'6px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
-              <div style={{fontSize:12.5,fontWeight:700,color:'#8a5a38',marginBottom:3}}>🧹 新计划清理掉的旧提醒/暂停及原因</div>
-              {plant.aiPlan.dropped.map((n,i)=>(
-                <div key={i} style={{fontSize:12.5,color:'#8a6a58',lineHeight:1.6}}>
-                  {({water:'💧浇水',fert:'🌿施肥',med:'💊给药'})[n.type]||'其他'}{n.originalDate?`（原定${fmtDate(n.originalDate)}）`:''}：{n.reason}
-                </div>
-              ))}
-            </div>
-          )}
-          {showAiTasks&&(plant.aiPlan?.tasks||[]).length>0&&(
-            <div style={{marginBottom:8,maxHeight:380,overflowY:'auto',padding:'4px 10px',background:'rgba(255,255,255,.5)',borderRadius:8}}>
-              {[...plant.aiPlan.tasks].sort((a,b)=>a.date.localeCompare(b.date)||a.type.localeCompare(b.type)).map(t=>{
+            ?<div>
+              <div style={{fontSize:17,fontWeight:800,color:'#2a4a78',marginBottom:8}}>
+                📋 计划有效期至 {fmtDate(plant.aiPlan.validUntil)}
+                <span style={{fontSize:13.5,fontWeight:500,color:'#5a6a88',marginLeft:8}}>（{(plant.aiPlan.tasks||[]).filter(t=>t.status!=='rejected').length}项任务{aiPlanExpired?'，已过期':''}）</span>
+              </div>
+              {(plant.aiPlan.tasks||[]).length===0&&<div style={{fontSize:13.5,color:'#9aaa88'}}>这版计划里没有任务</div>}
+              {[...(plant.aiPlan.tasks||[])].sort((a,b)=>a.date.localeCompare(b.date)||a.type.localeCompare(b.type)).map(t=>{
                 const done=aiTaskCompleted(plant,t);
                 const overdue=!done&&t.date<toDay()&&aiTaskApproved(t);
                 const rejected=t.status==='rejected';
-                const tag=(txt,bg,col)=><span style={{fontSize:11,color:col,background:bg,borderRadius:6,padding:'1px 6px',whiteSpace:'nowrap'}}>{txt}</span>;
+                const tag=(txt,bg,col)=><span style={{fontSize:11.5,color:col,background:bg,borderRadius:6,padding:'1px 6px',whiteSpace:'nowrap'}}>{txt}</span>;
                 return(
-                  <div key={t.id} style={{padding:'6px 0',borderBottom:'1px solid rgba(120,150,210,.15)',opacity:rejected?.5:1}}>
-                    <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:5,textDecoration:rejected?'line-through':'none'}}>
-                      <span style={{fontSize:15.5}}>{t.type==='fert'?'🌿':'💧'}</span>
-                      <span style={{fontSize:14.5,fontWeight:t.priority==='critical'?700:600,color:overdue?'#b85c3c':'#3a4a68'}}>{fmtDate(t.date)}</span>
+                  <div key={t.id} style={{padding:'8px 0',borderBottom:'1px solid rgba(120,150,210,.2)',opacity:rejected?.5:1}}>
+                    <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:6,textDecoration:rejected?'line-through':'none'}}>
+                      <span style={{fontSize:16}}>{t.type==='fert'?'🌿':'💧'}</span>
+                      <span style={{fontSize:15.5,fontWeight:t.priority==='critical'?700:600,color:overdue?'#b85c3c':'#3a4a68'}}>{fmtDate(t.date)}</span>
                       {t.priority==='critical'&&tag('⚠️关键','rgba(230,150,120,.2)','#b85c3c')}
                       {t.status==='pending'&&tag('待审核','rgba(240,190,100,.3)','#a06010')}
                       {rejected&&tag('未采纳','rgba(150,160,170,.25)','#6a7a88')}
@@ -1754,13 +1732,49 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
                       {overdue&&tag('逾期','rgba(230,150,120,.25)','#b85c3c')}
                       {t.fertName&&tag(t.fertName,'rgba(120,180,100,.18)','#4a6a30')}
                     </div>
-                    {aiUsageText(t)&&<div style={{fontSize:12.5,color:'#3a6a8a',marginTop:3,paddingLeft:22,lineHeight:1.6,wordBreak:'break-word'}}>用量：{aiUsageText(t)}</div>}
-                    {(t.reason||t.note)&&<div style={{fontSize:12.5,color:'#7a8aa0',marginTop:2,paddingLeft:22,lineHeight:1.6,wordBreak:'break-word'}}>{t.reason||t.note}</div>}
+                    {aiUsageText(t)&&<div style={{fontSize:13.5,color:'#3a6a8a',marginTop:3,paddingLeft:24,lineHeight:1.65,wordBreak:'break-word'}}>用量：{aiUsageText(t)}</div>}
+                    {(t.reason||t.note)&&<div style={{fontSize:13.5,color:'#6a7a90',marginTop:2,paddingLeft:24,lineHeight:1.65,wordBreak:'break-word'}}>{t.reason||t.note}</div>}
                   </div>
                 );
               })}
             </div>
+            :<div style={{fontSize:14.5,color:'#9aaa88'}}>尚未生成AI护理计划</div>}
+
+          {/* 小标题2：本计划周期未安排的护理及原因 */}
+          {(plant.aiPlan?.notScheduled||[]).length>0&&(
+            <div>
+              <div style={{fontSize:17,fontWeight:800,color:'#2a4a78',marginBottom:8}}>🚫 本计划周期未安排的护理及原因</div>
+              {plant.aiPlan.notScheduled.map((n,i)=>(
+                <div key={i} style={{fontSize:14.5,color:'#5a6078',lineHeight:1.7,padding:'3px 0'}}>
+                  {({water:'💧浇水',fert:'🌿施肥',med:'💊给药'})[n.type]||'其他'}
+                  {(n.from||n.until)?`（${n.from?fmtDate(n.from):'即日'} ~ ${n.until?fmtDate(n.until):'计划结束'}）`:''}：{n.reason}
+                </div>
+              ))}
+            </div>
           )}
+
+          {/* 小标题3：新计划清理掉的旧提醒/暂停及原因 */}
+          {(plant.aiPlan?.dropped||[]).length>0&&(
+            <div>
+              <div style={{fontSize:17,fontWeight:800,color:'#2a4a78',marginBottom:8}}>🧹 新计划清理掉的旧提醒/暂停及原因</div>
+              {plant.aiPlan.dropped.map((n,i)=>(
+                <div key={i} style={{fontSize:14.5,color:'#5a6078',lineHeight:1.7,padding:'3px 0'}}>
+                  {({water:'💧浇水',fert:'🌿施肥',med:'💊给药'})[n.type]||'其他'}{n.originalDate?`（原定${fmtDate(n.originalDate)}）`:''}：{n.reason}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 逐条审核按钮：放在三个小标题内容之后 */}
+          {plant.aiPlan?.validUntil&&(
+            <button style={{width:'100%',padding:'11px 0',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700,
+              background:aiPlanNeedsReview(plant)?'rgba(230,150,60,.9)':'rgba(120,150,210,.18)',
+              border:aiPlanNeedsReview(plant)?'1px solid rgba(200,120,30,.7)':'1px solid rgba(120,150,210,.4)',
+              color:aiPlanNeedsReview(plant)?'#fff':'#2a4a78'}} onClick={openReview}>
+              {aiPlanNeedsReview(plant)?'📝 这版计划待审核：逐条勾选是否同意':'📝 查看/调整逐条审核'}
+            </button>
+          )}
+
           {(plant.aiAdvisories||[]).filter(a=>a.status==='adopted').length>0&&(
             <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:8}}>
               <div style={{fontSize:12.5,fontWeight:700,color:'#2a5a48'}}>🪴 AI建议窗口（已采纳，做不做、何时做由你决定）</div>
@@ -1782,6 +1796,7 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
               ))}
             </div>
           )}
+
           {(plant.aiCourseDrafts||[]).length>0&&(
             <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:8}}>
               <div style={{fontSize:12.5,fontWeight:700,color:'#7a3018'}}>💊 AI建议的预防性用药（待确认）</div>
@@ -1802,35 +1817,24 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
               ))}
             </div>
           )}
-          {plant.aiPlan?.validUntil&&(
-            <div style={{marginBottom:8}}>
-              <div style={{fontSize:12.5,color:'#5a7a40',cursor:'pointer'}} onClick={()=>setShowAiAdjust(v=>!v)}>
-                {showAiAdjust?'▲收起':'✏️ 对这版计划有意见？点此写调整意见'}
-              </div>
-              {showAiAdjust&&(
-                <textarea className="input" style={{marginTop:6,minHeight:60,fontSize:14.5}}
-                  placeholder="比如：浇水间隔感觉偏短，请拉长一些；或者刚才建议的药不太合适，换一种"
-                  value={aiAdjustNote} onChange={e=>setAiAdjustNote(e.target.value)}/>
-              )}
-            </div>
+
+          {/* 仅当还没生成过计划、或计划已过期时才出现；有有效计划时，重新规划/提意见统一在逐条审核页 */}
+          {aiPlanExpired&&(
+            <button
+              disabled={aiSingleLoading}
+              style={{width:'100%',padding:'11px 0',borderRadius:12,cursor:aiSingleLoading?'default':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700,
+                background:aiSingleLoading?'rgba(180,190,200,.3)':'rgba(90,130,200,.85)',border:'1px solid rgba(60,100,170,.6)',color:'#fff',opacity:aiSingleLoading?.6:1}}
+              onClick={async()=>{
+                setAiSingleLoading(true);
+                await runAiPlan({mode:'single',plantIds:[plant.id],db,updateDb,toast});
+                setAiSingleLoading(false);
+              }}>
+              {aiSingleLoading?'🤖 规划中…':(plant.aiPlan?.validUntil?'🔄 重新生成AI护理计划':'🤖 生成AI护理计划')}
+            </button>
           )}
-          <button
-            disabled={aiSingleLoading}
-            style={{width:'100%',padding:'8px 0',borderRadius:10,cursor:aiSingleLoading?'default':'pointer',fontFamily:'inherit',fontSize:13.5,fontWeight:700,
-              background:aiSingleLoading?'rgba(180,190,200,.3)':'rgba(90,130,200,.85)',border:'1px solid rgba(60,100,170,.6)',color:'#fff',opacity:aiSingleLoading?.6:1}}
-            onClick={async()=>{
-              setAiSingleLoading(true);
-              const note=aiAdjustNote.trim();
-              await runAiPlan({mode:'single',plantIds:[plant.id],db,updateDb,toast,extraNotes:note?{[plant.id]:note}:undefined});
-              setAiSingleLoading(false);
-              setAiAdjustNote('');setShowAiAdjust(false);
-            }}>
-            {aiSingleLoading?'🤖 规划中…':(aiAdjustNote.trim()?'🔄 按调整意见重新规划':'🔄 立即重新规划')}
-          </button>
-        </div>
-        ):(
+        </>):(
           <div className="card" style={{textAlign:'center',padding:'22px 16px'}}>
-            <div style={{fontSize:35,marginBottom:8}}>🤖</div>
+            <div style={{fontSize:32,marginBottom:8}}>🤖</div>
             <div style={{fontSize:15.5,color:'#4a6a38',fontWeight:600,marginBottom:6}}>这株植物还没有开启AI护理规划</div>
             <div style={{fontSize:13.5,color:'#7a9060',lineHeight:1.7,marginBottom:14}}>开启后可以生成未来3个月的具体日期护理计划。到「编辑 → AI规划」里打开开关，并补充朝向、栽种方式等信息，计划会更准。</div>
             <button className="btn btn-green" style={{padding:'9px 20px',fontSize:14.5}} onClick={()=>onEdit(plant)}>✏️ 去编辑页开启</button>
