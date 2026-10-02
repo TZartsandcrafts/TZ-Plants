@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.54';
+const APP_VERSION='v1.55';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -1478,7 +1478,7 @@ function AiPlanReviewPage({plantId,onBack}){
     <div className="fullpage">
       <div className="page-header">
         <button className="back-btn" onClick={onBack}>‹</button>
-        <div className="page-header-title">📝 审核AI计划 · {plant.name}</div>
+        <div className="page-header-title">📝 审核AI计划 · {plant.name}{plant.variety?<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:15.5}}>{plant.variety}</span>:''}</div>
         <div style={{width:60}}/>
       </div>
       <div style={{maxWidth:460,margin:'0 auto',padding:'12px 16px 40px'}}>
@@ -2357,12 +2357,12 @@ function PlantForm({initPlant,onClose}){
     <div className="fullpage">
       <div className="page-header">
         <button className="back-btn" onClick={onClose}>‹</button>
-        <div className="page-header-title">{isEdit?`✏️ 编辑：${initPlant.name}`:'🌱 添加植物'}</div>
+        <div className="page-header-title">{isEdit?<>✏️ 编辑：{initPlant.name}{initPlant.variety?<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:15.5}}>{initPlant.variety}</span>:''}</>:'🌱 添加植物'}</div>
       </div>
       <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
         {/* tab 切换 */}
         <div style={{background:'rgba(255,255,255,0.55)',border:'1px solid rgba(150,185,130,0.4)',borderRadius:14,padding:'13px 14px'}}>
-          <div style={{fontSize:13.5,color:'#4a6a38',marginBottom:10,fontWeight:700}}>{isEdit?`编辑：${form.name}`:'添加新植物'}</div>
+          <div style={{fontSize:13.5,color:'#4a6a38',marginBottom:10,fontWeight:700}}>{isEdit?`编辑：${form.name}${form.variety?' '+form.variety:''}`:'添加新植物'}</div>
           <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
             {[['basic','基本信息'],['growth','生长档案'],['care','护理周期'],['ai','🤖 AI规划']].map(([k,l])=>(
               <button key={k} style={tabStyle(formTab===k)} onClick={()=>setFormTab(k)}>{l}</button>
@@ -4146,11 +4146,13 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
 
   const linkedPlants=(batch.batchPlantIds||[batch.batchPlantId].filter(Boolean)).map(pid=>db.plants.find(p=>p.id===pid)||db.archive?.plants?.find(p=>p.id===pid)).filter(Boolean);
 
+  // v1.55：标题里的母株名称带品种；关联了母株植物卡的取卡片最新的名称+品种，没关联的用批次里记录的名称
+  const hdrParent=(()=>{const pp=batch.parentId?db.plants.find(p=>p.id===batch.parentId):null;return pp?pp.name+(pp.variety?' '+pp.variety:''):(batch.parentName||'未命名');})();
   return(
     <div className="fullpage">
       <div className="page-header">
         <button className="back-btn" onClick={onClose}>‹</button>
-        <div className="page-header-title">{method.icon} {batch.parentName||'未命名'} · {method.label}</div>
+        <div className="page-header-title">{method.icon} {hdrParent} · {method.label}</div>
         <div style={{display:'flex',gap:5,flexShrink:0}}>
           {linkedPlants.length>0&&<button className="btn btn-gray" style={{padding:'5px 9px',fontSize:12.5,lineHeight:1.2}} onClick={graduateBatch}>🌿 再次建卡 ({linkedPlants.length})</button>}
           <button className="btn btn-gray" style={{padding:'5px 10px',fontSize:13.5}} onClick={()=>onEdit(batch)}>✏️</button>
