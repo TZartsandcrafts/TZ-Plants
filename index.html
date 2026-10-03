@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.55';
+const APP_VERSION='v1.56';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -738,6 +738,7 @@ function loadAll(){
     lib:{fert:rLS('lib_fert',[]),med:rLS('lib_med',[]),soil:rLS('lib_soil',[]),recipe:rLS('lib_recipe',[])},
     archive:{plants:arc.plants||[],batches:arc.batches||[],courses:rLS('course_archive',[])},
     prop:   rLS('lib_prop',[]),
+    ledger: rLS('plant_ledger',{linkedCats:[],sold:[],entries:[]}),   // v1.56 售出记账：关联分类/已售植物/其他收支
     catOrder: rLS('plant_cat_order',{}),
     aiLastGlobalPlan: rLS('plant_ai_last_global',null),   // 上次"全局AI规划"日期，用于App打开自动检查
     aiLastPromptDate: rLS('plant_ai_last_prompt',null),   // 上次弹出"是否重新规划"提示条的日期，避免同日重复打扰
@@ -758,6 +759,7 @@ function saveAll(db){
     batches:db.archive?.batches||[],
   });
   wLS('lib_prop',db.prop);
+  {const l=getLedger(db);wLS('plant_ledger',{...l,sold:l.sold.map(r=>({...r,plant:stripPhoto(r.plant)}))});}
   wLS('plant_cat_order',db.catOrder||{});
   wLS('plant_ai_last_global',db.aiLastGlobalPlan||null);
   wLS('plant_ai_last_prompt',db.aiLastPromptDate||null);
@@ -1907,7 +1909,7 @@ function PlantDetail({plantId,initialReview,onClose,onEdit,onOpenLog,onArchive,o
             )}
             <button className="btn btn-green" style={{width:'100%',padding:'9px 6px',fontSize:13.5}} onClick={()=>onEdit(plant)}>✏️ 编辑</button>
             <div style={{display:'flex',gap:6}}>
-              <button className="btn btn-gray" style={{flex:1,padding:'8px 4px',fontSize:13.5}} onClick={()=>onArchive(plant.id)}>📦</button>
+              <button className="btn btn-gray" style={{flex:1,padding:'8px 4px',fontSize:13.5}} onClick={()=>onArchive(plant.id)}>{isLedgerCat(db,plant.category)?'💰':'📦'}</button>
               <button className="btn btn-red" style={{flex:1,padding:'8px 4px',fontSize:13.5}} onClick={()=>onDelete(plant.id)}>🗑</button>
             </div>
           </div>
@@ -2780,6 +2782,8 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       if(view.returnTab){setView(null);setTab(view.returnTab);}
       else setView({type:'detail',id:view.plantId});
     }}/>;
+  if(view?.type==='sell')
+    return<SellForm plantId={view.id} onClose={()=>setView({type:'detail',id:view.id})} onDone={closeDetail}/>;
   if(view?.type==='detail')
     return<PlantDetail
       plantId={view.id}
@@ -2788,6 +2792,8 @@ function PlantsTab({jumpPlantId,onJumpDone}){
       onEdit={p=>setView({type:'form',plant:p})}
       onOpenLog={(pid,lt)=>setView({type:'log',plantId:pid,logType:lt})}
       onArchive={(pid)=>{
+        const pl0=db.plants.find(p=>p.id===pid);
+        if(pl0&&isLedgerCat(db,pl0.category)){setView({type:'sell',id:pid});return;}   // v1.56：分类已关联售出记账 → 先登记成本/售价
         if(!window.confirm('将此植物移入档案库？'))return;
         updateDb(prev=>({...prev,
           plants:prev.plants.filter(p=>p.id!==pid),
@@ -4144,7 +4150,7 @@ function PropBatchDetail({batchId,onClose,onEdit,onGraduate}){
     });
   }
 
-  const linkedPlants=(batch.batchPlantIds||[batch.batchPlantId].filter(Boolean)).map(pid=>db.plants.find(p=>p.id===pid)||db.archive?.plants?.find(p=>p.id===pid)).filter(Boolean);
+  const linkedPlants=(batch.batchPlantIds||[batch.batchPlantId].filter(Boolean)).map(pid=>db.plants.find(p=>p.id===pid)||db.archive?.plants?.find(p=>p.id===pid)||(getLedger(db).sold.find(r=>r.plant.id===pid)||{}).plant).filter(Boolean);
 
   // v1.55：标题里的母株名称带品种；关联了母株植物卡的取卡片最新的名称+品种，没关联的用批次里记录的名称
   const hdrParent=(()=>{const pp=batch.parentId?db.plants.find(p=>p.id===batch.parentId):null;return pp?pp.name+(pp.variety?' '+pp.variety:''):(batch.parentName||'未命名');})();
@@ -4721,6 +4727,292 @@ function LibListPage({type,onClose}){
       {ReactDOM.createPortal(
         <button className="fab" onClick={()=>setAddNew(true)}>＋</button>
       ,document.body)}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════
+// 售出记账（v1.56）：库存页"💰 售出记账"卡片 + 关联分类 + 存档时登记成本/售价
+// 数据：db.ledger={linkedCats:[分类裸名],sold:[{id,plant,cost,price,shipping,soldAt,buyer,note,archivedAt}],entries:[{id,type,title,amount,date,note}]}
+// ═══════════════════════════════════════════════
+function getLedger(db){const l=(db&&db.ledger)||{};return{linkedCats:l.linkedCats||[],sold:l.sold||[],entries:l.entries||[]};}
+function isLedgerCat(db,category){
+  if(!category)return false;
+  const b=catBare(category);
+  return getLedger(db).linkedCats.some(c=>catBare(c)===b);
+}
+function parseMoney(v){if(v===''||v==null)return 0;const n=parseFloat(String(v).replace(/[^\d.\-]/g,''));return isFinite(n)?n:0;}
+function fmtMoney(n){n=Number(n)||0;const a=Math.abs(n);const t=a%1===0?String(a):a.toFixed(2);return(n<0?'-':'')+'¥'+t;}
+function soldProfit(r){return parseMoney(r.price)-parseMoney(r.cost)-parseMoney(r.shipping);}
+function ledgerTotals(led){
+  let inc=0,exp=0;const months={};
+  const mk=(d)=>(d||'').slice(0,7)||'未知';
+  const add=(d,i,e)=>{inc+=i;exp+=e;const k=mk(d);if(!months[k])months[k]={inc:0,exp:0};months[k].inc+=i;months[k].exp+=e;};
+  led.sold.forEach(r=>add(r.soldAt,parseMoney(r.price),parseMoney(r.cost)+parseMoney(r.shipping)));
+  led.entries.forEach(e=>add(e.date,e.type==='income'?parseMoney(e.amount):0,e.type==='expense'?parseMoney(e.amount):0));
+  return{inc,exp,profit:inc-exp,months};
+}
+
+// 存档登记页：关联了记账的分类下的植物，点"移入档案库"时进入这里；也用于修改已有的售出记录
+function SellForm({plantId,soldId,onClose,onDone}){
+  const{db,updateDb,toast}=useApp();
+  const led=getLedger(db);
+  const rec=soldId?led.sold.find(r=>r.id===soldId):null;
+  const plant=rec?rec.plant:db.plants.find(p=>p.id===plantId);
+  const isEdit=!!rec;
+  const numStr=v=>(Number(v)||0)!==0?String(v):'';
+  const[form,setForm]=useState(()=>({
+    cost:rec?numStr(rec.cost):(parseMoney(plant&&plant.buyPrice)>0?String(parseMoney(plant.buyPrice)):''),
+    price:rec?numStr(rec.price):'',
+    shipping:rec?numStr(rec.shipping):'',
+    soldAt:rec?rec.soldAt:toDay(),
+    buyer:rec?(rec.buyer||''):'',
+    note:rec?(rec.note||''):'',
+  }));
+  useEffect(()=>{window.scrollTo(0,0)},[]);
+  useSwipeBack(onClose);
+  const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
+  if(!plant)return null;
+  const profit=parseMoney(form.price)-parseMoney(form.cost)-parseMoney(form.shipping);
+  function save(){
+    if(!form.soldAt){toast.show('⚠️ 请选择售出日期');return;}
+    const base={cost:parseMoney(form.cost),price:parseMoney(form.price),shipping:parseMoney(form.shipping),soldAt:form.soldAt,buyer:form.buyer.trim(),note:form.note.trim()};
+    if(isEdit){
+      updateDb(prev=>{const l=getLedger(prev);return{...prev,ledger:{...l,sold:l.sold.map(r=>r.id===soldId?{...r,...base}:r)}};});
+      toast.show('✅ 已更新');onClose();
+    }else{
+      updateDb(prev=>{
+        const l=getLedger(prev);
+        const p=prev.plants.find(x=>x.id===plantId);if(!p)return prev;
+        return{...prev,plants:prev.plants.filter(x=>x.id!==plantId),ledger:{...l,sold:[...l.sold,{id:uid(),plant:p,...base,archivedAt:toDay()}]}};
+      });
+      toast.show('💰 已售出，已存入售出记账');onDone();
+    }
+  }
+  const moneyInput=(k,ph)=><input className="input" type="text" inputMode="decimal" placeholder={ph} value={form[k]} onChange={e=>sf(k,e.target.value)}/>;
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onClose}>‹</button>
+        <div className="page-header-title">{isEdit?'✏️ 修改售出记录':'💰 登记售出'} · {plant.name}{plant.variety?<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:15.5}}>{plant.variety}</span>:''}</div>
+      </div>
+      <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:10}}>
+        {!isEdit&&<div style={{fontSize:13.5,color:'#6a8858',lineHeight:1.7}}>这株植物所在的分类已关联「售出记账」：确认后会从植物页移走，连同下面的成本/售价一起存入库存页的「💰 售出记账」。</div>}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          <div><label className="field-label">售价（¥）</label>{moneyInput('price','收到的金额')}</div>
+          <div><label className="field-label">成本（¥）</label>{moneyInput('cost','购入/培育成本')}</div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          <div><label className="field-label">运费等其他支出（¥）</label>{moneyInput('shipping','包装、快递…')}</div>
+          <div><label className="field-label">售出日期</label><input className="input" type="date" style={{colorScheme:'light'}} value={form.soldAt} onChange={e=>sf('soldAt',e.target.value)}/></div>
+        </div>
+        <div style={{fontSize:15,fontWeight:700,color:profit<0?'#b85c3c':'#2a6a35'}}>利润：{fmtMoney(profit)}<span style={{fontSize:12.5,fontWeight:400,color:'#8aaa78',marginLeft:8}}>= 售价 − 成本 − 其他支出</span></div>
+        <div><label className="field-label">买家/渠道</label><input className="input" placeholder="朋友、闲鱼、花市…" defaultValue={form.buyer} onBlur={e=>sf('buyer',e.target.value)}/></div>
+        <div><label className="field-label">备注</label><textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6}} defaultValue={form.note} onBlur={e=>sf('note',e.target.value)}/></div>
+        <div style={{display:'flex',gap:8,paddingBottom:20}}>
+          <button className="btn btn-green" style={{flex:1}} onClick={save}>✓ {isEdit?'保存修改':'确认售出并存档'}</button>
+          <button className="btn btn-gray" style={{flex:1}} onClick={onClose}>取消</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 其他收支（盆器、运费、材料等）的新增/修改页
+function LedgerEntryForm({initItem,onClose}){
+  const{updateDb,toast}=useApp();
+  const isEdit=!!(initItem&&initItem.id);
+  const[form,setForm]=useState(()=>initItem?{...initItem,amount:String(initItem.amount||'')}:{id:'',type:'expense',title:'',amount:'',date:toDay(),note:''});
+  useEffect(()=>{window.scrollTo(0,0)},[]);
+  useSwipeBack(onClose);
+  const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
+  function save(){
+    if(!form.title.trim()){toast.show('⚠️ 请填写项目');return;}
+    const amt=parseMoney(form.amount);
+    if(!(amt>0)){toast.show('⚠️ 请填写金额');return;}
+    const item={id:isEdit?form.id:uid(),type:form.type,title:form.title.trim(),amount:amt,date:form.date||toDay(),note:(form.note||'').trim()};
+    updateDb(prev=>{const l=getLedger(prev);return{...prev,ledger:{...l,entries:isEdit?l.entries.map(e=>e.id===item.id?item:e):[...l.entries,item]}};});
+    toast.show(isEdit?'✅ 已更新':'✅ 已记一笔');onClose();
+  }
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onClose}>‹</button>
+        <div className="page-header-title">{isEdit?'✏️ 修改':'＋ 记一笔'}收支</div>
+      </div>
+      <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:10}}>
+        <div style={{display:'flex',gap:8}}>
+          {[['expense','🧾 支出'],['income','💵 收入']].map(([k,l])=>(
+            <button key={k} style={{flex:1,padding:'10px 6px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:600,
+              background:form.type===k?'rgba(140,185,110,0.4)':'rgba(255,255,255,0.5)',border:'1.5px solid '+(form.type===k?'rgba(110,165,80,0.6)':'rgba(150,185,130,0.3)'),color:form.type===k?'#2e4a22':'#6a8858'}}
+              onClick={()=>sf('type',k)}>{l}</button>
+          ))}
+        </div>
+        <div><label className="field-label">项目 *</label><input className="input" placeholder="盆器、快递包装、泥炭土…" defaultValue={form.title} onBlur={e=>sf('title',e.target.value)}/></div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          <div><label className="field-label">金额（¥）*</label><input className="input" type="text" inputMode="decimal" value={form.amount} onChange={e=>sf('amount',e.target.value)}/></div>
+          <div><label className="field-label">日期</label><input className="input" type="date" style={{colorScheme:'light'}} value={form.date} onChange={e=>sf('date',e.target.value)}/></div>
+        </div>
+        <div><label className="field-label">备注</label><textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6}} defaultValue={form.note} onBlur={e=>sf('note',e.target.value)}/></div>
+        <div style={{display:'flex',gap:8,paddingBottom:20}}>
+          <button className="btn btn-green" style={{flex:1}} onClick={save}>✓ {isEdit?'保存修改':'记下这一笔'}</button>
+          <button className="btn btn-gray" style={{flex:1}} onClick={onClose}>取消</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 库存页「💰 售出记账」主页：汇总 + 已售植物 + 其他收支 + 关联分类
+function LedgerPage({onClose}){
+  const{db,updateDb,toast}=useApp();
+  const[sub,setSub]=useState('sold');
+  const[sellEdit,setSellEdit]=useState(null);   // 正在修改的售出记录 id
+  const[entryForm,setEntryForm]=useState(null); // {item}：新增(item=null)或修改
+  const[viewRec,setViewRec]=useState(null);
+  const scrollRef=useRef(0);
+  useEffect(()=>{window.scrollTo(0,0)},[]);
+  useSwipeBack((sellEdit||entryForm)?()=>{}:onClose);   // 子页面自己处理返回，避免一次右划连退两层
+  const led=getLedger(db);
+  const tot=ledgerTotals(led);
+  function openChild(setter,val){scrollRef.current=window.scrollY||0;setter(val);setTimeout(()=>window.scrollTo(0,0),0);}
+  function closeChild(setter){setter(null);const y=scrollRef.current;setTimeout(()=>window.scrollTo(0,y),0);}
+  if(sellEdit)return<SellForm soldId={sellEdit} onClose={()=>closeChild(setSellEdit)} onDone={()=>closeChild(setSellEdit)}/>;
+  if(entryForm)return<LedgerEntryForm initItem={entryForm.item} onClose={()=>closeChild(setEntryForm)}/>;
+
+  const setLed=fn=>updateDb(prev=>({...prev,ledger:fn(getLedger(prev))}));
+  function restoreSold(r){
+    if(!confirm('恢复到植物页后，这笔售出记录（含成本/售价）会被删除，账目也会去掉。确认恢复？'))return;
+    updateDb(prev=>{const l=getLedger(prev);return{...prev,plants:[...prev.plants,{...r.plant}],ledger:{...l,sold:l.sold.filter(x=>x.id!==r.id)}};});
+    toast.show('↩ 已恢复到植物页');
+  }
+  function deleteSold(r){
+    if(!confirm('删除这条售出记录？植物档案和账目都会彻底删除，无法恢复。'))return;
+    setLed(l=>({...l,sold:l.sold.filter(x=>x.id!==r.id)}));toast.show('🗑 已删除');
+  }
+  function deleteEntry(e){
+    if(!confirm('删除这笔收支？'))return;
+    setLed(l=>({...l,entries:l.entries.filter(x=>x.id!==e.id)}));toast.show('🗑 已删除');
+  }
+  // 分类列表：db.cats ∪ 已使用分类 ∪ 已关联分类，按裸名去重，优先带emoji的写法
+  const usedCats=[...new Set([...db.plants.map(p=>p.category),...led.sold.map(r=>r.plant.category)].filter(Boolean))];
+  const rawCats=[...new Set([...(db.cats||[]),...usedCats,...led.linkedCats])];
+  const byBare={};
+  rawCats.forEach(c=>{
+    const bare=catBare(c);const cur=byBare[bare];
+    if(!cur||(catIcon(cur)==='🏷️'&&catIcon(c)!=='🏷️'))byBare[bare]=c;
+  });
+  const catList=Object.values(byBare);
+  const linkedBare=led.linkedCats.map(catBare);
+  function toggleCat(c){
+    const b=catBare(c);
+    setLed(l=>({...l,linkedCats:linkedBare.includes(b)?l.linkedCats.filter(x=>catBare(x)!==b):[...l.linkedCats,b]}));
+  }
+  const soldSorted=[...led.sold].sort((a,b)=>(b.soldAt||'').localeCompare(a.soldAt||'')||(b.archivedAt||'').localeCompare(a.archivedAt||''));
+  const entriesSorted=[...led.entries].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const monthKeys=Object.keys(tot.months).sort().reverse();
+  const empty=(t)=><div style={{textAlign:'center',padding:'40px 0',color:'#9aaa88',fontSize:14.5,lineHeight:2.2}}>{t}</div>;
+  const profitColor=n=>n<0?'#b85c3c':'#2a6a35';
+  return(
+    <div className="fullpage">
+      <div className="page-header">
+        <button className="back-btn" onClick={onClose}>‹</button>
+        <div className="page-header-title">💰 售出记账</div>
+      </div>
+      <div style={{maxWidth:460,margin:'0 auto',padding:'12px 16px 40px'}}>
+        <div className="card" style={{marginBottom:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,textAlign:'center'}}>
+            <div><div style={{fontSize:12.5,color:'#7a9060'}}>总收入</div><div style={{fontSize:17,fontWeight:700,color:'#2e4a22'}}>{fmtMoney(tot.inc)}</div></div>
+            <div><div style={{fontSize:12.5,color:'#7a9060'}}>总支出</div><div style={{fontSize:17,fontWeight:700,color:'#5a3828'}}>{fmtMoney(tot.exp)}</div></div>
+            <div><div style={{fontSize:12.5,color:'#7a9060'}}>净利润</div><div style={{fontSize:17,fontWeight:800,color:profitColor(tot.profit)}}>{fmtMoney(tot.profit)}</div></div>
+          </div>
+          <div style={{fontSize:12.5,color:'#9aaa88',textAlign:'center',marginTop:8}}>已售 {led.sold.length} 株 · 其他收支 {led.entries.length} 笔</div>
+          {monthKeys.length>0&&<div style={{marginTop:10,borderTop:'1px solid rgba(150,185,130,0.25)',paddingTop:8}}>
+            <div style={{fontSize:13.5,fontWeight:700,color:'#4a6a38',marginBottom:4}}>按月汇总</div>
+            {monthKeys.map(k=>{const m=tot.months[k];const p=m.inc-m.exp;return(
+              <div key={k} style={{display:'flex',alignItems:'baseline',gap:8,fontSize:13.5,padding:'2px 0',color:'#4a6a38'}}>
+                <span style={{width:70,flexShrink:0}}>{k}</span>
+                <span style={{flex:1}}>收 {fmtMoney(m.inc)} · 支 {fmtMoney(m.exp)}</span>
+                <span style={{fontWeight:700,color:profitColor(p)}}>{fmtMoney(p)}</span>
+              </div>);})}
+          </div>}
+        </div>
+        <div style={{display:'flex',gap:6,marginBottom:14}}>
+          {[['sold','🪴 已售植物',led.sold.length],['entries','🧾 其他收支',led.entries.length],['link','🔗 关联分类',led.linkedCats.length]].map(([k,l,cnt])=>(
+            <button key={k} style={{flex:1,padding:'10px 4px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontSize:13.5,fontWeight:600,
+              background:sub===k?'rgba(140,185,110,0.4)':'rgba(255,255,255,0.5)',border:'1.5px solid '+(sub===k?'rgba(110,165,80,0.6)':'rgba(150,185,130,0.3)'),color:sub===k?'#2e4a22':'#6a8858'}}
+              onClick={()=>setSub(k)}>{l} <span style={{fontSize:12.5,fontWeight:400,color:'#7a9060'}}>{cnt}</span></button>
+          ))}
+        </div>
+
+        {sub==='sold'&&(soldSorted.length===0
+          ?empty(<>暂无已售植物<br/><span style={{fontSize:12.5}}>先到「关联分类」选好分类，之后该分类下的植物存档时就会进入这里</span></>)
+          :soldSorted.map(r=>{const p=r.plant;const pf=soldProfit(r);return(
+            <div key={r.id} className="card" style={{marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                {p.photo?<PlantPhoto src={p.photo} style={{width:44,height:44,objectFit:'cover',borderRadius:8,flexShrink:0}}/>
+                  :<div style={{width:44,height:44,borderRadius:8,background:'rgba(180,210,160,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24.5,flexShrink:0}}>🪴</div>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:17,fontWeight:700,color:'#2e4a22'}}>{p.name}{p.variety&&<span style={{fontSize:13.5,fontWeight:400,color:'#5a7848',marginLeft:6}}>{p.variety}</span>}</div>
+                  <div style={{fontSize:12.5,color:'#7a9060',marginTop:2}}>{p.category?p.category+' · ':''}售出 {fmtDate(r.soldAt)}</div>
+                </div>
+                <div style={{textAlign:'right'}}><div style={{fontSize:12.5,color:'#9aaa88'}}>利润</div><div style={{fontSize:16,fontWeight:800,color:profitColor(pf)}}>{fmtMoney(pf)}</div></div>
+              </div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',fontSize:13,marginBottom:4}}>
+                <span style={{background:'rgba(80,180,80,0.12)',color:'#2a6a35',borderRadius:8,padding:'2px 8px'}}>售价 {fmtMoney(r.price)}</span>
+                <span style={{background:'rgba(210,155,120,0.18)',color:'#5a3828',borderRadius:8,padding:'2px 8px'}}>成本 {fmtMoney(r.cost)}</span>
+                {parseMoney(r.shipping)>0&&<span style={{background:'rgba(210,155,120,0.18)',color:'#5a3828',borderRadius:8,padding:'2px 8px'}}>其他支出 {fmtMoney(r.shipping)}</span>}
+              </div>
+              {r.buyer&&<div style={{fontSize:13.5,color:'#4a6a38'}}>🛒 {r.buyer}</div>}
+              {r.note&&<div style={{fontSize:13.5,color:'#5a7848',whiteSpace:'pre-wrap'}}>📝 {r.note}</div>}
+              {viewRec===r.id
+                ?<div style={{marginTop:6,padding:'8px 10px',background:'rgba(255,255,255,0.5)',borderRadius:8,fontSize:13.5,color:'#4a6a38',lineHeight:1.8}}>
+                  {p.family&&<div>🌿 {p.family}{p.genus?' · '+p.genus:''}</div>}
+                  {p.buyFrom&&<div>🛒 购入来源：{p.buyFrom}</div>}
+                  {p.buyDate&&<div>📅 购入日期：{p.buyDate}</div>}
+                  {p.acquiredDate&&<div>📅 入手日期：{p.acquiredDate}</div>}
+                  {p.notes&&<div style={{marginTop:4,color:'#5a7848',whiteSpace:'pre-wrap'}}>📝 {p.notes}</div>}
+                  <button style={{marginTop:6,background:'none',border:'none',fontSize:12.5,color:'#9aaa88',cursor:'pointer',padding:0}} onClick={()=>setViewRec(null)}>收起 ▲</button>
+                </div>
+                :<button style={{background:'none',border:'none',fontSize:12.5,color:'#7a9060',cursor:'pointer',padding:'4px 0',display:'block'}} onClick={()=>setViewRec(r.id)}>查看植物资料 ▼</button>}
+              <div style={{display:'flex',gap:6,marginTop:6}}>
+                <button className="btn btn-gray" style={{flex:1,fontSize:13.5,padding:'8px'}} onClick={()=>openChild(setSellEdit,r.id)}>✏️ 修改</button>
+                <button className="btn btn-gray" style={{flex:2,fontSize:13.5,padding:'8px'}} onClick={()=>restoreSold(r)}>↩ 恢复到植物页</button>
+                <button className="btn btn-red" style={{flex:1,fontSize:13.5,padding:'8px'}} onClick={()=>deleteSold(r)}>🗑</button>
+              </div>
+            </div>);}))}
+
+        {sub==='entries'&&<>
+          <button className="btn btn-green" style={{width:'100%',marginBottom:12}} onClick={()=>openChild(setEntryForm,{item:null})}>＋ 记一笔收支</button>
+          {entriesSorted.length===0
+            ?empty(<>还没有其他收支<br/><span style={{fontSize:12.5}}>盆器、运费、材料这类不属于某株植物的钱，可以在这里单独记</span></>)
+            :entriesSorted.map(e=>(
+              <div key={e.id} className="card" style={{marginBottom:10}}>
+                <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+                  <span style={{fontSize:18}}>{e.type==='income'?'💵':'🧾'}</span>
+                  <span style={{flex:1,fontSize:15.5,fontWeight:700,color:'#2e4a22'}}>{e.title}</span>
+                  <span style={{fontSize:16,fontWeight:800,color:e.type==='income'?'#2a6a35':'#5a3828'}}>{e.type==='income'?'+':'-'}{fmtMoney(e.amount)}</span>
+                </div>
+                <div style={{fontSize:12.5,color:'#9aaa88',marginTop:2}}>{fmtDate(e.date)}</div>
+                {e.note&&<div style={{fontSize:13.5,color:'#5a7848',whiteSpace:'pre-wrap',marginTop:2}}>📝 {e.note}</div>}
+                <div style={{display:'flex',gap:6,marginTop:6}}>
+                  <button className="btn btn-gray" style={{flex:1,fontSize:13.5,padding:'8px'}} onClick={()=>openChild(setEntryForm,{item:e})}>✏️ 修改</button>
+                  <button className="btn btn-red" style={{flex:1,fontSize:13.5,padding:'8px'}} onClick={()=>deleteEntry(e)}>🗑 删除</button>
+                </div>
+              </div>))}
+        </>}
+
+        {sub==='link'&&<>
+          <div style={{fontSize:13.5,color:'#5a7a48',lineHeight:1.7,marginBottom:10}}>点选要关联的分类（可多选）。<b>已关联</b>的分类下的植物，在植物详情页点「💰」存档时，会先进入「登记售出」页填成本/售价等，确认后存到这里；<b>未关联</b>的分类仍然正常移入档案库，不用填任何记账信息。已有的档案库存档不受影响；「未分类」的植物暂不支持关联。</div>
+          {catList.length===0?empty('还没有分类'):
+            <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+              {catList.map(c=>{const on=linkedBare.includes(catBare(c));const cnt=db.plants.filter(p=>catBare(p.category)===catBare(c)).length;return(
+                <button key={c} style={{padding:'9px 14px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',fontSize:14.5,fontWeight:600,
+                  background:on?'rgba(240,200,110,0.45)':'rgba(255,255,255,0.5)',border:'1.5px solid '+(on?'rgba(210,170,80,0.8)':'rgba(150,185,130,0.35)'),color:on?'#5a4410':'#6a8858'}}
+                  onClick={()=>toggleCat(c)}>{on?'✓ ':''}{c}<span style={{fontSize:12.5,fontWeight:400,marginLeft:4,opacity:.7}}>{cnt}</span></button>);})}
+            </div>}
+        </>}
+      </div>
     </div>
   );
 }
@@ -5311,6 +5603,7 @@ function InventoryTab(){
   if(view?.type==='add_soil')return<SoilForm initItem={null} onClose={()=>setView(null)}/>;
   if(view?.type==='add_recipe')return<RecipeForm initItem={null} onClose={()=>setView(null)}/>;
   if(view&&view.type==='archive')return<ArchivePage onClose={()=>setView(null)}/>;
+  if(view&&view.type==='ledger')return<LedgerPage onClose={()=>setView(null)}/>;
   if(view&&view.type==='plantPicker')return<ExportPlantPicker onSelect={function(plants){doExportPlants(plants);}} onClose={()=>setView(null)}/>;
   if(view&&view.type==='batchIntervalPicker')return<ExportPlantPicker title="选择植物 · 批量设置周期" actionLabel="下一步 ›" onSelect={function(plants){setView({type:'batchIntervalForm',plants:plants});}} onClose={()=>setView(null)}/>;
   if(view&&view.type==='batchIntervalForm')return<BatchIntervalForm plants={view.plants} onClose={()=>setView(null)}/>;
@@ -5338,6 +5631,7 @@ function InventoryTab(){
       recipe:db.lib.recipe||[],prop:db.prop,
       archive:{...db.archive,plants:archivePlantsOut},
       courses:db.archive?.courses||[],
+      ledger:{...getLedger(db),sold:await Promise.all(getLedger(db).sold.map(async function(r){return{...r,plant:(await withPhotos([r.plant]))[0]};}))},
       cats:db.cats,catOrder:db.catOrder||{},
       aiLastGlobalPlan:db.aiLastGlobalPlan||null,aiLastPromptDate:db.aiLastPromptDate||null,
       exportTime:new Date().toISOString()
@@ -5401,7 +5695,8 @@ function InventoryTab(){
             return{...p,photo:id};
           }));
         }
-        Promise.all([migrateAndLoad(data.plants),migrateAndLoad((data.archive||{}).plants)]).then(function(res){
+        const ledIn=data.ledger||null;
+        Promise.all([migrateAndLoad(data.plants),migrateAndLoad((data.archive||{}).plants),Promise.all(((ledIn&&ledIn.sold)||[]).map(async function(r){return{...r,plant:(await migrateAndLoad([r.plant]))[0]};}))]).then(function(res){
           const migratedPlants=res[0];
           const migratedArchivePlants=res[1];
           updateDb(function(prev){return{
@@ -5411,6 +5706,8 @@ function InventoryTab(){
             lib:{fert:data.fert||[],med:data.med||[],soil:data.soil||[],recipe:data.recipe||[]},
             archive:{...(data.archive||{plants:[],batches:[]}),plants:migratedArchivePlants,courses:data.courses||[]},
             prop:data.prop||[],
+            // 备份里有售出记账就恢复；老备份(v1.56之前)没有这一项则保留现有记账，不清空
+            ledger:ledIn?{linkedCats:ledIn.linkedCats||[],sold:res[2],entries:ledIn.entries||[]}:getLedger(prev),
             aiLastGlobalPlan:data.aiLastGlobalPlan??prev.aiLastGlobalPlan??null,
             aiLastPromptDate:data.aiLastPromptDate??prev.aiLastPromptDate??null,
           };});
@@ -5426,6 +5723,7 @@ function InventoryTab(){
     {type:'soil', icon:'🪨',label:'盆土库',color:'rgba(190,165,120,0.2)',border:'rgba(170,145,100,0.4)',tc:'#4a3a20',cnt:db.lib.soil.length},
     {type:'recipe',icon:'🧪',label:'配方库',color:'rgba(215,185,250,0.2)',border:'rgba(185,155,220,0.4)',tc:'#4a2a68',cnt:(db.lib.recipe||[]).length},
     {type:'archive',icon:'📦',label:'档案库',color:'rgba(165,195,220,0.2)',border:'rgba(140,175,210,0.4)',tc:'#2a3a58',cnt:(db.archive?.plants?.length||0)+(db.archive?.batches?.length||0)+(db.archive?.courses?.length||0)},
+    {type:'ledger',icon:'💰',label:'售出记账',color:'rgba(240,200,110,0.22)',border:'rgba(210,170,80,0.45)',tc:'#5a4410',cnt:getLedger(db).sold.length,unit:'株'},
   ];
   return(
     <div className="tab-content">
@@ -5435,7 +5733,7 @@ function InventoryTab(){
           <button key={c.type} style={{padding:'18px 8px',borderRadius:16,cursor:'pointer',fontFamily:'inherit',fontSize:17,fontWeight:600,background:c.color,border:'1.5px solid '+c.border,color:c.tc,display:'flex',flexDirection:'column',alignItems:'center',gap:7}} onClick={()=>setView({type:c.type})}>
             <span style={{fontSize:35}}>{c.icon}</span>
             <span>{c.label}</span>
-            <span style={{fontSize:13.5,color:'#7a9060',fontWeight:400}}>{c.cnt}种</span>
+            <span style={{fontSize:13.5,color:'#7a9060',fontWeight:400}}>{c.cnt}{c.unit||'种'}</span>
           </button>
         ))}
       </div>
