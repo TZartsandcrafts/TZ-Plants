@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.56';
+const APP_VERSION='v1.57';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -2180,7 +2180,7 @@ function GrowthTabContent({form,sf,secBox}){
         <DateRow label="购入日期" fkey="buyDate" form={form} sf={sf}/>
         <TxtRow label="购入来源" fkey="buyFrom" ph="苗圃、平台…" form={form} sf={sf}/>
         <TxtRow label="规格描述" fkey="buySpec" ph="苗高、地径…" form={form} sf={sf}/>
-        <TxtRow label="购入价格" fkey="buyPrice" ph="如：¥88…" form={form} sf={sf}/>
+        <TxtRow label="购入价格" fkey="buyPrice" ph="如：$88…" form={form} sf={sf}/>
       </div>
     }
     {src==='cutting'&&<div style={secBox()}><div style={{fontSize:12.5,fontWeight:700,color:'#5a7848',marginBottom:4}}>✂️ 扦插信息</div>
@@ -4543,7 +4543,7 @@ function FertMedForm({type,initItem,onClose}){
         <div><label className="field-label">注意事项</label><input className="input" placeholder="花期禁用…" defaultValue={form.caution} onBlur={e=>sf('caution',e.target.value)}/></div>
         {!isFert&&<div><label className="field-label">安全间隔期（天）</label><input className="input" style={{width:130}} placeholder="7" defaultValue={form.safetyDays} onBlur={e=>sf('safetyDays',e.target.value)}/></div>}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          <div><label className="field-label">价格</label><input className="input" placeholder="¥68/500ml…" defaultValue={form.price} onBlur={e=>sf('price',e.target.value)}/></div>
+          <div><label className="field-label">价格</label><input className="input" placeholder="$68/500ml…" defaultValue={form.price} onBlur={e=>sf('price',e.target.value)}/></div>
           <div><label className="field-label">使用间隔（天）</label><input className="input" placeholder="14 或 7-14" defaultValue={form.interval} onBlur={e=>sf('interval',e.target.value)}/></div>
         </div>
         <div><label className="field-label">备注</label>
@@ -4584,7 +4584,7 @@ function SoilForm({initItem,onClose}){
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
           <div><label className="field-label">规格</label><input className="input" placeholder="10L…" defaultValue={form.spec} onBlur={e=>sf('spec',e.target.value)}/></div>
-          <div><label className="field-label">价格</label><input className="input" placeholder="¥38…" defaultValue={form.price} onBlur={e=>sf('price',e.target.value)}/></div>
+          <div><label className="field-label">价格</label><input className="input" placeholder="$38…" defaultValue={form.price} onBlur={e=>sf('price',e.target.value)}/></div>
         </div>
         <div><label className="field-label">适用场景</label><input className="input" placeholder="多肉、观叶、果树…" defaultValue={form.suitable} onBlur={e=>sf('suitable',e.target.value)}/></div>
         <div><label className="field-label">主要成分</label><input className="input" placeholder="泥炭+珍珠岩+椰糠…" defaultValue={form.composition} onBlur={e=>sf('composition',e.target.value)}/></div>
@@ -4742,7 +4742,7 @@ function isLedgerCat(db,category){
   return getLedger(db).linkedCats.some(c=>catBare(c)===b);
 }
 function parseMoney(v){if(v===''||v==null)return 0;const n=parseFloat(String(v).replace(/[^\d.\-]/g,''));return isFinite(n)?n:0;}
-function fmtMoney(n){n=Number(n)||0;const a=Math.abs(n);const t=a%1===0?String(a):a.toFixed(2);return(n<0?'-':'')+'¥'+t;}
+function fmtMoney(n){n=Number(n)||0;const a=Math.abs(n);const t=a%1===0?String(a):a.toFixed(2);return(n<0?'-':'')+'$'+t;}
 function soldProfit(r){return parseMoney(r.price)-parseMoney(r.cost)-parseMoney(r.shipping);}
 function ledgerTotals(led){
   let inc=0,exp=0;const months={};
@@ -4797,13 +4797,13 @@ function SellForm({plantId,soldId,onClose,onDone}){
         <div className="page-header-title">{isEdit?'✏️ 修改售出记录':'💰 登记售出'} · {plant.name}{plant.variety?<span style={{fontWeight:400,color:'#5a7848',marginLeft:8,fontSize:15.5}}>{plant.variety}</span>:''}</div>
       </div>
       <div style={{maxWidth:460,margin:'0 auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:10}}>
-        {!isEdit&&<div style={{fontSize:13.5,color:'#6a8858',lineHeight:1.7}}>这株植物所在的分类已关联「售出记账」：确认后会从植物页移走，连同下面的成本/售价一起存入库存页的「💰 售出记账」。</div>}
+        {!isEdit&&<div style={{fontSize:13.5,color:'#6a8858',lineHeight:1.7}}>这株植物所在的分类已关联「售出记账」：确认后会从植物页移走，连同下面的成本/售价一起存入库存页的「💰 售出记账」。金额单位：加币（CAD）。</div>}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          <div><label className="field-label">售价（¥）</label>{moneyInput('price','收到的金额')}</div>
-          <div><label className="field-label">成本（¥）</label>{moneyInput('cost','购入/培育成本')}</div>
+          <div><label className="field-label">售价（$）</label>{moneyInput('price','收到的金额')}</div>
+          <div><label className="field-label">成本（$）</label>{moneyInput('cost','购入/培育成本')}</div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          <div><label className="field-label">运费等其他支出（¥）</label>{moneyInput('shipping','包装、快递…')}</div>
+          <div><label className="field-label">运费等其他支出（$）</label>{moneyInput('shipping','包装、快递…')}</div>
           <div><label className="field-label">售出日期</label><input className="input" type="date" style={{colorScheme:'light'}} value={form.soldAt} onChange={e=>sf('soldAt',e.target.value)}/></div>
         </div>
         <div style={{fontSize:15,fontWeight:700,color:profit<0?'#b85c3c':'#2a6a35'}}>利润：{fmtMoney(profit)}<span style={{fontSize:12.5,fontWeight:400,color:'#8aaa78',marginLeft:8}}>= 售价 − 成本 − 其他支出</span></div>
@@ -4850,7 +4850,7 @@ function LedgerEntryForm({initItem,onClose}){
         </div>
         <div><label className="field-label">项目 *</label><input className="input" placeholder="盆器、快递包装、泥炭土…" defaultValue={form.title} onBlur={e=>sf('title',e.target.value)}/></div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          <div><label className="field-label">金额（¥）*</label><input className="input" type="text" inputMode="decimal" value={form.amount} onChange={e=>sf('amount',e.target.value)}/></div>
+          <div><label className="field-label">金额（$）*</label><input className="input" type="text" inputMode="decimal" value={form.amount} onChange={e=>sf('amount',e.target.value)}/></div>
           <div><label className="field-label">日期</label><input className="input" type="date" style={{colorScheme:'light'}} value={form.date} onChange={e=>sf('date',e.target.value)}/></div>
         </div>
         <div><label className="field-label">备注</label><textarea className="input" rows={2} style={{resize:'vertical',lineHeight:1.6}} defaultValue={form.note} onBlur={e=>sf('note',e.target.value)}/></div>
@@ -4926,7 +4926,7 @@ function LedgerPage({onClose}){
             <div><div style={{fontSize:12.5,color:'#7a9060'}}>总支出</div><div style={{fontSize:17,fontWeight:700,color:'#5a3828'}}>{fmtMoney(tot.exp)}</div></div>
             <div><div style={{fontSize:12.5,color:'#7a9060'}}>净利润</div><div style={{fontSize:17,fontWeight:800,color:profitColor(tot.profit)}}>{fmtMoney(tot.profit)}</div></div>
           </div>
-          <div style={{fontSize:12.5,color:'#9aaa88',textAlign:'center',marginTop:8}}>已售 {led.sold.length} 株 · 其他收支 {led.entries.length} 笔</div>
+          <div style={{fontSize:12.5,color:'#9aaa88',textAlign:'center',marginTop:8}}>已售 {led.sold.length} 株 · 其他收支 {led.entries.length} 笔 · 金额单位：加币（CAD）</div>
           {monthKeys.length>0&&<div style={{marginTop:10,borderTop:'1px solid rgba(150,185,130,0.25)',paddingTop:8}}>
             <div style={{fontSize:13.5,fontWeight:700,color:'#4a6a38',marginBottom:4}}>按月汇总</div>
             {monthKeys.map(k=>{const m=tot.months[k];const p=m.inc-m.exp;return(
