@@ -25,7 +25,7 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
 .fullpage{
   min-height:100vh;
   background:linear-gradient(150deg,#dce8d8,#c8dcc0,#d4e4cc);
-  padding-bottom:calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 20px);
+  padding-bottom:calc(58px + max(calc(env(safe-area-inset-bottom,0px) - 14px),12px) + 20px);
   -webkit-transform:translateZ(0);
   transform:translateZ(0);
   isolation:isolate;
@@ -44,7 +44,7 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
 .back-btn{background:none;border:none;cursor:pointer;font-size:31px;color:#5a8040;padding:0;line-height:1;flex-shrink:0}
 
 /* Tab布局 */
-.tab-content{padding-bottom:calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 8px)}
+.tab-content{padding-bottom:calc(58px + max(calc(env(safe-area-inset-bottom,0px) - 14px),12px) + 8px)}
 
 /* 粘性顶栏 */
 .sticky-bar{
@@ -53,7 +53,7 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border-bottom:1px solid rgba(140,185,120,0.25);
   padding:14px 16px 11px;
-  padding-top:max(14px,env(safe-area-inset-top,14px));
+  padding-top:calc(env(safe-area-inset-top,0px) + 14px);
 }
 .sticky-bar h1{font-size:24.5px;font-weight:800;color:#2e4a22;letter-spacing:-.3px}
 .sticky-bar .sub{font-size:12.5px;color:#7a9e7e;margin-top:2px}
@@ -66,7 +66,7 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border-top:1px solid rgba(140,185,120,0.3);
   display:flex;
-  padding-bottom:max(env(safe-area-inset-bottom,0px),16px);
+  padding-bottom:max(calc(env(safe-area-inset-bottom,0px) - 14px),12px);
 }
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px 6px;background:none;border:none;cursor:pointer;font-family:inherit}
 .nav-icon{font-size:24.5px;line-height:1}
@@ -120,7 +120,7 @@ input[type=date]{-webkit-appearance:none;color-scheme:light}
 .placeholder-desc{font-size:14.5px;color:#7a9060;line-height:1.7}
 
 /* FAB */
-.fab{position:fixed;bottom:calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 14px);right:max(calc(50% - 230px + 16px),16px);width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6aaa44,#4a8a30);border:none;cursor:pointer;font-size:29px;color:white;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(50,90,30,.32);z-index:60}
+.fab{position:fixed;bottom:calc(58px + max(calc(env(safe-area-inset-bottom,0px) - 14px),12px) + 14px);right:max(calc(50% - 230px + 16px),16px);width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6aaa44,#4a8a30);border:none;cursor:pointer;font-size:29px;color:white;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(50,90,30,.32);z-index:60}
 .fab:active{transform:scale(.92)}
 
 /* Toast */
@@ -151,7 +151,7 @@ const {useState,useEffect,useCallback,useRef,createContext,useContext}=React;
 // ═══════════════════════════════════════════════
 const SK='plants_v9';
 // 版本号：与 README.md 更新日志最新一条的日期/续号保持一致，每次改动后同步更新，方便核对当前用的是哪一版
-const APP_VERSION='v1.58';
+const APP_VERSION='v1.59';
 const DEFAULT_CATS=['🍎 水果','🌿 调味','🌺 花木','🥬 蔬菜'];
 // 分类名称的 emoji 前缀识别：不管 "🍎 水果"（带空格）还是 "🍎水果"（不带空格）都能正确拆出 emoji 和裸名
 const CAT_EMOJI_RE=/^([\p{Extended_Pictographic}\uFE0F\u200D]+)\s*/u;
@@ -2886,7 +2886,7 @@ function PlantsTab({jumpPlantId,onJumpDone}){
         }
         {/* 悬浮 + 按钮菜单：新增分类 / 新增植物 */}
         {fabOpen&&<div style={{position:'fixed',inset:0,zIndex:59}} onClick={()=>setFabOpen(false)}/>}
-        {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
+        {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(calc(env(safe-area-inset-bottom,0px) - 14px),12px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
           {[
             {icon:'🏷️',label:'新分类',action:()=>{setFabOpen(false);window.__showCatAdd(name=>{
               updateDb(prev=>prev.cats.some(c=>catBare(c)===catBare(name))?prev:{...prev,cats:[...prev.cats,name]});
@@ -5469,7 +5469,7 @@ function ExportPlantPicker({onSelect,onClose,title,actionLabel}){
         })}
       </div>
       {selected.size>0&&ReactDOM.createPortal(
-        <div style={{position:'fixed',left:'50%',transform:'translateX(-50%)',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px))',zIndex:90,padding:'10px 16px',background:'rgba(220,232,216,0.98)',borderTop:'1px solid rgba(90,120,70,0.2)',boxShadow:'0 -2px 10px rgba(40,70,20,.1)',display:'flex',alignItems:'center',gap:10,width:'100%',maxWidth:460,boxSizing:'border-box'}}>
+        <div style={{position:'fixed',left:'50%',transform:'translateX(-50%)',bottom:'calc(58px + max(calc(env(safe-area-inset-bottom,0px) - 14px),12px))',zIndex:90,padding:'10px 16px',background:'rgba(220,232,216,0.98)',borderTop:'1px solid rgba(90,120,70,0.2)',boxShadow:'0 -2px 10px rgba(40,70,20,.1)',display:'flex',alignItems:'center',gap:10,width:'100%',maxWidth:460,boxSizing:'border-box'}}>
           <div style={{fontSize:14.5,color:'#4a6a38',fontWeight:600,flexShrink:0}}>已选 {selected.size} 株</div>
           <button className="btn btn-green" style={{flex:1,padding:'10px'}} onClick={doExport}>{actionLabel}</button>
         </div>
@@ -5749,7 +5749,7 @@ function InventoryTab(){
       <input type="file" id="import-file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
       {/* 备份选项菜单 */}
       {showExportMenu&&<div style={{position:'fixed',inset:0,zIndex:58}} onClick={()=>setShowExportMenu(false)}/>}
-      {showExportMenu&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 68px)',left:'max(calc(50% - 230px + 16px),16px)',zIndex:59,display:'flex',flexDirection:'column',gap:8}}>
+      {showExportMenu&&<div style={{position:'fixed',bottom:'calc(58px + max(calc(env(safe-area-inset-bottom,0px) - 14px),12px) + 68px)',left:'max(calc(50% - 230px + 16px),16px)',zIndex:59,display:'flex',flexDirection:'column',gap:8}}>
         {[
           {icon:'💾',label:'完整备份',action:exportData},
           {icon:'🌿',label:'自选备份',action:function(){setView({type:'plantPicker'});setShowExportMenu(false);}},
@@ -5764,7 +5764,7 @@ function InventoryTab(){
       </div>}
       {/* 库存 FAB */}
       {fabOpen&&<div style={{position:'fixed',inset:0,zIndex:59}} onClick={()=>setFabOpen(false)}/>}
-      {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(env(safe-area-inset-bottom,0px),16px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
+      {fabOpen&&<div style={{position:'fixed',bottom:'calc(58px + max(calc(env(safe-area-inset-bottom,0px) - 14px),12px) + 72px)',right:'max(calc(50% - 230px + 16px),16px)',zIndex:61,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
         {[
           {icon:'🌿',label:'肥料',type:'add_fert'},
           {icon:'💊',label:'药品',type:'add_med'},
